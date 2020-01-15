@@ -7,6 +7,7 @@ from LickArduino import clean_Arduino_output
 from util import read_eztrack, find_closest
 import matplotlib.pyplot as plt
 import cv2
+from CircleTrack.utils import circle_sizes, cart2pol, grab_paths
 
 def make_tracking_video(vid_path, csv_path, output_fname='Tracking.avi',
                         start=0, stop=None, fps=30, Arduino_path=None):
@@ -76,7 +77,7 @@ def make_tracking_video(vid_path, csv_path, output_fname='Tracking.avi',
             # Plot position.
             x = eztrack.at[frame_number, 'x']
             y = eztrack.at[frame_number, 'y']
-            ax.scatter(x, y, marker='+', s=60, c='r')
+            ax.scatter(x, y, marker='+', s=60, c='w')
 
             ax.text(0, 0, 'Frame: ' + str(frame_number) +
                     '   Time: ' + str(np.round(frame_number/30, 1)) + ' s')
@@ -85,7 +86,8 @@ def make_tracking_video(vid_path, csv_path, output_fname='Tracking.avi',
             if Arduino_path is not None:
                 licking_at_port = eztrack.at[frame_number, 'lick_port']
                 if licking_at_port >= 0:
-                    ax.scatter(50, 50, s=100, c=port_colors[licking_at_port])
+                    ax.scatter(x, y, s=200, marker='+',
+                               c=port_colors[licking_at_port])
 
             ax.set_aspect('equal')
             plt.axis('off')
@@ -156,15 +158,7 @@ def find_water_ports(eztrack_data):
         DataFrame with 'x' and 'y' columns corresponding to x and y positions of
         each water port.
     """
-    # Get circular track
-    x_extrema = [min(eztrack_data.x), max(eztrack_data.x)]
-    y_extrema = [min(eztrack_data.y), max(eztrack_data.y)]
-    width_px = np.diff(x_extrema)
-    height_px = np.diff(y_extrema)
-
-    # Get circle statistics.
-    radius = np.mean([width_px, height_px])/2
-    center = [np.mean(x_extrema), np.mean(y_extrema)]
+    (width, height, radius, center) = circle_sizes(eztrack_data.x, eztrack_data.y)
     theta = np.pi/4     # Angle in between each water port.
 
     # Determines orientation of the water ports.
@@ -227,3 +221,37 @@ def clean_lick_detection(eztrack_data, threshold=80):
             eztrack_data.at[frame_num, 'lick_port'] = -1
 
     return eztrack_data
+
+
+def linearize_trajectory(eztrack_data):
+    """
+    Linearizes circular track trajectory.
+
+    :parameter
+    ---
+    eztrack_data: output from read_eztrack()
+
+    :returns
+    ---
+    angles: array
+        Basically the linearized trajectory. Technically it is the
+        polar coordinate with the center of the maze as the origin.
+
+    radii: array
+        Vector length of polar coordinate. Basically the distance from
+        the center. Maybe useful for something.
+    """
+    # Get circle size.
+    x, y = eztrack_data.x, eztrack_data.y
+    (width, height, radius, center) = circle_sizes(eztrack_data.x, eztrack_data.y)
+
+    # Convert to polar coordinates.
+    angles, radii = cart2pol(x-center[0], y-center[1])
+
+    return angles, radii
+
+if __name__ == '__main__':
+    folder = r'D:\Projects\CircleTrack\Mouse1\12_20_2019'
+    paths = grab_paths(folder)
+    eztrack_data = read_eztrack(paths['ezTrack'])
+    linearize_trajectory(eztrack_data)
