@@ -1,5 +1,4 @@
 import os
-
 import numpy as np
 import pandas as pd
 from matplotlib.animation import FFMpegWriter
@@ -8,6 +7,7 @@ from util import read_eztrack, find_closest
 import matplotlib.pyplot as plt
 import cv2
 from CircleTrack.utils import circle_sizes, cart2pol, grab_paths
+import pickle as pkl
 
 def make_tracking_video(vid_path, csv_path, output_fname='Tracking.avi',
                         start=0, stop=None, fps=30, Arduino_path=None):
@@ -95,7 +95,6 @@ def make_tracking_video(vid_path, csv_path, output_fname='Tracking.avi',
             writer.grab_frame()
 
             plt.cla()
-
 
 
 def sync_Arduino_outputs(Arduino_fpath, eztrack_fpath, behav_cam=2):
@@ -243,12 +242,40 @@ def linearize_trajectory(eztrack_data):
     """
     # Get circle size.
     x, y = eztrack_data.x, eztrack_data.y
-    (width, height, radius, center) = circle_sizes(eztrack_data.x, eztrack_data.y)
+    (width, height, radius, center) = circle_sizes(x, y)
 
     # Convert to polar coordinates.
     angles, radii = cart2pol(x-center[0], y-center[1])
 
     return angles, radii
+
+
+class Preprocess:
+    def __init__(self, folder):
+        self.folder = folder
+        self.paths = grab_paths(self.folder)
+        self.paths['PreprocessedBehavior'] = \
+            os.path.join(self.paths['MiniscopeFolder'], 'Behavior.pkl')
+        try:
+            with open(self.paths['PreprocessedBehavior'], 'rb') as file:
+                previous = pkl.load(file)
+            self.eztrack_data = previous.eztrack_data
+        except:
+            self.eztrack_data = sync_Arduino_outputs(self.paths['Arduino'],
+                                                     self.paths['ezTrack'])[0]
+            self.eztrack_data = clean_lick_detection(self.eztrack_data)
+
+
+    def save(self, path=None, fname='Behavior.pkl'):
+        if path is None:
+            fpath = self.paths['PreprocessedBehavior']
+        else:
+            path = self.paths['MiniscopeFolder']
+            fpath = os.path.join(path, fname)
+
+        with open(fpath, 'wb') as file:
+            pkl.dump(self, file)
+
 
 if __name__ == '__main__':
     folder = r'D:\Projects\CircleTrack\Mouse1\12_20_2019'
