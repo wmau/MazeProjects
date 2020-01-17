@@ -264,7 +264,7 @@ def plot_licks(eztrack_data):
 
     :parameter
     ---
-    eztrack_data: output from read_eztrack()
+    eztrack_data: output from Preprocess
 
     :return
     ---
@@ -272,11 +272,11 @@ def plot_licks(eztrack_data):
         Contains the plots.
     """
     # Make sure licks have been retrieved.
-    try:
+    if 'lick_port' not in eztrack_data:
+        raise KeyError('Run sync_Arduino_outputs and clean_lick_detection first.')
+    else:
         licks = eztrack_data.lick_port
         licks[licks == -1] = np.nan
-    except:
-        raise KeyError('Run sync_Arduino_outputs and clean_lick_detection first.')
 
     # Linearize mouse's trajectory.
     lin_dist = linearize_trajectory(eztrack_data)[0]
@@ -299,16 +299,61 @@ def plot_licks(eztrack_data):
     return fig, ax
 
 
+def find_rewarded_ports(eztrack_data):
+    """
+    Find which port numbers are rewarded by looking at the flag
+    one timestamp before water delivery. Note that the mouse must
+    lick at each rewarded port a handful of times for this to work.
+
+    :parameter
+    ---
+    eztrack_data: output from Preprocess()
+
+    :return
+    ---
+    ports: array
+        Port numbers that were rewarded.
+    """
+    if 'water' not in eztrack_data:
+        raise KeyError('Run sync_Arduino outputs and clean_lick_detection first.')
+
+    # Get index one before water delivery (the lick that triggered it).
+    one_before = np.where(eztrack_data.water)
+
+    # Find unique port numbers.
+    rewarded_ports = np.unique(eztrack_data.loc[one_before, 'lick_port'])
+
+    return rewarded_ports[rewarded_ports > -1]
+
+
+def get_trials(eztrack_data):
+
+
 class Preprocess:
-    def __init__(self, folder):
+    def __init__(self, folder: str):
+        """
+        Preprocesses behavior data by specifying a session folder.
+
+        :parameter
+        ---
+        folder: str
+            Folder path to session.
+        """
         self.folder = folder
+
+        # Get the paths to relevant files.
         self.paths = grab_paths(self.folder)
         self.paths['PreprocessedBehavior'] = \
             os.path.join(self.paths['MiniscopeFolder'], 'Behavior.pkl')
+
+        # Check if Preprocess has been ran already by attempting
+        # to load a pkl file.
         try:
             with open(self.paths['PreprocessedBehavior'], 'rb') as file:
                 previous = pkl.load(file)
             self.eztrack_data = previous.eztrack_data
+
+        # If not, sync Arduino data.
         except:
             self.eztrack_data = sync_Arduino_outputs(self.paths['Arduino'],
                                                      self.paths['ezTrack'])[0]
@@ -316,10 +361,19 @@ class Preprocess:
 
 
     def save(self, path=None, fname='Behavior.pkl'):
+        """
+        Save preprocessed data.
+
+        path: str
+            Folder path to save to. If None, default to session folder.
+
+        fname: str
+            File name to call the pkl file.
+
+        """
         if path is None:
             fpath = self.paths['PreprocessedBehavior']
         else:
-            path = self.paths['MiniscopeFolder']
             fpath = os.path.join(path, fname)
 
         with open(fpath, 'wb') as file:
@@ -330,4 +384,4 @@ if __name__ == '__main__':
     folder = r'D:\Projects\CircleTrack\Mouse1\12_20_2019'
     behav = Preprocess(folder)
 
-    plot_licks(behav.eztrack_data)
+    find_rewarded_ports(behav.eztrack_data)
