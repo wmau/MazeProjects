@@ -222,7 +222,7 @@ def clean_lick_detection(eztrack_data, threshold=80):
     return eztrack_data
 
 
-def linearize_trajectory(eztrack_data):
+def linearize_trajectory(eztrack_data, x=None, y=None):
     """
     Linearizes circular track trajectory.
 
@@ -241,13 +241,40 @@ def linearize_trajectory(eztrack_data):
         the center. Maybe useful for something.
     """
     # Get circle size.
-    x, y = eztrack_data.x, eztrack_data.y
-    (width, height, radius, center) = circle_sizes(x, y)
+    if x is None:
+        x = eztrack_data.x
+    if y is None:
+        y = eztrack_data.y
+    (width, height, radius, center) = circle_sizes(eztrack_data.x,
+                                                   eztrack_data.y)
 
     # Convert to polar coordinates.
     angles, radii = cart2pol(x-center[0], y-center[1])
 
+    # Shift everything so that 12 o'clock (pi/2) is 0.
+    angles += np.pi/2
+    angles = np.mod(angles, 2*np.pi)
+
     return angles, radii
+
+
+def plot_licks(eztrack_data):
+    # Make sure licks have been retrieved.
+    try:
+        licks = eztrack_data.lick_port
+        licks[licks == -1] = np.nan
+    except:
+        raise KeyError('Run sync_Arduino_outputs and clean_lick_detection first.')
+
+    lin_dist = linearize_trajectory(eztrack_data)[0]
+    ports = find_water_ports(eztrack_data)
+    lin_ports = linearize_trajectory(eztrack_data, ports['x'], ports['y'])[0]
+    licks = [lin_ports[number] if not np.isnan(number) else np.nan for number in licks]
+    fig, ax = plt.subplots()
+    ax.plot(lin_dist)
+    ax.plot(licks, marker='x', markersize=10)
+    ax.invert_yaxis()
+    pass
 
 
 class Preprocess:
@@ -279,6 +306,6 @@ class Preprocess:
 
 if __name__ == '__main__':
     folder = r'D:\Projects\CircleTrack\Mouse1\12_20_2019'
-    paths = grab_paths(folder)
-    eztrack_data = read_eztrack(paths['ezTrack'])
-    linearize_trajectory(eztrack_data)
+    behav = Preprocess(folder)
+
+    plot_licks(behav.eztrack_data)
