@@ -259,6 +259,18 @@ def linearize_trajectory(eztrack_data, x=None, y=None):
 
 
 def plot_licks(eztrack_data):
+    """
+    Plot points where mouse licks.
+
+    :parameter
+    ---
+    eztrack_data: output from read_eztrack()
+
+    :return
+    ---
+    fig, ax: Figure and Axes
+        Contains the plots.
+    """
     # Make sure licks have been retrieved.
     try:
         licks = eztrack_data.lick_port
@@ -266,15 +278,25 @@ def plot_licks(eztrack_data):
     except:
         raise KeyError('Run sync_Arduino_outputs and clean_lick_detection first.')
 
+    # Linearize mouse's trajectory.
     lin_dist = linearize_trajectory(eztrack_data)[0]
+
+    # Find the water ports and get their linearized location.
     ports = find_water_ports(eztrack_data)
     lin_ports = linearize_trajectory(eztrack_data, ports['x'], ports['y'])[0]
-    licks = [lin_ports[number] if not np.isnan(number) else np.nan for number in licks]
+
+    # Make the array for plotting.
+    licks = [lin_ports[port_id] if not np.isnan(port_id) else np.nan for port_id in licks]
+
+    # Plot.
     fig, ax = plt.subplots()
     ax.plot(lin_dist)
     ax.plot(licks, marker='x', markersize=10)
     ax.invert_yaxis()
-    pass
+    ax.set_xlabel('Time (frames)')
+    ax.set_ylabel('Linearized distance (radians)')
+
+    return fig, ax
 
 
 class Preprocess:
