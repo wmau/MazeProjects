@@ -327,42 +327,85 @@ def find_rewarded_ports(eztrack_data):
 
 
 def bin_position(linearized_position):
-    bins = np.linspace(0, 2*np.pi, 9)
+    """
+    Bin radial position.
 
+    :parameter
+    ---
+    linearized_position: array
+        Linearized position (position in radians after passing through linearize_trajectory())
+
+    :return
+    ---
+    binned: array
+        Binned position.
+    """
+    bins = np.linspace(0, 2*np.pi, 9)
     binned = np.digitize(linearized_position, bins)
 
     return binned
 
 
-def get_trials(eztrack_data):
+def get_trials(eztrack_data, counterclockwise=False):
+    """
+    Labels timestamps with trial numbers. Looks through position indices as the mouse
+    passes through bins in a clockwise fashion (default).
+
+    :parameters
+    ---
+    eztrack_data: output from Preprocess()
+
+    counterclockwise: boolean
+        Flag for whether session was run with the mouse running counterclockwise.
+
+    :return
+    trials: array, same size as eztrack_data position
+        Labels for each timestamp for which trial the mouse is on.
+    """
     # Linearize then bin position into one of 8 bins.
     position = linearize_trajectory(eztrack_data)[0]
     binned_position = bin_position(position)
     bins = np.unique(binned_position)
 
-    # For each bin, get indices where the mouse was in that bin.
+    # For each bin number, get timestamps when the mouse was in that bin.
     indices = [np.where(binned_position == this_bin)[0] for this_bin in bins]
+    if counterclockwise: # reverse the order of the bins.
+        indices = indices[::-1]
 
     # Preallocate trial vector.
     trials = np.full(binned_position.shape, np.nan)
     trial_start = 0
     last_idx = 0
 
-    for trial_number in range(200):
+    # For a large number of trials...
+    for trial_number in range(500):
+
+        # For each bin...
         for this_bin in indices:
+            # Find the first timestamp that comes after the first timestamp in the last bin
+            # for that trial.
             last_idx = this_bin[np.argmax(this_bin > last_idx)]
 
+        # After looping through all the bins, remember the last timestamp where there
+        # was a bin transition.
         trial_end = last_idx
 
-        chunk = trials[trial_start:trial_end]
-        if np.all(np.isnan(chunk)):
+        # If the slice still has all NaNs, label it with the trial number.
+        if np.all(np.isnan(trials[trial_start:trial_end])):
             trials[trial_start:trial_end] = trial_number
+
+        # If not, exit the loop.
         else:
             break
 
+        # The start of the next trial is the end of the last.
         trial_start = trial_end
 
-    pass
+    # Debugging purposes.
+    # for trial in range(int(max(trials))):
+    #     plt.plot(position[trials == trial])
+
+    return trials
 
 
 class Preprocess:
