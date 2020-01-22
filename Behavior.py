@@ -383,7 +383,7 @@ def get_trials(eztrack_data, counterclockwise=False):
         # For each bin...
         for this_bin in indices:
             # Find the first timestamp that comes after the first timestamp in the last bin
-            # for that trial.
+            # for that trial. Argmax is supposedly faster than np.where.
             last_idx = this_bin[np.argmax(this_bin > last_idx)]
 
         # After looping through all the bins, remember the last timestamp where there
@@ -394,8 +394,9 @@ def get_trials(eztrack_data, counterclockwise=False):
         if np.all(np.isnan(trials[trial_start:trial_end])):
             trials[trial_start:trial_end] = trial_number
 
-        # If not, exit the loop.
+        # If not, finis up and exit the loop.
         else:
+            trials[np.isnan(trials)] = trial_number
             break
 
         # The start of the next trial is the end of the last.
@@ -405,7 +406,7 @@ def get_trials(eztrack_data, counterclockwise=False):
     # for trial in range(int(max(trials))):
     #     plt.plot(position[trials == trial])
 
-    return trials
+    return trials.astype(int)
 
 
 class Preprocess:
@@ -437,6 +438,8 @@ class Preprocess:
             self.eztrack_data = sync_Arduino_outputs(self.paths['Arduino'],
                                                      self.paths['ezTrack'])[0]
             self.eztrack_data = clean_lick_detection(self.eztrack_data)
+            self.eztrack_data['trials'] = get_trials(self.eztrack_data)
+            self.eztrack_data['lin_position'] = linearize_trajectory(self.eztrack_data)[0]
 
 
     def save(self, path=None, fname='Behavior.pkl'):
@@ -457,6 +460,21 @@ class Preprocess:
 
         with open(fpath, 'wb') as file:
             pkl.dump(self, file)
+
+
+    def plot_lin_position(self):
+        for trial in range(int(max(self.eztrack_data['trials']))):
+            plt.plot(self.eztrack_data['lin_position'][self.eztrack_data['trials'] == trial])
+
+
+    def plot_trial(self, trial):
+        x = self.eztrack_data['x']
+        y = self.eztrack_data['y']
+        idx = self.eztrack_data['trials'] == trial
+
+        fig, ax = plt.subplots()
+        ax.plot(x[idx], y[idx])
+        ax.set_aspect('equal')
 
 
 if __name__ == '__main__':
