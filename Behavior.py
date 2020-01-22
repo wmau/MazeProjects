@@ -377,6 +377,8 @@ def get_trials(eztrack_data, counterclockwise=False):
     trial_start = 0
     last_idx = 0
 
+    # We need to loop through bins rather than simply looking for border crossings
+    # because a mouse can backtrack, which we wouldn't want to count.
     # For a large number of trials...
     for trial_number in range(500):
 
@@ -463,11 +465,23 @@ class Preprocess:
 
 
     def plot_lin_position(self):
+        """
+        Plots the linearized position for the whole session, color-coded by trial.
+
+        """
         for trial in range(int(max(self.eztrack_data['trials']))):
             plt.plot(self.eztrack_data['lin_position'][self.eztrack_data['trials'] == trial])
 
 
     def plot_trial(self, trial):
+        """
+        Plots any trial (non-linearized).
+
+        :parameter
+        ---
+        trial: int
+            Trial number
+        """
         x = self.eztrack_data['x']
         y = self.eztrack_data['y']
         idx = self.eztrack_data['trials'] == trial
