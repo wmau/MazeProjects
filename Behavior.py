@@ -326,7 +326,43 @@ def find_rewarded_ports(eztrack_data):
     return rewarded_ports[rewarded_ports > -1]
 
 
+def bin_position(linearized_position):
+    bins = np.linspace(0, 2*np.pi, 9)
+
+    binned = np.digitize(linearized_position, bins)
+
+    return binned
+
+
 def get_trials(eztrack_data):
+    # Linearize then bin position into one of 8 bins.
+    position = linearize_trajectory(eztrack_data)[0]
+    binned_position = bin_position(position)
+    bins = np.unique(binned_position)
+
+    # For each bin, get indices where the mouse was in that bin.
+    indices = [np.where(binned_position == this_bin)[0] for this_bin in bins]
+
+    # Preallocate trial vector.
+    trials = np.full(binned_position.shape, np.nan)
+    trial_start = 0
+    last_idx = 0
+
+    for trial_number in range(200):
+        for this_bin in indices:
+            last_idx = this_bin[np.argmax(this_bin > last_idx)]
+
+        trial_end = last_idx
+
+        chunk = trials[trial_start:trial_end]
+        if np.all(np.isnan(chunk)):
+            trials[trial_start:trial_end] = trial_number
+        else:
+            break
+
+        trial_start = trial_end
+
+    pass
 
 
 class Preprocess:
@@ -384,4 +420,4 @@ if __name__ == '__main__':
     folder = r'D:\Projects\CircleTrack\Mouse1\12_20_2019'
     behav = Preprocess(folder)
 
-    find_rewarded_ports(behav.eztrack_data)
+    get_trials(behav.eztrack_data)
