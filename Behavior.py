@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.animation import FFMpegWriter
 from LickArduino import clean_Arduino_output
-from util import read_eztrack, find_closest
+from util import read_eztrack, find_closest, ScrollPlot, disp_frame
 import matplotlib.pyplot as plt
 import cv2
 from CircleTrack.utils import circle_sizes, cart2pol, grab_paths
@@ -426,14 +426,12 @@ class Preprocess:
         # Get the paths to relevant files.
         self.paths = grab_paths(self.folder)
         self.paths['PreprocessedBehavior'] = \
-            os.path.join(self.paths['MiniscopeFolder'], 'Behavior.pkl')
+            os.path.join(self.paths['MiniscopeFolder'], 'PreprocessedBehavior.csv')
 
         # Check if Preprocess has been ran already by attempting
         # to load a pkl file.
         try:
-            with open(self.paths['PreprocessedBehavior'], 'rb') as file:
-                previous = pkl.load(file)
-            self.eztrack_data = previous.eztrack_data
+            self.eztrack_data  = pd.read_csv(self.paths['PreprocessedBehavior'])
 
         # If not, sync Arduino data.
         except:
@@ -444,7 +442,7 @@ class Preprocess:
             self.eztrack_data['lin_position'] = linearize_trajectory(self.eztrack_data)[0]
 
 
-    def save(self, path=None, fname='Behavior.pkl'):
+    def save(self, path=None, fname='PreprocessedBehavior.csv'):
         """
         Save preprocessed data.
 
@@ -460,8 +458,104 @@ class Preprocess:
         else:
             fpath = os.path.join(path, fname)
 
-        with open(fpath, 'wb') as file:
-            pkl.dump(self, file)
+        self.eztrack_data.to_csv(fpath)
+
+
+    def plot_frames(self, frame_number):
+        """
+        Plot frame and position from ezTrack csv.
+
+        :parameter
+        frame_num: int
+            Frame number that you want to start on.
+        """
+        vid = cv2.VideoCapture(self.paths['BehaviorVideo'])
+        n_frames = int(vid.get(7))
+        frame_nums = ["Frame " + str(n) for n in range(n_frames)]
+        self.f = ScrollPlot(disp_frame,
+                            current_position=frame_number,
+                            vid_fpath=self.paths['BehaviorVideo'],
+                            x=self.eztrack_data['x'], y=self.eztrack_data['y'],
+                            titles=frame_nums)
+
+
+    def correct_position(self, start_frame=None):
+        """
+        Correct position starting from start_frame. If left to default,
+        start from where you specified during class instantiation or where
+        you last left off.
+
+        :parameter
+        ---
+        start_frame: int
+            Frame number that you want to start on.
+        """
+        # Frame to start on.
+        if start_frame is None:
+            start_frame = 0
+
+        # Plot frame and position, then connect to mouse.
+        self.plot_frames(start_frame)
+        self.f.fig.canvas.mpl_connect('button_press_event',
+                                      self.correct)
+
+        # Wait for click.
+        while plt.get_fignums():
+            plt.waitforbuttonpress()
+
+        # When done, hit Esc on keyboard and csv will be overwritten.
+        print('Saving to ' + self.paths['ezTrack'])
+        self.eztrack_data.to_csv(self.paths['ezTrack'])
+
+
+    def correct(self, event):
+        """
+        Defines what happens during mouse clicks.
+
+        :parameter
+        ---
+        event: click event
+            Defined by mpl_connect. Don't modify.
+        """
+        # Overwrite DataFrame with new x and y values.
+        self.eztrack_data.loc[self.f.current_position, 'x'] = event.xdata
+        self.eztrack_data.loc[self.f.current_position, 'y'] = event.ydata
+
+        # Plot the new x and y.
+        self.f.fig.axes[0].plot(event.xdata, event.ydata, 'go')
+        self.f.fig.canvas.draw()
+
+
+    def find_outliers(self):
+        """
+        Plot the distances between points and then select with your
+        mouse where you would want to do a manual correction from.
+
+        """
+        # Plot distance between points and connect to mouse.
+        # Clicking the plot will bring you to the frame you want to
+        # correct.
+        self.radii_fig, self.radii_ax = plt.subplots(1,1)
+
+        angles, radii = linearize_trajectory(self.eztrack_data)
+
+        self.radii_ax.plot(radii)
+        self.radii_fig.canvas.mpl_connect('button_press_event',
+                                          self.jump_to)
+
+        while plt.get_fignums():
+            plt.waitforbuttonpress()
+
+
+    def jump_to(self, event):
+        """
+        Jump to this frame based on a click on a graph. Grabs the x (frame)
+        """
+        plt.close(self.radii_fig)
+        if event.xdata < 0:
+            event.xdata = 0
+        self.correct_position(int(np.round(event.xdata)))
+
 
 
     def plot_lin_position(self):
@@ -491,8 +585,16 @@ class Preprocess:
         ax.set_aspect('equal')
 
 
+    def track_video(self):
+        make_tracking_video(self.paths['BehaviorVideo'], self.paths['ezTrack'],
+                            Arduino_path=self.paths['Arduino'])
+
+
+
+
+
 if __name__ == '__main__':
     folder = r'D:\Projects\CircleTrack\Mouse1\12_20_2019'
     behav = Preprocess(folder)
 
-    get_trials(behav.eztrack_data)
+    pass
