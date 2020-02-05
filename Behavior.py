@@ -3,11 +3,16 @@ import numpy as np
 import pandas as pd
 from matplotlib.animation import FFMpegWriter
 from LickArduino import clean_Arduino_output
-from util import read_eztrack, find_closest, ScrollPlot, disp_frame
+from util import read_eztrack, find_closest, ScrollPlot, disp_frame, \
+    consecutive_dist
 import matplotlib.pyplot as plt
 import cv2
 from CircleTrack.utils import circle_sizes, cart2pol, grab_paths
 import pickle as pkl
+import tkinter as tk
+tkroot = tk.Tk()
+tkroot.withdraw()
+from tkinter import filedialog
 
 def make_tracking_video(vid_path, csv_path, output_fname='Tracking.avi',
                         start=0, stop=None, fps=30, Arduino_path=None):
@@ -125,19 +130,23 @@ def sync_Arduino_outputs(Arduino_fpath, eztrack_fpath, behav_cam=2):
 
     # Only take the rows corresponding to the behavior camera.
     DAQ_data = DAQ_data[DAQ_data.camNum == behav_cam]
+    DAQ_data.reset_index(drop=True, inplace=True)
 
     # Find the frame number associated with the timestamp of a lick.
     sysClock = np.asarray(DAQ_data.sysClock)
     for i, row in Arduino_data.iterrows():
         closest_time = find_closest(sysClock, row.Timestamp, sorted=True)[1]
-        frame_num = DAQ_data.loc[DAQ_data.sysClock == closest_time]['frameNum']
+        frame_num = DAQ_data.loc[DAQ_data.sysClock == closest_time]['frameNum'].values[0]
         val = row.Data
 
         if val.isnumeric():
-            eztrack_data.at[frame_num, 'lick_port'] = int(val)
+            eztrack_data.at[frame_num, 'lick_port'] = val
         elif val == 'Water':
             eztrack_data.at[frame_num, 'water'] = True
 
+    eztrack_data = eztrack_data.astype({'frame': int,
+                                        'water': bool,
+                                        'lick_port': int})
     return eztrack_data, Arduino_data
 
 
@@ -412,7 +421,7 @@ def get_trials(eztrack_data, counterclockwise=False):
 
 
 class Preprocess:
-    def __init__(self, folder: str):
+    def __init__(self, folder=None):
         """
         Preprocesses behavior data by specifying a session folder.
 
@@ -421,12 +430,15 @@ class Preprocess:
         folder: str
             Folder path to session.
         """
-        self.folder = folder
+        if folder is None:
+            self.folder = filedialog.askdirectory()
+        else:
+            self.folder = folder
 
         # Get the paths to relevant files.
         self.paths = grab_paths(self.folder)
         self.paths['PreprocessedBehavior'] = \
-            os.path.join(self.paths['MiniscopeFolder'], 'PreprocessedBehavior.csv')
+            os.path.join(self.folder, 'PreprocessedBehavior.csv')
 
         # Check if Preprocess has been ran already by attempting
         # to load a pkl file.
@@ -503,9 +515,6 @@ class Preprocess:
         while plt.get_fignums():
             plt.waitforbuttonpress()
 
-        # When done, hit Esc on keyboard and csv will be overwritten.
-        print('Saving to ' + self.paths['ezTrack'])
-        self.eztrack_data.to_csv(self.paths['ezTrack'])
 
 
     def correct(self, event):
@@ -535,12 +544,20 @@ class Preprocess:
         # Plot distance between points and connect to mouse.
         # Clicking the plot will bring you to the frame you want to
         # correct.
-        self.radii_fig, self.radii_ax = plt.subplots(1,1)
+        self.traj_fig, self.traj_ax = plt.subplots(1,1)
+        self.dist_ax = self.traj_ax.twinx()
 
         angles, radii = linearize_trajectory(self.eztrack_data)
+        self.eztrack_data['distance'][1:] = \
+            consecutive_dist(np.asarray((self.eztrack_data.x, self.eztrack_data.y)).T,
+                             axis=0)
 
-        self.radii_ax.plot(radii)
-        self.radii_fig.canvas.mpl_connect('button_press_event',
+        self.traj_ax.plot(radii)
+        self.traj_ax.set_ylabel('Distance from center')
+        self.dist_ax.plot(self.eztrack_data['distance'], color='r')
+        self.dist_ax.set_ylabel('Velocity')
+        self.dist_ax.set_xlabel('Frame')
+        self.traj_fig.canvas.mpl_connect('button_press_event',
                                           self.jump_to)
 
         while plt.get_fignums():
@@ -551,7 +568,7 @@ class Preprocess:
         """
         Jump to this frame based on a click on a graph. Grabs the x (frame)
         """
-        plt.close(self.radii_fig)
+        plt.close(self.traj_fig)
         if event.xdata < 0:
             event.xdata = 0
         self.correct_position(int(np.round(event.xdata)))
@@ -594,7 +611,8 @@ class Preprocess:
 
 
 if __name__ == '__main__':
-    folder = r'D:\Projects\CircleTrack\Mouse2\12_20_2019'
+    folder = r'D:\Projects\CircleTrack\Mouse4\01_28_2020\H15_M27_S45'
     behav = Preprocess(folder)
+    #behav.find_outliers()
 
     pass
