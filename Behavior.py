@@ -14,8 +14,9 @@ tkroot = tk.Tk()
 tkroot.withdraw()
 from tkinter import filedialog
 
-def make_tracking_video(vid_path, csv_path, output_fname='Tracking.avi',
-                        start=0, stop=None, fps=30, Arduino_path=None):
+def make_tracking_video(vid_path, preprocessed=True, csv_path=None,
+                        Arduino_path=None, output_fname='Tracking.avi',
+                        start=0, stop=None, fps=30):
     """
     Makes a video to visualize licking at water ports and position of the animal.
 
@@ -54,20 +55,26 @@ def make_tracking_video(vid_path, csv_path, output_fname='Tracking.avi',
     output_path = os.path.join(folder, output_fname)
 
     # Get EZtrack data.
-    if Arduino_path is not None:
-        eztrack = sync_Arduino_outputs(Arduino_path, csv_path)[0]
-        eztrack = clean_lick_detection(eztrack)
-        port_colors = ['saddlebrown',
-                       'red',
-                       'orange',
-                       'yellow',
-                       'green',
-                       'blue',
-                       'darkviolet',
-                       'gray']
+    if preprocessed:
+        session_folder = os.path.split(vid_path)[0]
+        behav = Preprocess(session_folder)
+        eztrack = behav.eztrack_data
     else:
-        eztrack = read_eztrack(csv_path)
-        port_colors = None
+        if Arduino_path is not None:
+            eztrack = sync_Arduino_outputs(Arduino_path, csv_path)[0]
+            eztrack = clean_lick_detection(eztrack)
+        else:
+            eztrack = read_eztrack(csv_path)
+
+    # Define the colors that the cursor will flash for licking each port.
+    port_colors = ['saddlebrown',
+                   'red',
+                   'orange',
+                   'yellow',
+                   'green',
+                   'blue',
+                   'darkviolet',
+                   'gray']
 
     # Make video.
     fig, ax = plt.subplots()
@@ -88,7 +95,7 @@ def make_tracking_video(vid_path, csv_path, output_fname='Tracking.avi',
                     '   Time: ' + str(np.round(frame_number/30, 1)) + ' s')
 
             # Lick indicator.
-            if Arduino_path is not None:
+            if (Arduino_path is not None) or preprocessed:
                 licking_at_port = eztrack.at[frame_number, 'lick_port']
                 if licking_at_port >= 0:
                     ax.scatter(x, y, s=200, marker='+',
@@ -132,8 +139,12 @@ def sync_Arduino_outputs(Arduino_fpath, eztrack_fpath, behav_cam=2):
     DAQ_data = DAQ_data[DAQ_data.camNum == behav_cam]
     DAQ_data.reset_index(drop=True, inplace=True)
 
-    # Find the frame number associated with the timestamp of a lick.
+    # Discard data after Miniscope acquisition has stopped.
     sysClock = np.asarray(DAQ_data.sysClock)
+    Arduino_data.drop(Arduino_data.index[Arduino_data.Timestamp > sysClock[-1]],
+                      inplace=True)
+
+    # Find the frame number associated with the timestamp of a lick.
     for i, row in Arduino_data.iterrows():
         closest_time = find_closest(sysClock, row.Timestamp, sorted=True)[1]
         frame_num = DAQ_data.loc[DAQ_data.sysClock == closest_time]['frameNum'].values[0]
@@ -611,8 +622,10 @@ class Preprocess:
 
 
 if __name__ == '__main__':
-    folder = r'D:\Projects\CircleTrack\Mouse4\01_28_2020\H15_M27_S45'
+    #folder = r'D:\Projects\CircleTrack\Mouse4\01_28_2020\H15_M27_S45'
+    folder = r'D:\Projects\CircleTrack\Mouse1\12_20_2019\H14_M59_S12'
     behav = Preprocess(folder)
     #behav.find_outliers()
+    #make_tracking_video(os.path.join(folder, 'Merged.avi'))
 
     pass
