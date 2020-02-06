@@ -148,12 +148,13 @@ def sync_Arduino_outputs(Arduino_fpath, eztrack_fpath, behav_cam=2):
     for i, row in Arduino_data.iterrows():
         closest_time = find_closest(sysClock, row.Timestamp, sorted=True)[1]
         frame_num = DAQ_data.loc[DAQ_data.sysClock == closest_time]['frameNum'].values[0]
-        val = row.Data
 
+        val = row.Data
         if val.isnumeric():
             eztrack_data.at[frame_num, 'lick_port'] = val
         elif val == 'Water':
             eztrack_data.at[frame_num, 'water'] = True
+
 
     eztrack_data = eztrack_data.astype({'frame': int,
                                         'water': bool,
@@ -459,7 +460,7 @@ class Preprocess:
         # If not, sync Arduino data.
         except:
             self.eztrack_data = sync_Arduino_outputs(self.paths['Arduino'],
-                                                     self.paths['ezTrack'])[0]
+                                                     self.paths['BehaviorData'])[0]
             self.eztrack_data = clean_lick_detection(self.eztrack_data)
             self.eztrack_data['trials'] = get_trials(self.eztrack_data)
             self.eztrack_data['lin_position'] = linearize_trajectory(self.eztrack_data)[0]
@@ -492,7 +493,7 @@ class Preprocess:
         frame_num: int
             Frame number that you want to start on.
         """
-        vid = cv2.VideoCapture(self.paths['BehaviorVideo'])
+        vid = cv2.VideoCapture(self.paths['BehaviorVideo'], cv2.CAP_FFMPEG)
         n_frames = int(vid.get(7))
         frame_nums = ["Frame " + str(n) for n in range(n_frames)]
         self.f = ScrollPlot(disp_frame,
@@ -614,7 +615,7 @@ class Preprocess:
 
 
     def track_video(self):
-        make_tracking_video(self.paths['BehaviorVideo'], self.paths['ezTrack'],
+        make_tracking_video(self.paths['BehaviorVideo'], self.paths['BehaviorData'],
                             Arduino_path=self.paths['Arduino'])
 
 
@@ -622,10 +623,10 @@ class Preprocess:
 
 
 if __name__ == '__main__':
-    #folder = r'D:\Projects\CircleTrack\Mouse4\01_28_2020\H15_M27_S45'
-    folder = r'D:\Projects\CircleTrack\Mouse1\12_20_2019\H14_M59_S12'
+    folder = r'D:\Projects\CircleTrack\Mouse4\01_27_2020\H13_M31_S49'
+    #folder = r'D:\Projects\CircleTrack\Mouse1\12_20_2019\H14_M59_S12'
     behav = Preprocess(folder)
-    #behav.find_outliers()
+    behav.find_outliers()
     #make_tracking_video(os.path.join(folder, 'Merged.avi'))
 
     pass

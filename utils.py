@@ -7,6 +7,7 @@ tkroot = tk.Tk()
 tkroot.withdraw()
 from tkinter import filedialog
 from pathlib import Path
+from Behavior import convert_dlc_to_eztrack
 
 def make_pattern_dict():
     """
@@ -21,7 +22,8 @@ def make_pattern_dict():
     pattern_dict = {
         'Arduino': 'H??_M??_S??.???? ????.txt',
         'BehaviorVideo': 'Merged.avi',
-        'ezTrack': '*_LocationOutput.csv',
+        'DLC': '*DLC_*_circletrack*_*.h5',
+        'BehaviorData': '*_LocationOutput.csv',
         'settings': 'settings_and_notes.dat',
         'timestamps': 'timestamp.dat'
     }
@@ -118,6 +120,14 @@ def batch_concat_avis(mouse_folder):
                             fname='Merged.avi', fps=30)
             except:
                 print(f'Failed to create {merged_file}')
+
+
+
+def dlc_to_csv(folder):
+    paths = grab_paths(folder)
+    data = convert_dlc_to_eztrack(paths['DLC'])
+
+    return data
 
 if __name__ == '__main__':
     path = r'Z:\Will\Circle track pilots\Mouse4'
