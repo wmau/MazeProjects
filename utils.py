@@ -123,7 +123,21 @@ def batch_concat_avis(mouse_folder):
 
 
 
-def dlc_to_csv(folder):
+def dlc_to_csv(folder: str):
+    """
+    Finds the DLC output file and converts it to csv, mirroring
+    the format of ezTrack outputs.
+
+    :parameter
+    ---
+    folder: str
+        Directory containing DLC output file (h5).
+
+    :return
+    ---
+    data: DataFrame
+        DLC data. 
+    """
     paths = grab_paths(folder)
     data = convert_dlc_to_eztrack(paths['DLC'])
 
