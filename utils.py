@@ -8,6 +8,7 @@ tkroot.withdraw()
 from tkinter import filedialog
 from pathlib import Path
 from Behavior import convert_dlc_to_eztrack
+import glob
 
 def make_pattern_dict():
     """
@@ -104,7 +105,7 @@ def batch_concat_avis(mouse_folder):
         must have the format H??_M??_S??.
     """
     # Recursively search for the session folders.
-    folders = [folder for folder in Path(mouse_folder).rglob('H??_M??_S??')]
+    folders = [folder for folder in Path(mouse_folder).rglob('H??_M*_S??')]
 
     # For each folder, check that Merged.avi doesn't already exist.
     for session in folders:
@@ -136,13 +137,32 @@ def dlc_to_csv(folder: str):
     :return
     ---
     data: DataFrame
-        DLC data. 
+        DLC data.
     """
     paths = grab_paths(folder)
     data = convert_dlc_to_eztrack(paths['DLC'])
 
     return data
 
+
+def get_session_folders(mouse_folder: str):
+    """
+    Find all the session folders within a subtree under mouse_folder.
+
+    :parameter
+    ---
+    mouse_folder: str
+        Folder for a single mouse.
+
+    :return
+    ---
+    folders: list of Paths
+        Directories for each session.
+    """
+    folders = [folder for folder in Path(mouse_folder).rglob('H??_M*_S??')]
+
+    return folders
+
 if __name__ == '__main__':
     path = r'Z:\Will\Circle track pilots\Mouse4'
-    batch_concat_avis(path)
+    get_session_folders(path)
