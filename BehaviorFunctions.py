@@ -528,7 +528,6 @@ class Preprocess:
             plt.waitforbuttonpress()
 
 
-
     def correct(self, event):
         """
         Defines what happens during mouse clicks.
@@ -586,7 +585,6 @@ class Preprocess:
         self.correct_position(int(np.round(event.xdata)))
 
 
-
     def plot_lin_position(self):
         """
         Plots the linearized position for the whole session, color-coded by trial.
@@ -619,14 +617,26 @@ class Preprocess:
                             Arduino_path=self.paths['Arduino'])
 
 
+class Process:
+    def __init__(self, folder=None):
+        # If folder is not specified, open a dialog box.
+        if folder is None:
+            self.folder = filedialog.askdirectory()
+        else:
+            self.folder = folder
+
+        self.paths = grab_paths(self.folder)
+        self.paths['PreprocessedBehavior'] = \
+            os.path.join(self.folder, 'PreprocessedBehavior.csv')
+
+        self.data = pd.read_csv(self.paths['PreprocessedBehavior'])
 
 
 
 if __name__ == '__main__':
     folder = r'D:\Projects\CircleTrack\Mouse4\01_27_2020\H13_M31_S49'
     #folder = r'D:\Projects\CircleTrack\Mouse1\12_20_2019\H14_M59_S12'
-    behav = Preprocess(folder)
-    behav.find_outliers()
+    behav = Process(folder)
     #make_tracking_video(os.path.join(folder, 'Merged.avi'))
 
     pass
