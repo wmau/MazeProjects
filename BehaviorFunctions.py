@@ -359,7 +359,7 @@ def find_rewarded_ports(behavior_df):
         raise KeyError('Run sync_Arduino_outputs and clean_lick_detection first.')
 
     # Get index one before water delivery (the lick that triggered it).
-    one_before = np.where(behavior_df.water)
+    one_before = np.where(behavior_df.water)[0]
 
     # Find unique port numbers.
     rewarded_ports = np.unique(behavior_df.loc[one_before, 'lick_port'])
@@ -678,15 +678,7 @@ class Process:
 if __name__ == '__main__':
     folder = r'D:\Projects\CircleTrack\Mouse4\01_27_2020\H13_M31_S49'
     #folder = r'D:\Projects\CircleTrack\Mouse1\12_20_2019\H14_M59_S12'
-    behav = Preprocess(folder, sync_mode='frame')
-    #behav.behavior_df['x'] = 50
-    #behav.behavior_df['y'] = 50
-    #behav.save()
-    #behav = Process(folder)
-    make_tracking_video(os.path.join(folder, 'Merged.avi'), output_fname='FromFramesMinusOffset.avi',
-                        start=30000)
-    #spiral_plot(behav.data, np.asarray(behav.data['lick_port'] > -1))
-
-    #make_tracking_video(os.path.join(folder, 'Merged.avi'))
+    data = Preprocess(folder)
+    rewarded = find_rewarded_ports(data.behavior_df)
 
     pass
