@@ -212,6 +212,22 @@ def find_water_ports(behavior_df):
     ports['y'] = radius * np.sin(port_angles) + center[1]
     ports = pd.DataFrame(ports)
 
+    # So actually the above was an overly complicated way to find the ports
+    # and critically depends on the ports being aligned to the appropriate
+    # locations on the camera's FOV. A more reliable way would be to just
+    # find where the mouse licked. Default to the above if mouse doesn't lick
+    # at particular ports.
+    for port in range(8):
+        try:
+            x = np.median(behavior_df.loc[behavior_df['lick_port'] == port, 'x'])
+            y = np.median(behavior_df.loc[behavior_df['lick_port'] == port, 'y'])
+
+            ports.loc[port, 'x'] = x
+            ports.loc[port, 'y'] = y
+        except:
+            print(f'Port {port} not detected. Using default location.')
+
+
     # Debugging purposes.
     # port_colors = ['saddlebrown',
     #                'red',
@@ -437,9 +453,9 @@ def get_trials(behavior_df, counterclockwise=False):
         if np.all(np.isnan(trials[trial_start:trial_end])):
             trials[trial_start:trial_end] = trial_number
 
-        # If not, finis up and exit the loop.
+        # If not, finish up and exit the loop.
         else:
-            trials[np.isnan(trials)] = trial_number
+            trials[np.isnan(trials)] = trial_number - 1
             break
 
         # The start of the next trial is the end of the last.
@@ -453,6 +469,12 @@ def get_trials(behavior_df, counterclockwise=False):
 
 
 def spiral_plot(behavior_df, markers):
+    """
+    
+    :param behavior_df:
+    :param markers:
+    :return:
+    """
     position = np.asarray(linearize_trajectory(behavior_df)[0])
     t = np.asarray(behavior_df.frame)
 
@@ -669,16 +691,20 @@ class Process:
             os.path.join(self.folder, 'PreprocessedBehavior.csv')
 
         try:
-            self.data = pd.read_csv(self.paths['PreprocessedBehavior'])
+            self.behavior_df = pd.read_csv(self.paths['PreprocessedBehavior'])
         except:
             raise FileNotFoundError('Run Preprocess() first.')
 
+        self.ntrials = max(self.behavior_df['trials'] + 1)
+        self.frames_per_trial = np.bincount(self.behavior_df['trials'])
+        self.ports = find_water_ports(self.behavior_df)
+
         pass
+
 
 if __name__ == '__main__':
     folder = r'D:\Projects\CircleTrack\Mouse4\01_27_2020\H13_M31_S49'
     #folder = r'D:\Projects\CircleTrack\Mouse1\12_20_2019\H14_M59_S12'
-    data = Preprocess(folder)
-    rewarded = find_rewarded_ports(data.behavior_df)
+    data = Process(folder)
 
     pass
