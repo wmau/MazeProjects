@@ -4,7 +4,9 @@ import pandas as pd
 from matplotlib.animation import FFMpegWriter
 from LickArduino import clean_Arduino_output
 from util import read_eztrack, find_closest, ScrollPlot, disp_frame, \
-    consecutive_dist, sync_cameras
+    consecutive_dist, sync_cameras, nan_array
+from scipy.stats import zscore
+from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 import cv2
 from CircleTrack.utils import circle_sizes, cart2pol, grab_paths, convert_dlc_to_eztrack
@@ -12,6 +14,7 @@ import tkinter as tk
 tkroot = tk.Tk()
 tkroot.withdraw()
 from tkinter import filedialog
+from scipy.ndimage import gaussian_filter1d
 
 def make_tracking_video(vid_path, preprocessed=True, csv_path=None,
                         Arduino_path=None, output_fname='Tracking.avi',
@@ -224,6 +227,8 @@ def find_water_ports(behavior_df):
 
             ports.loc[port, 'x'] = x
             ports.loc[port, 'y'] = y
+
+            port_angles[port] = linearize_trajectory(behavior_df, x, y)[0]
         except:
             print(f'Port {port} not detected. Using default location.')
 
@@ -243,7 +248,7 @@ def find_water_ports(behavior_df):
     #     plt.scatter(port['x'], port['y'], c=color)
     # plt.axis('equal')
 
-    return ports
+    return ports, port_angles
 
 
 def clean_lick_detection(behavior_df, threshold=80):
@@ -262,7 +267,7 @@ def clean_lick_detection(behavior_df, threshold=80):
     ---
     behavior_df: cleaned DataFrame after eliminating false positives.
     """
-    ports = find_water_ports(behavior_df)
+    ports = find_water_ports(behavior_df)[0]
 
     lick_frames = behavior_df[behavior_df.lick_port > -1]
     for i, frame in lick_frames.iterrows():
@@ -339,8 +344,7 @@ def plot_licks(behavior_df):
     lin_dist = linearize_trajectory(behavior_df)[0]
 
     # Find the water ports and get their linearized location.
-    ports = find_water_ports(behavior_df)
-    lin_ports = linearize_trajectory(behavior_df, ports['x'], ports['y'])[0]
+    ports, lin_ports = find_water_ports(behavior_df)
 
     # Make the array for plotting.
     licks = [lin_ports[port_id] if not np.isnan(port_id) else np.nan for port_id in licks]
@@ -468,21 +472,104 @@ def get_trials(behavior_df, counterclockwise=False):
     return trials.astype(int)
 
 
-def spiral_plot(behavior_df, markers):
+def spiral_plot(behavior_df, markers, marker_legend='Licks'):
     """
-    
-    :param behavior_df:
-    :param markers:
-    :return:
+    Plot trajectory of the mouse over time in a circular (polar) axis. Theta
+    corresponds to the animal's position while the radius (distance from center)
+    is time. Also plot events of interest (e.g., licks or calcium activity).
+
+    :parameters
+    ---
+    behavior_df: DataFrame
+        From either Preprocess or Process.
+
+    markers: array
+        Something that indexes behavior_df. These locations will be highlighted.
+
+    marker_legend: str
+        Label for whatever you are highlighting
     """
     position = np.asarray(linearize_trajectory(behavior_df)[0])
     t = np.asarray(behavior_df.frame)
+    #frame_rate = 30
+    #t_labels = np.linspace(0, max(t), 4) / frame_rate
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='polar')
     ax.plot(position, t)
     ax.plot(position[markers], t[markers], 'ro', markersize=2)
-    pass
+    ax.legend(['Trajectory', marker_legend])
+
+    # Clean up axes.
+    ax.spines['polar'].set_visible(False)
+    ax.set_xticklabels([])
+    #ax.set_xticks([])
+    ax.set_yticklabels([])
+    ax.set_theta_zero_location("N")     # Make 12 o'clock "0 degrees".
+    ax.set_theta_direction(-1)          # Polar coordinates go counterclockwise.
+    #ax.set_yticklabels(t_labels)
+
+    return fig, ax
+
+
+def approach_speed(behavior_df, location, window=(-40, 40), dist_thresh=0.05):
+    """
+
+    :param behavior_df:
+    :param location:
+    :return:
+    """
+
+    # Get some basic characteristics of requested parameters.
+    window = np.asarray(window)
+    window_size = sum(abs(window))
+    ntrials = max(behavior_df['trials'] + 1)
+    nframes = len(behavior_df)
+
+    # Convert things into arrays.
+    location = np.asarray(location).T
+    mouse_location = np.asarray(behavior_df['lin_position'])
+    trials = np.asarray(behavior_df['trials'])
+
+    # Get speeds (roughly distances between samples for now) then smooth.
+    #smoothed_location = gaussian_filter1d(mouse_location, 4)
+    speeds = gaussian_filter1d(np.asarray(behavior_df['distance']), 5)
+
+    # For each trial, find the point in time when the mouse comes some distance
+    # (dist_thresh) of the port. Then look at the velocity within a window of
+    # time around that timepoint.
+    approaches = np.zeros((ntrials, window_size))
+    dists = abs(mouse_location - location)
+    at_port = dists < dist_thresh
+    for trial in range(ntrials):
+        t0 = np.argmax(np.logical_and(at_port, trials==trial))
+
+        pre = t0 + window[0]
+        post = t0 + window[1]
+
+        front_pad = 0
+        back_pad = 0
+        if pre < 0:
+            front_pad = 0 - pre
+            pre = 0
+        if post > nframes:
+            back_pad = post - nframes
+            post = nframes
+
+        window_ind = slice(pre, post)
+        to_insert = speeds[window_ind]
+
+        to_insert = np.pad(to_insert, (front_pad, back_pad), mode='constant',
+                           constant_values=np.nan)
+        approaches[trial] = to_insert
+
+
+    #plt.set_cmap('gray')
+    plt.figure()
+    plt.imshow(approaches)
+    plt.axis('tight')
+
+    return approaches
 
 
 class Preprocess:
@@ -527,6 +614,7 @@ class Preprocess:
             self.behavior_df['lin_position'] = linearize_trajectory(self.behavior_df)[0]
 
 
+
     def save(self, path=None, fname='PreprocessedBehavior.csv'):
         """
         Save preprocessed data.
@@ -544,6 +632,8 @@ class Preprocess:
             fpath = os.path.join(path, fname)
 
         self.behavior_df.to_csv(fpath, index=False)
+
+
 
 
     def plot_frames(self, frame_number):
@@ -588,6 +678,11 @@ class Preprocess:
         while plt.get_fignums():
             plt.waitforbuttonpress()
 
+        df = self.behavior_df
+        self.behavior_df['lin_position'] = linearize_trajectory(df)[0]
+        self.behavior_df['distance'] = consecutive_dist(np.asarray((df.x, df.y)).T,
+                                                        zero_pad=True)
+
 
     def correct(self, event):
         """
@@ -619,11 +714,13 @@ class Preprocess:
         self.traj_fig, self.traj_ax = plt.subplots(1,1)
         self.dist_ax = self.traj_ax.twinx()
 
+        # Re-do linearize trajectory and velocity calculation.
         angles, radii = linearize_trajectory(self.behavior_df)
         self.behavior_df['distance'][1:] = \
             consecutive_dist(np.asarray((self.behavior_df.x, self.behavior_df.y)).T,
                              axis=0)
 
+        # Plot.
         self.traj_ax.plot(radii, alpha=0.5)
         self.traj_ax.set_ylabel('Distance from center', color='b')
         self.dist_ax.plot(self.behavior_df['distance'], color='r', alpha=0.5)
@@ -686,25 +783,34 @@ class Process:
         else:
             self.folder = folder
 
+        # Find paths.
         self.paths = grab_paths(self.folder)
         self.paths['PreprocessedBehavior'] = \
             os.path.join(self.folder, 'PreprocessedBehavior.csv')
 
+        # Try loading a presaved csv.
         try:
             self.behavior_df = pd.read_csv(self.paths['PreprocessedBehavior'])
         except:
             raise FileNotFoundError('Run Preprocess() first.')
 
+        # Number of laps run.
         self.ntrials = max(self.behavior_df['trials'] + 1)
+
+        # Amount of time spent per trial (in frames).
         self.frames_per_trial = np.bincount(self.behavior_df['trials'])
-        self.ports = find_water_ports(self.behavior_df)
+
+        # Find water ports.
+        self.ports, self.lin_ports = find_water_ports(self.behavior_df)
 
         pass
 
 
 if __name__ == '__main__':
-    folder = r'D:\Projects\CircleTrack\Mouse4\01_27_2020\H13_M31_S49'
+    folder = r'D:\Projects\CircleTrack\Mouse4\01_28_2020\H15_M27_S45'
     #folder = r'D:\Projects\CircleTrack\Mouse1\12_20_2019\H14_M59_S12'
-    data = Process(folder)
+    data = Preprocess(folder)
+
+    approach_speed(data.behavior_df, data.lin_ports[0])
 
     pass
