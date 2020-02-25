@@ -513,8 +513,8 @@ def spiral_plot(behavior_df, markers, marker_legend='Licks'):
     return fig, ax
 
 
-def approach_speed(behavior_df, location, window=(-40, 40), dist_thresh=0.05,
-                   ax=None):
+def approach_speed(behavior_df, location, window=(-30, 30), dist_thresh=0.05,
+                   smoothing_factor=5, ax=None, plot=True, acceleration=True):
     """
 
     :param behavior_df:
@@ -536,7 +536,9 @@ def approach_speed(behavior_df, location, window=(-40, 40), dist_thresh=0.05,
 
     # Get speeds (roughly distances between samples for now) then smooth.
     #smoothed_location = gaussian_filter1d(mouse_location, 4)
-    speeds = gaussian_filter1d(np.asarray(behavior_df['distance']), 5)
+    speeds = gaussian_filter1d(np.asarray(behavior_df['distance']), smoothing_factor)
+    if acceleration:
+        speeds = np.insert(np.diff(speeds), 0, 0)
 
     # For each trial, find the point in time when the mouse comes some distance
     # (dist_thresh) of the target. Then look at the velocity within a window of
@@ -576,20 +578,39 @@ def approach_speed(behavior_df, location, window=(-40, 40), dist_thresh=0.05,
                            constant_values=np.nan)
         approaches[trial] = to_insert
 
-    if ax is None:
-        fig, ax = plt.subplots()
-    ax.imshow(approaches)
-    ax.axis('tight')
-    ax.axvline(x=window_size / 2, color='r')    # t0 line
-    ax.set_xticks([0, window_size / 2, window_size - 1])
-    ax.set_xticklabels([np.round(window[0]/frame_rate, 1),
-                        0,
-                        np.round(window[1]/frame_rate, 1)])
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Trials')
+    if plot:
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        ax.imshow(approaches)
+        ax.axis('tight')
+        ax.axvline(x=window_size / 2, color='r')    # t0 line
+        ax.set_xticks([0, window_size / 2, window_size - 1])
+        ax.set_xticklabels([np.round(window[0]/frame_rate, 1),
+                            0,
+                            np.round(window[1]/frame_rate, 1)])
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel('Trials')
 
     return approaches
 
+
+def blocked_approach_speeds(approaches, blocks=4, plot=True, ax=None,
+                            cmap='copper'):
+    split_approaches = np.array_split(approaches, blocks)
+    cmap = plt.get_cmap(cmap)
+
+    if plot:
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        ax.set_prop_cycle('color', cmap(np.linspace(0, 1, blocks)))
+
+        for approach in split_approaches:
+            ax.plot(np.nanmean(approach, axis=0))
+
+    #plt.show()
+    pass
 
 class Preprocess:
     def __init__(self, folder=None, sync_mode='frame'):
@@ -856,11 +877,13 @@ class Process:
 if __name__ == '__main__':
     folder = r'D:\Projects\CircleTrack\Mouse4\02_01_2020\H15_M37_S17'
     #folder = r'D:\Projects\CircleTrack\Mouse1\12_20_2019\H14_M59_S12'
-    data = Preprocess(folder, sync_mode='timestamp')
+    #data = Preprocess(folder, sync_mode='timestamp')
     #data.save()
     data = Process(folder)
     #data.plot_licks()
 
-    approach_speed(data.behavior_df, data.lin_ports[2])
+    approaches = approach_speed(data.behavior_df, data.lin_ports[0])
+    blocked_approach_speeds(approaches)
+
 
     pass
