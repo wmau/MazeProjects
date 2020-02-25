@@ -185,7 +185,7 @@ def sync_Arduino_outputs(Arduino_fpath, behavior_fpath, behav_cam=2,
     return behavior_df, Arduino_data
 
 
-def find_water_ports(behavior_df):
+def find_water_ports(behavior_df, use_licks=True):
     """
     Use the x and y extrema to locate water port locations. Requires that the
     maze be positioned so that a port is at the 12 o'clock position. Which port
@@ -220,17 +220,18 @@ def find_water_ports(behavior_df):
     # locations on the camera's FOV. A more reliable way would be to just
     # find where the mouse licked. Default to the above if mouse doesn't lick
     # at particular ports.
-    for port in range(8):
-        try:
-            x = np.median(behavior_df.loc[behavior_df['lick_port'] == port, 'x'])
-            y = np.median(behavior_df.loc[behavior_df['lick_port'] == port, 'y'])
+    if use_licks:
+        for port in range(8):
+            try:
+                x = np.median(behavior_df.loc[behavior_df['lick_port'] == port, 'x'])
+                y = np.median(behavior_df.loc[behavior_df['lick_port'] == port, 'y'])
 
-            ports.loc[port, 'x'] = x
-            ports.loc[port, 'y'] = y
+                ports.loc[port, 'x'] = x
+                ports.loc[port, 'y'] = y
 
-            port_angles[port] = linearize_trajectory(behavior_df, x, y)[0]
-        except:
-            print(f'Port {port} not detected. Using default location.')
+                port_angles[port] = linearize_trajectory(behavior_df, x, y)[0]
+            except:
+                print(f'Port {port} not detected. Using default location.')
 
 
     # Debugging purposes.
@@ -512,7 +513,8 @@ def spiral_plot(behavior_df, markers, marker_legend='Licks'):
     return fig, ax
 
 
-def approach_speed(behavior_df, location, window=(-40, 40), dist_thresh=0.05):
+def approach_speed(behavior_df, location, window=(-40, 40), dist_thresh=0.05,
+                   ax=None):
     """
 
     :param behavior_df:
@@ -525,6 +527,7 @@ def approach_speed(behavior_df, location, window=(-40, 40), dist_thresh=0.05):
     window_size = sum(abs(window))
     ntrials = max(behavior_df['trials'] + 1)
     nframes = len(behavior_df)
+    frame_rate = 30
 
     # Convert things into arrays.
     location = np.asarray(location).T
@@ -536,17 +539,27 @@ def approach_speed(behavior_df, location, window=(-40, 40), dist_thresh=0.05):
     speeds = gaussian_filter1d(np.asarray(behavior_df['distance']), 5)
 
     # For each trial, find the point in time when the mouse comes some distance
-    # (dist_thresh) of the port. Then look at the velocity within a window of
+    # (dist_thresh) of the target. Then look at the velocity within a window of
     # time around that timepoint.
-    approaches = np.zeros((ntrials, window_size))
+    approaches = nan_array((ntrials, window_size))
     dists = abs(mouse_location - location)
     at_port = dists < dist_thresh
     for trial in range(ntrials):
-        t0 = np.argmax(np.logical_and(at_port, trials==trial))
+        there_now = np.logical_and(at_port, trials==trial)
 
+        # Handles cases where the mouse didn't visit the target location.
+        # This sometimes happens at the beginning or end of the session.
+        if not any(there_now):
+            continue
+
+        # Find time zero (when mouse arrived at location). argmax finds the
+        # first value where there_now is True. Also get the window.
+        t0 = np.argmax(there_now)
         pre = t0 + window[0]
         post = t0 + window[1]
 
+        # Handles edge cases where the window extends past the session start
+        # or end. In those cases, pad with nans.
         front_pad = 0
         back_pad = 0
         if pre < 0:
@@ -556,18 +569,24 @@ def approach_speed(behavior_df, location, window=(-40, 40), dist_thresh=0.05):
             back_pad = post - nframes
             post = nframes
 
+        # Index and insert into preallocated array.
         window_ind = slice(pre, post)
         to_insert = speeds[window_ind]
-
         to_insert = np.pad(to_insert, (front_pad, back_pad), mode='constant',
                            constant_values=np.nan)
         approaches[trial] = to_insert
 
-
-    #plt.set_cmap('gray')
-    plt.figure()
-    plt.imshow(approaches)
-    plt.axis('tight')
+    if ax is None:
+        fig, ax = plt.subplots()
+    ax.imshow(approaches)
+    ax.axis('tight')
+    ax.axvline(x=window_size / 2, color='r')    # t0 line
+    ax.set_xticks([0, window_size / 2, window_size - 1])
+    ax.set_xticklabels([np.round(window[0]/frame_rate, 1),
+                        0,
+                        np.round(window[1]/frame_rate, 1)])
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Trials')
 
     return approaches
 
@@ -609,11 +628,27 @@ class Preprocess:
             self.behavior_df = sync_Arduino_outputs(self.paths['Arduino'],
                                                     self.paths['BehaviorData'],
                                                     sync_mode=sync_mode)[0]
+
+            # Find timestamps where the mouse seemingly teleports to a new location.
+            # This is likely from mistracking. Interpolate those data points.
+            self.interp_mistracks()
+
             #self.behavior_df = clean_lick_detection(self.behavior_df)
-            self.behavior_df['trials'] = get_trials(self.behavior_df)
-            self.behavior_df['lin_position'] = linearize_trajectory(self.behavior_df)[0]
+            self.preprocess()
 
+    def preprocess(self):
+        """
+        Fill in DataFrame columns with some calculated values:
+            Linearized position
+            Trial number
+            Distance (velocity)
 
+        """
+        self.behavior_df['lin_position'] = linearize_trajectory(self.behavior_df)[0]
+        self.behavior_df['trials'] = get_trials(self.behavior_df)
+        self.behavior_df['distance'] = consecutive_dist(np.asarray((self.behavior_df.x,
+                                                                    self.behavior_df.y)).T,
+                                                        zero_pad=True)
 
     def save(self, path=None, fname='PreprocessedBehavior.csv'):
         """
@@ -634,6 +669,19 @@ class Preprocess:
         self.behavior_df.to_csv(fpath, index=False)
 
 
+    def interp_mistracks(self, thresh=4):
+        """
+        Z-score the velocity and find abnormally fast movements. Interpolate those.
+
+        :parameter
+        ---
+        thresh: float
+            Number of standard deviations above the mean to be called a mistrack.
+        """
+        mistracks = zscore(self.behavior_df['distance']) > thresh
+        self.behavior_df.loc[mistracks, ['x','y']] = np.nan
+        self.behavior_df.interpolate(method='linear', columns=['x', 'y'],
+                                     inplace=True)
 
 
     def plot_frames(self, frame_number):
@@ -678,11 +726,7 @@ class Preprocess:
         while plt.get_fignums():
             plt.waitforbuttonpress()
 
-        df = self.behavior_df
-        self.behavior_df['lin_position'] = linearize_trajectory(df)[0]
-        self.behavior_df['distance'] = consecutive_dist(np.asarray((df.x, df.y)).T,
-                                                        zero_pad=True)
-
+        self.preprocess()
 
     def correct(self, event):
         """
@@ -711,11 +755,11 @@ class Preprocess:
         # Plot distance between points and connect to mouse.
         # Clicking the plot will bring you to the frame you want to
         # correct.
-        self.traj_fig, self.traj_ax = plt.subplots(1,1)
+        self.traj_fig, self.traj_ax = plt.subplots(1,1,num='outliers')
         self.dist_ax = self.traj_ax.twinx()
 
         # Re-do linearize trajectory and velocity calculation.
-        angles, radii = linearize_trajectory(self.behavior_df)
+        radii = linearize_trajectory(self.behavior_df)[1]
         self.behavior_df['distance'][1:] = \
             consecutive_dist(np.asarray((self.behavior_df.x, self.behavior_df.y)).T,
                              axis=0)
@@ -729,7 +773,7 @@ class Preprocess:
         self.traj_fig.canvas.mpl_connect('button_press_event',
                                           self.jump_to)
 
-        while plt.get_fignums():
+        while plt.fignum_exists('outliers'):
             plt.waitforbuttonpress()
 
 
@@ -803,14 +847,20 @@ class Process:
         # Find water ports.
         self.ports, self.lin_ports = find_water_ports(self.behavior_df)
 
+
+    def plot_licks(self):
+        fig, ax = spiral_plot(self.behavior_df, self.behavior_df['lick_port'] > -1)
+
         pass
 
-
 if __name__ == '__main__':
-    folder = r'D:\Projects\CircleTrack\Mouse4\01_28_2020\H15_M27_S45'
+    folder = r'D:\Projects\CircleTrack\Mouse4\02_01_2020\H15_M37_S17'
     #folder = r'D:\Projects\CircleTrack\Mouse1\12_20_2019\H14_M59_S12'
-    data = Preprocess(folder)
+    data = Preprocess(folder, sync_mode='timestamp')
+    #data.save()
+    data = Process(folder)
+    #data.plot_licks()
 
-    approach_speed(data.behavior_df, data.lin_ports[0])
+    approach_speed(data.behavior_df, data.lin_ports[2])
 
     pass
