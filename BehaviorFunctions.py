@@ -872,7 +872,9 @@ class Process:
     def plot_licks(self):
         fig, ax = spiral_plot(self.behavior_df, self.behavior_df['lick_port'] > -1)
 
-        pass
+        for port in self.lin_ports:
+            ax.axvline(x=port, color='g')
+
 
 if __name__ == '__main__':
     folder = r'D:\Projects\CircleTrack\Mouse4\02_01_2020\H15_M37_S17'
