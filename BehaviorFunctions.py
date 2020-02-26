@@ -993,6 +993,35 @@ class Process:
 
         pass
 
+
+    def get_licks(self, plot=True):
+        """
+        Plots the number of licks on each port per trial.
+
+        :parameter
+        ---
+        plot: boolean
+            Whether or not to plot.
+        """
+        ports = range(8)
+        all_licks = []
+        for trial in range(self.ntrials):
+            this_trial = self.behavior_df['trials'] == trial
+            licks = list(self.behavior_df.loc[this_trial, 'lick_port'])
+
+            licks_per_port = [licks.count(port) for port in ports]
+
+            all_licks.append(licks_per_port)
+
+        if plot:
+            fig, ax = plt.subplots(figsize=(4.35, 5), num='licks')
+            ax.imshow(all_licks)
+            ax.axis('tight')
+            ax.set_xlabel('Water port #')
+            ax.set_ylabel('Trial')
+
+        return all_licks
+
 if __name__ == '__main__':
     #folder = r'D:\Projects\CircleTrack\Mouse4\01_30_2020\H16_M50_S22'
     folder = r'D:\Projects\CircleTrack\Mouse4\02_01_2020\H15_M37_S17'
@@ -1001,7 +1030,7 @@ if __name__ == '__main__':
     data = Process(folder)
     #data.plot_licks()
 
-    data.blocked_port_approaches()
+    data.get_licks()
 
 
     pass
