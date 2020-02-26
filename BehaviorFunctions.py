@@ -516,12 +516,42 @@ def spiral_plot(behavior_df, markers, marker_legend='Licks'):
 def approach_speed(behavior_df, location, window=(-30, 30), dist_thresh=0.05,
                    smoothing_factor=5, ax=None, plot=True, acceleration=True):
     """
+    Get the approach speed of the mouse to an arbitrary location on the maze
+    (specified by location, in radians). Basically looks at the speed or
+    acceleration within a window of frames surrounding the frame when the mouse
+    comes within dist_thresh of the location.
 
-    :param behavior_df:
-    :param location:
-    :return:
+    :parameters
+    ---
+    behavior_df: DataFrame
+        Should have keys 'trials', 'lin_position', and 'distance'.
+
+    location: numeric
+        Target location per trial.
+
+    window: tuple
+        (frames behind, frames ahead)
+
+    dist_thresh: numeric
+        Vicinity to location to set window.
+
+    smoothing_factor: numeric
+        Amount to smooth velocity or accleration trace.
+
+    ax: Axes object
+        Axis to plot on.
+
+    plot: boolean
+        Whether to plot results or just return data.
+
+    acceleration: boolean
+        Whether to look at acceleration rather than velocity.
+
+    :return
+    ---
+    approaches: (trials, frame) array
+        Velocity or accleration at each frame.
     """
-
     # Get some basic characteristics of requested parameters.
     window = np.asarray(window)
     window_size = sum(abs(window))
@@ -535,8 +565,12 @@ def approach_speed(behavior_df, location, window=(-30, 30), dist_thresh=0.05,
     trials = np.asarray(behavior_df['trials'])
 
     # Get speeds (roughly distances between samples for now) then smooth.
-    #smoothed_location = gaussian_filter1d(mouse_location, 4)
-    speeds = gaussian_filter1d(np.asarray(behavior_df['distance']), smoothing_factor)
+    if smoothing_factor > 0:
+        speeds = gaussian_filter1d(np.asarray(behavior_df['distance']), smoothing_factor)
+    else:
+        speeds = np.asarray(behavior_df['distance'])
+
+    # Can also get acceleration of the mouse.
     if acceleration:
         speeds = np.insert(np.diff(speeds), 0, 0)
 
@@ -597,6 +631,32 @@ def approach_speed(behavior_df, location, window=(-30, 30), dist_thresh=0.05,
 
 def blocked_approach_speeds(approaches, blocks=4, plot=True, ax=None,
                             cmap='copper'):
+    """
+    Splits the session into equal blocks and plots the mean of the velocities
+    or accelerations.
+
+    :parameters
+    ---
+    approaches: (trials, frames) array
+        From approach_speeds.
+
+    blocks: int
+        Number of blocks to split into.
+
+    plot: boolean
+        Whether or not to plot.
+
+    ax: Axes object
+        Axis to plot on.
+
+    cmap: str
+        Colormap to plot lines with.
+
+    :return
+    ---
+    split_approaches: list of (trials, frames) arrays
+        Session split into equal blocks. 
+    """
     split_approaches = np.array_split(approaches, blocks)
     cmap = plt.get_cmap(cmap)
 
@@ -610,7 +670,7 @@ def blocked_approach_speeds(approaches, blocks=4, plot=True, ax=None,
             ax.plot(np.nanmean(approach, axis=0))
 
     #plt.show()
-    pass
+    return split_approaches
 
 class Preprocess:
     def __init__(self, folder=None, sync_mode='frame'):
