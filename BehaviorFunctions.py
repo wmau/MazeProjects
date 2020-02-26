@@ -483,7 +483,7 @@ def spiral_plot(behavior_df, markers, marker_legend='Licks'):
     :parameters
     ---
     behavior_df: DataFrame
-        From either Preprocess or Process.
+        From either Preprocess or Session.
 
     markers: array
         Something that indexes behavior_df. These locations will be highlighted.
@@ -741,7 +741,7 @@ class Preprocess:
                             Arduino_path=self.paths['Arduino'])
 
 
-class Process:
+class Session:
     def __init__(self, folder=None):
         # If folder is not specified, open a dialog box.
         if folder is None:
@@ -1027,7 +1027,7 @@ if __name__ == '__main__':
     folder = r'D:\Projects\CircleTrack\Mouse4\02_01_2020\H15_M37_S17'
     #data = Preprocess(folder, sync_mode='timestamp')
     #data.save()
-    data = Process(folder)
+    data = Session(folder)
     #data.plot_licks()
 
     data.get_licks()
