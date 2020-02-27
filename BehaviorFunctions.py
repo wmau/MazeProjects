@@ -933,6 +933,11 @@ class Session:
         # Find water ports.
         self.ports, self.lin_ports = find_water_ports(self.behavior_df)
 
+        # Find rewarded ports
+        rewarded_ports = find_rewarded_ports(self.behavior_df)
+        self.rewarded = np.zeros(8, dtype=bool)
+        self.rewarded[rewarded_ports] = True
+
 
     def plot_licks(self):
         """
@@ -1027,15 +1032,57 @@ class Session:
 
         return all_licks
 
+
+    def sdt_trials(self, blocks=None):
+        self.all_licks = np.asarray(self.get_licks(plot=False))
+
+        if blocks is not None:
+            licks = np.array_split(self.all_licks, blocks)
+        else:
+            licks = [self.all_licks]
+
+        sdt = {'hits': [],
+               'misses': [],
+               'FAs': [],
+               'CRs': []
+               }
+        for trial_block in licks:
+            ntrials = len(trial_block)
+            binarized = trial_block > 0
+            total_licks = np.sum(binarized, axis=0)
+
+            hits = nan_array(total_licks.size)
+            hits[self.rewarded] = total_licks[self.rewarded] / ntrials
+            sdt['hits'].append(hits)
+
+            misses = nan_array(total_licks.size)
+            misses[self.rewarded] = (ntrials - total_licks[self.rewarded]) / ntrials
+            sdt['misses'].append(misses)
+
+            FAs = nan_array(total_licks.size)
+            FAs[~self.rewarded] = total_licks[~self.rewarded] / ntrials
+            sdt['FAs'].append(FAs)
+
+            CRs = nan_array(total_licks.size)
+            CRs[~self.rewarded] =  (ntrials - total_licks[~self.rewarded]) / ntrials
+            sdt['CRs'].append(CRs)
+
+        pass
+
+            #hits =  / ntrials
+            #misses = np.sum(~binarized[:, self.rewarded], axis=0) / ntrials
+            #FAs = np.sum(binarized[:, ~self.rewarded], axis=0) / ntrials
+            #CRs = np.sum(~binarized[:, ~self.rewarded], axis=0) / ntrials
+
 if __name__ == '__main__':
-    #folder = r'D:\Projects\CircleTrack\Mouse4\01_30_2020\H16_M50_S22'
-    folder = r'D:\Projects\CircleTrack\Mouse4\02_01_2020\H15_M37_S17'
+    folder = r'D:\Projects\CircleTrack\Mouse4\01_30_2020\H16_M50_S22'
+    #folder = r'D:\Projects\CircleTrack\Mouse4\02_01_2020\H15_M37_S17'
     #data = Preprocess(folder, sync_mode='timestamp')
     #data.save()
     data = Session(folder)
     #data.plot_licks()
 
-    data.port_approaches()
+    data.sdt_trials(blocks = 4)
 
 
     pass
