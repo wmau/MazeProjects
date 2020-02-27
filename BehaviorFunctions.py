@@ -513,6 +513,168 @@ def spiral_plot(behavior_df, markers, marker_legend='Licks'):
 
     return fig, ax
 
+
+def approach_speed(behavior_df, location, window=(-30, 30), dist_thresh=0.03,
+                   smoothing_factor=4, ax=None, plot=True, acceleration=True):
+    """
+    Get the approach speed of the mouse to an arbitrary location on the maze
+    (specified by location, in radians). Basically looks at the speed or
+    acceleration within a window of frames surrounding the frame when the mouse
+    comes within dist_thresh of the location.
+
+    :parameters
+    ---
+    location: numeric
+        Target location per trial.
+
+    window: tuple
+        (frames behind, frames ahead)
+
+    dist_thresh: numeric
+        Vicinity to location to set window.
+
+    smoothing_factor: numeric
+        Amount to smooth velocity or accleration trace.
+
+    ax: Axes object
+        Axis to plot on.
+
+    plot: boolean
+        Whether to plot results or just return data.
+
+    acceleration: boolean
+        Whether to look at acceleration rather than velocity.
+
+    :return
+    ---
+    approaches: (trials, frame) array
+        Velocity or accleration at each frame.
+    """
+    # Get some basic characteristics of requested parameters.
+    window = np.asarray(window)
+    window_size = sum(abs(window))
+    ntrials = max(behavior_df['trials'] + 1)
+    nframes = len(behavior_df)
+    frame_rate = 30
+
+    # Convert things into arrays.
+    location = np.asarray(location).T
+    mouse_location = np.asarray(behavior_df['lin_position'])
+    trials = np.asarray(behavior_df['trials'])
+
+    # Get speeds (roughly distances between samples for now) then smooth.
+    if smoothing_factor > 0:
+        speeds = gaussian_filter1d(np.asarray(behavior_df['distance']), smoothing_factor)
+    else:
+        speeds = np.asarray(behavior_df['distance'])
+
+    # Can also get acceleration of the mouse.
+    if acceleration:
+        speeds = np.insert(np.diff(speeds), 0, 0)
+
+    # For each trial, find the point in time when the mouse comes some distance
+    # (dist_thresh) of the target. Then look at the velocity within a window of
+    # time around that timepoint.
+    approaches = nan_array((ntrials, window_size))
+    dists = abs(mouse_location - location)
+    at_port = dists < dist_thresh
+    for trial in range(ntrials):
+        there_now = np.logical_and(at_port, trials == trial)
+
+        # Handles cases where the mouse didn't visit the target location.
+        # This sometimes happens at the beginning or end of the session.
+        if not any(there_now):
+            continue
+
+        # Find time zero (when mouse arrived at location). argmax finds the
+        # first value where there_now is True. Also get the window.
+        t0 = np.argmax(there_now)
+        pre = t0 + window[0]
+        post = t0 + window[1]
+
+        # Handles edge cases where the window extends past the session start
+        # or end. In those cases, pad with nans.
+        front_pad = 0
+        back_pad = 0
+        if pre < 0:
+            front_pad = 0 - pre
+            pre = 0
+        if post > nframes:
+            back_pad = post - nframes
+            post = nframes
+
+        # Index and insert into preallocated array.
+        window_ind = slice(pre, post)
+        to_insert = speeds[window_ind]
+        to_insert = np.pad(to_insert, (front_pad, back_pad), mode='constant',
+                           constant_values=np.nan)
+        approaches[trial] = to_insert
+
+    if plot:
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        ax.imshow(approaches, cmap='bwr')
+        ax.axis('tight')
+        ax.axvline(x=window_size / 2, color='r')  # t0 line
+        ax.set_xticks([0, window_size / 2, window_size - 1])
+        ax.set_xticklabels([np.round(window[0] / frame_rate, 1),
+                            0,
+                            np.round(window[1] / frame_rate, 1)])
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel('Trials')
+
+    return approaches
+
+
+def blocked_approach_speeds(approaches, blocks=4, plot=True, ax=None,
+                            cmap='copper'):
+    """
+    NOTE: Not very informative.
+    Splits the session into equal blocks and plots the mean of the velocities
+    or accelerations.
+
+
+    :parameters
+    ---
+    approaches: (trials, frames) array
+        From approach_speeds.
+
+    blocks: int
+        Number of blocks to split into.
+
+    plot: boolean
+        Whether or not to plot.
+
+    ax: Axes object
+        Axis to plot on.
+
+    cmap: str
+        Colormap to plot lines with.
+
+    :return
+    ---
+    split_approaches: list of (trials, frames) arrays
+        Session split into equal blocks.
+
+    """
+
+    split_approaches = np.array_split(approaches, blocks)
+    cmap = plt.get_cmap(cmap)
+
+    if plot:
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        # Follow a defined sequential color map so we know the progression.
+        ax.set_prop_cycle('color', cmap(np.linspace(0, 1, blocks)))
+
+        for approach in split_approaches:
+            ax.plot(np.nanmean(approach, axis=0))
+
+    return split_approaches
+
+
 class Preprocess:
     def __init__(self, folder=None, sync_mode='frame'):
         """
@@ -571,6 +733,7 @@ class Preprocess:
         self.behavior_df['distance'] = consecutive_dist(np.asarray((self.behavior_df.x,
                                                                     self.behavior_df.y)).T,
                                                         zero_pad=True)
+
 
     def save(self, path=None, fname='PreprocessedBehavior.csv'):
         """
@@ -649,6 +812,7 @@ class Preprocess:
             plt.waitforbuttonpress()
 
         self.preprocess()
+
 
     def correct(self, event):
         """
@@ -781,172 +945,13 @@ class Session:
             ax.axvline(x=port, color='g')
 
 
-    def approach_speed(self, location, window=(-30, 30), dist_thresh=0.03,
-                       smoothing_factor=4, ax=None, plot=True, acceleration=True):
-        """
-        Get the approach speed of the mouse to an arbitrary location on the maze
-        (specified by location, in radians). Basically looks at the speed or
-        acceleration within a window of frames surrounding the frame when the mouse
-        comes within dist_thresh of the location.
-
-        :parameters
-        ---
-        location: numeric
-            Target location per trial.
-
-        window: tuple
-            (frames behind, frames ahead)
-
-        dist_thresh: numeric
-            Vicinity to location to set window.
-
-        smoothing_factor: numeric
-            Amount to smooth velocity or accleration trace.
-
-        ax: Axes object
-            Axis to plot on.
-
-        plot: boolean
-            Whether to plot results or just return data.
-
-        acceleration: boolean
-            Whether to look at acceleration rather than velocity.
-
-        :return
-        ---
-        approaches: (trials, frame) array
-            Velocity or accleration at each frame.
-        """
-        # Get some basic characteristics of requested parameters.
-        self.window = np.asarray(window)
-        window_size = sum(abs(self.window))
-        ntrials = max(self.behavior_df['trials'] + 1)
-        nframes = len(self.behavior_df)
-        frame_rate = 30
-
-        # Convert things into arrays.
-        location = np.asarray(location).T
-        mouse_location = np.asarray(self.behavior_df['lin_position'])
-        trials = np.asarray(self.behavior_df['trials'])
-
-        # Get speeds (roughly distances between samples for now) then smooth.
-        if smoothing_factor > 0:
-            speeds = gaussian_filter1d(np.asarray(self.behavior_df['distance']), smoothing_factor)
-        else:
-            speeds = np.asarray(self.behavior_df['distance'])
-
-        # Can also get acceleration of the mouse.
-        if acceleration:
-            speeds = np.insert(np.diff(speeds), 0, 0)
-
-        # For each trial, find the point in time when the mouse comes some distance
-        # (dist_thresh) of the target. Then look at the velocity within a window of
-        # time around that timepoint.
-        approaches = nan_array((ntrials, window_size))
-        dists = abs(mouse_location - location)
-        at_port = dists < dist_thresh
-        for trial in range(ntrials):
-            there_now = np.logical_and(at_port, trials == trial)
-
-            # Handles cases where the mouse didn't visit the target location.
-            # This sometimes happens at the beginning or end of the session.
-            if not any(there_now):
-                continue
-
-            # Find time zero (when mouse arrived at location). argmax finds the
-            # first value where there_now is True. Also get the window.
-            t0 = np.argmax(there_now)
-            pre = t0 + self.window[0]
-            post = t0 + self.window[1]
-
-            # Handles edge cases where the window extends past the session start
-            # or end. In those cases, pad with nans.
-            front_pad = 0
-            back_pad = 0
-            if pre < 0:
-                front_pad = 0 - pre
-                pre = 0
-            if post > nframes:
-                back_pad = post - nframes
-                post = nframes
-
-            # Index and insert into preallocated array.
-            window_ind = slice(pre, post)
-            to_insert = speeds[window_ind]
-            to_insert = np.pad(to_insert, (front_pad, back_pad), mode='constant',
-                               constant_values=np.nan)
-            approaches[trial] = to_insert
-
-        if plot:
-            if ax is None:
-                fig, ax = plt.subplots()
-
-            ax.imshow(approaches, cmap='bwr')
-            ax.axis('tight')
-            ax.axvline(x=window_size / 2, color='r')  # t0 line
-            ax.set_xticks([0, window_size / 2, window_size - 1])
-            ax.set_xticklabels([np.round(self.window[0] / frame_rate, 1),
-                                0,
-                                np.round(self.window[1] / frame_rate, 1)])
-            ax.set_xlabel('Time (s)')
-            ax.set_ylabel('Trials')
-
-        return approaches
-
-
-    def blocked_approach_speeds(self, approaches, blocks=4, plot=True, ax=None,
-                                cmap='copper'):
-        """
-        NOTE: Not very informative.
-        Splits the session into equal blocks and plots the mean of the velocities
-        or accelerations.
-
-
-        :parameters
-        ---
-        approaches: (trials, frames) array
-            From approach_speeds.
-
-        blocks: int
-            Number of blocks to split into.
-
-        plot: boolean
-            Whether or not to plot.
-
-        ax: Axes object
-            Axis to plot on.
-
-        cmap: str
-            Colormap to plot lines with.
-
-        :return
-        ---
-        split_approaches: list of (trials, frames) arrays
-            Session split into equal blocks.
-
-        """
-
-        split_approaches = np.array_split(approaches, blocks)
-        cmap = plt.get_cmap(cmap)
-
-        if plot:
-            if ax is None:
-                fig, ax = plt.subplots()
-
-            ax.set_prop_cycle('color', cmap(np.linspace(0, 1, blocks)))
-
-            for approach in split_approaches:
-                ax.plot(np.nanmean(approach, axis=0))
-
-        return split_approaches
-
-
-    def port_approaches(self, window=(-30, 30), dist_thresh=0.03,
+    def port_approaches(self, window=(-15, 15), dist_thresh=0.03,
                         smoothing_factor=4,  acceleration=True, plot=True):
         self.approaches = []
+        self.window = window
 
         if plot:
-            fig = plt.figure(figsize=(6, 8.5), num='approaches')
+            fig = plt.figure(figsize=(6, 8.5))
         else:
             fig = None
 
@@ -955,11 +960,11 @@ class Session:
                 ax = fig.add_subplot(4, 2, i + 1)
             else:
                 ax = None
-            approaches = self.approach_speed(port, window=window,
-                                             dist_thresh=dist_thresh,
-                                             smoothing_factor=smoothing_factor,
-                                             acceleration=acceleration,
-                                             plot=plot, ax=ax)
+            approaches = approach_speed(self.behavior_df, port, window=window,
+                                        dist_thresh=dist_thresh,
+                                        smoothing_factor=smoothing_factor,
+                                        acceleration=acceleration,
+                                        plot=plot, ax=ax)
             self.approaches.append(approaches)
 
         if plot:
@@ -987,7 +992,7 @@ class Session:
             except:
                 ax = fig.add_subplot(4, 2, i + 1)
 
-            self.blocked_approach_speeds(approach, blocks=blocks, ax=ax)
+            blocked_approach_speeds(approach, blocks=blocks, ax=ax)
 
         fig.tight_layout()
 
@@ -1030,7 +1035,7 @@ if __name__ == '__main__':
     data = Session(folder)
     #data.plot_licks()
 
-    data.get_licks()
+    data.port_approaches()
 
 
     pass
