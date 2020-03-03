@@ -1,5 +1,9 @@
 from CircleTrack.BehaviorFunctions import *
 import matplotlib.pyplot as plt
+plt.rcParams['pdf.fonttype'] = 42
+plt.rcParams['svg.fonttype'] = 'none'
+plt.rcParams['text.usetex'] = False
+plt.rcParams.update({'font.size': 12})
 
 def PlotApproaches(folder, accleration=True, window=(-15,15)):
     """

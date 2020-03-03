@@ -7,7 +7,6 @@ from util import read_eztrack, find_closest, ScrollPlot, disp_frame, \
     consecutive_dist, sync_cameras, nan_array
 from scipy.stats import zscore
 from scipy.stats import norm
-import math
 import matplotlib.pyplot as plt
 import cv2
 from CircleTrack.utils import circle_sizes, cart2pol, grab_paths, convert_dlc_to_eztrack
