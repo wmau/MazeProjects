@@ -6,7 +6,8 @@ from LickArduino import clean_Arduino_output
 from util import read_eztrack, find_closest, ScrollPlot, disp_frame, \
     consecutive_dist, sync_cameras, nan_array
 from scipy.stats import zscore
-from scipy.interpolate import interp1d
+from scipy.stats import norm
+import math
 import matplotlib.pyplot as plt
 import cv2
 from CircleTrack.utils import circle_sizes, cart2pol, grab_paths, convert_dlc_to_eztrack
@@ -104,6 +105,8 @@ def make_tracking_video(vid_path, preprocessed=True, csv_path=None,
                                c=port_colors[licking_at_port])
 
             ax.set_aspect('equal')
+            ax.set_ylim([frame.shape[0],0])
+            ax.set_xlim([0,frame.shape[1]])
             plt.axis('off')
 
             writer.grab_frame()
@@ -621,7 +624,7 @@ def approach_speed(behavior_df, location, window=(-30, 30), dist_thresh=0.03,
         ax.set_xticklabels([np.round(window[0] / frame_rate, 1),
                             0,
                             np.round(window[1] / frame_rate, 1)])
-        ax.set_xlabel('Time (s)')
+        ax.set_xlabel('Time to reach location (s)')
         ax.set_ylabel('Trials')
 
     return approaches
@@ -949,6 +952,8 @@ class Session:
         for port in self.lin_ports:
             ax.axvline(x=port, color='g')
 
+        ax.legend(['Trajectory', 'Licks', 'Ports'])
+
 
     def port_approaches(self, window=(-15, 15), dist_thresh=0.03,
                         smoothing_factor=4,  acceleration=True, plot=True):
@@ -1024,7 +1029,7 @@ class Session:
             all_licks.append(licks_per_port)
 
         if plot:
-            fig, ax = plt.subplots(figsize=(4.35, 5), num='licks')
+            fig, ax = plt.subplots(figsize=(4.35, 5))
             ax.imshow(all_licks)
             ax.axis('tight')
             ax.set_xlabel('Water port #')
@@ -1067,22 +1072,48 @@ class Session:
             CRs[~self.rewarded] =  (ntrials - total_licks[~self.rewarded]) / ntrials
             sdt['CRs'].append(CRs)
 
-        pass
+        return sdt
 
-            #hits =  / ntrials
-            #misses = np.sum(~binarized[:, self.rewarded], axis=0) / ntrials
-            #FAs = np.sum(binarized[:, ~self.rewarded], axis=0) / ntrials
-            #CRs = np.sum(~binarized[:, ~self.rewarded], axis=0) / ntrials
+    def SDT(self):
+        """ returns a dict with d-prime measures given hits, misses, false alarms, and correct rejections"""
+        # Floors an ceilings are replaced by half hits and half FA's
+        sdt = self.sdt_trials(blocks=4)
+        Z = norm.ppf
+
+        d_prime = []
+        for hits, misses, fas, crs in zip(sdt['hits'],
+                                          sdt['misses'],
+                                          sdt['FAs'],
+                                          sdt['CRs']):
+            half_hit = 0.5 / (hits + misses)
+            half_fa = 0.5 / (fas + crs)
+
+            # Calculate hit_rate and avoid d' infinity
+            hit_rate = hits / (hits + misses)
+            hit_rate[hit_rate==1] = 1 - half_hit
+            hit_rate[hit_rate==0] = half_hit
+
+            # Calculate false alarm rate and avoid d' infinity
+            fa_rate = fas / (fas + crs)
+            fa_rate[fa_rate==1] = 1 - half_fa
+            fa_rate[fa_rate==0] = half_fa
+
+            # Return d'
+            d_prime.append(Z(hit_rate) - Z(fa_rate))
+
+            pass
+
+        return (out)
 
 if __name__ == '__main__':
-    folder = r'D:\Projects\CircleTrack\Mouse4\01_30_2020\H16_M50_S22'
-    #folder = r'D:\Projects\CircleTrack\Mouse4\02_01_2020\H15_M37_S17'
-    #data = Preprocess(folder, sync_mode='timestamp')
+    #folder = r'D:\Projects\CircleTrack\Mouse4\01_30_2020\H16_M50_S22'
+    folder = r'D:\Projects\CircleTrack\Mouse4\02_01_2020\H15_M37_S17'
+    data = Preprocess(folder, sync_mode='timestamp')
     #data.save()
-    data = Session(folder)
+    #data = Session(folder)
     #data.plot_licks()
 
-    data.sdt_trials(blocks = 4)
+    data.track_video()
 
 
     pass
