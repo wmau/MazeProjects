@@ -165,6 +165,7 @@ def sync_Arduino_outputs(Arduino_fpath, behavior_fpath, behav_cam=2,
         miniscope_col, behav_col = None, None
 
     # Find the frame number associated with the timestamp of a lick.
+    nframes = len(behavior_df)
     print(f'Syncing {Arduino_fpath} to {behavior_fpath} using {sync_mode}s...')
     for i, row in Arduino_data.iterrows():
         if sync_mode == 'timestamp':
@@ -174,6 +175,12 @@ def sync_Arduino_outputs(Arduino_fpath, behavior_fpath, behav_cam=2,
             behav_frame = sync_map[sync_map[:,miniscope_col]==row.Frame, behav_col]
         else:
             raise ValueError('sync_mode must be "timestamp" or "frame"')
+
+        if not isinstance(behav_frame, (int, float)):
+            behav_frame = behav_frame[0]
+
+        if behav_frame >= nframes:
+            continue
 
         val = row.Data
         behavior_df.at[behav_frame, 'lick_port'] = val
@@ -909,6 +916,25 @@ class Preprocess:
 
 class Session:
     def __init__(self, folder=None):
+        """
+        Contains many useful analyses for single session data.
+
+        :parameter
+        ---
+        folder: str
+            Directory pertaining to a single session. If not specified, a
+            dialog box will appear for you to navigate to the folder.
+
+        Useful methods:
+            plot_licks(): Plots the trajectory and licks in a spiral pattern.
+
+            port_approaches(): Plots speed or acceleration within a time
+                window centered around the arrival to each port.
+
+            sdt_trials(): Gets the hit/miss/false alarm/correct rejection rate
+                for each port. Currently in beta.
+
+        """
         # If folder is not specified, open a dialog box.
         if folder is None:
             self.folder = filedialog.askdirectory()
@@ -956,6 +982,29 @@ class Session:
 
     def port_approaches(self, window=(-15, 15), dist_thresh=0.03,
                         smoothing_factor=4,  acceleration=True, plot=True):
+        """
+        Plots the speed or acceleration of the mouse to each port per trial.
+
+        :parameters
+        ---
+        window: tuple
+            (frames behind, frames ahead) that you want to analyze.
+
+        dist_thresh: numeric
+            When the mouse first gets within this many distance units to the port,
+            that will be considered when it has arrived and the window will be
+            centered on that frame.
+
+        smoothing_factor: int
+            Amount to smooth velocity/acceleration by.
+
+        acceleration: bool
+            Whether to compute acceleration (when True) or speed (when False).
+
+        plot: bool
+            Whether or not to plot.
+
+        """
         self.approaches = []
         self.window = window
 
@@ -1089,30 +1138,33 @@ class Session:
 
             # Calculate hit_rate and avoid d' infinity
             hit_rate = hits / (hits + misses)
-            hit_rate[hit_rate==1] = 1 - half_hit
-            hit_rate[hit_rate==0] = half_hit
+            try: hit_rate[hit_rate==1] = 1 - half_hit
+            except: pass
+            try: hit_rate[hit_rate==0] = half_hit
+            except: pass
 
             # Calculate false alarm rate and avoid d' infinity
             fa_rate = fas / (fas + crs)
-            fa_rate[fa_rate==1] = 1 - half_fa
-            fa_rate[fa_rate==0] = half_fa
+            try: fa_rate[fa_rate==1] = 1 - half_fa
+            except: pass
+            try: fa_rate[fa_rate==0] = half_fa
+            except: pass
 
             # Return d'
             d_prime.append(Z(hit_rate) - Z(fa_rate))
 
-            pass
+        pass
 
-        return (out)
 
 if __name__ == '__main__':
     #folder = r'D:\Projects\CircleTrack\Mouse4\01_30_2020\H16_M50_S22'
     folder = r'D:\Projects\CircleTrack\Mouse4\02_01_2020\H15_M37_S17'
-    data = Preprocess(folder, sync_mode='timestamp')
+    data = Session(folder)
     #data.save()
     #data = Session(folder)
     #data.plot_licks()
 
-    data.track_video()
+    data.SDT()
 
 
     pass
