@@ -965,6 +965,7 @@ class Session:
         rewarded_ports = find_rewarded_ports(self.behavior_df)
         self.rewarded = np.zeros(8, dtype=bool)
         self.rewarded[rewarded_ports] = True
+        self.n_rewarded = np.sum(self.rewarded)
 
 
     def plot_licks(self):
@@ -1086,39 +1087,50 @@ class Session:
         return all_licks
 
 
-    def sdt_trials(self, blocks=None):
+    def sdt_trials(self, blocks=None, plot=True):
+        # Get number of licks per port.
         self.all_licks = np.asarray(self.get_licks(plot=False))
 
+        # Split the session into N blocks.
         if blocks is not None:
             licks = np.array_split(self.all_licks, blocks)
         else:
             licks = [self.all_licks]
 
+        # Preallocate dict.
         sdt = {'hits': [],
                'misses': [],
                'FAs': [],
                'CRs': []
                }
         for trial_block in licks:
+            # Get number of passes through ports that should or should not be licked.
             ntrials = len(trial_block)
+            go_trials = ntrials * self.n_rewarded
+            nogo_trials = ntrials * (8-self.n_rewarded)
+
+            # Binarized the lick array so that at least one lick will mark it as
+            # correct.
             binarized = trial_block > 0
-            total_licks = np.sum(binarized, axis=0)
+            correct_licks = np.sum(binarized[:, self.rewarded])
+            incorrect_licks = np.sum(binarized[:, ~self.rewarded])
 
-            hits = nan_array(total_licks.size)
-            hits[self.rewarded] = total_licks[self.rewarded] / ntrials
-            sdt['hits'].append(hits)
+            # Get rates for hits, misses, false alarms, and correct rejections.
+            hit_rate = correct_licks / go_trials
+            miss_rate = (go_trials - correct_licks) / go_trials
+            FA_rate = incorrect_licks / nogo_trials
+            CR_rate = (nogo_trials - incorrect_licks) / nogo_trials
 
-            misses = nan_array(total_licks.size)
-            misses[self.rewarded] = (ntrials - total_licks[self.rewarded]) / ntrials
-            sdt['misses'].append(misses)
+            sdt['hits'].append(hit_rate)
+            sdt['misses'].append(miss_rate)
+            sdt['FAs'].append(FA_rate)
+            sdt['CRs'].append(CR_rate)
 
-            FAs = nan_array(total_licks.size)
-            FAs[~self.rewarded] = total_licks[~self.rewarded] / ntrials
-            sdt['FAs'].append(FAs)
-
-            CRs = nan_array(total_licks.size)
-            CRs[~self.rewarded] =  (ntrials - total_licks[~self.rewarded]) / ntrials
-            sdt['CRs'].append(CRs)
+        if plot:
+            fig, ax = plt.subplots()
+            ax.plot(sdt['hits'])
+            ax.plot(sdt['CRs'])
+            ax.legend(('Hits', 'Correct rejections'))
 
         return sdt
 
@@ -1138,22 +1150,22 @@ class Session:
 
             # Calculate hit_rate and avoid d' infinity
             hit_rate = hits / (hits + misses)
-            try: hit_rate[hit_rate==1] = 1 - half_hit
-            except: pass
-            try: hit_rate[hit_rate==0] = half_hit
-            except: pass
+            if hit_rate == 1:
+                hit_rate = 1 - half_hit
+            if hit_rate == 0:
+                hit_rate = half_hit
 
             # Calculate false alarm rate and avoid d' infinity
             fa_rate = fas / (fas + crs)
-            try: fa_rate[fa_rate==1] = 1 - half_fa
-            except: pass
-            try: fa_rate[fa_rate==0] = half_fa
-            except: pass
+            if fa_rate == 1:
+                fa_rate = 1 - half_fa
+            if fa_rate == 0:
+                fa_rate = half_fa
 
             # Return d'
             d_prime.append(Z(hit_rate) - Z(fa_rate))
 
-        pass
+        return d_prime
 
 
 if __name__ == '__main__':
