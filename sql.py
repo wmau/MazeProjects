@@ -4,59 +4,97 @@ from pathlib import Path
 from datetime import datetime
 
 project_directory = r'D:\Projects\CircleTrack'
-db_path = os.path.join(project_directory, 'mice.sqlite')
+
+class Database:
+    def __init__(self, directory=project_directory, db_name='mice.sqlite',
+                 vid_fname='Merged.avi',
+                 eztrack_pattern='*_LocationOutput.csv',
+                 DLC_pattern='*DLC_resnet*.h5',
+                 minian_folder='minian',
+                 lick_pattern='H*_M*_S*.txt',
+                 preprocess_fname='PreprocessedBehavior.csv'):
+        self.directory = directory
+        self.db_path = os.path.join(directory, db_name)
+
+        # Store the file name patterns.
+        self.vid_fname = vid_fname
+        self.eztrack_pattern = eztrack_pattern
+        self.DLC_pattern = DLC_pattern
+        self.minian_folder = minian_folder
+        self.lick_pattern = lick_pattern
+        self.preprocess_fname = preprocess_fname
+
+        self.connection = sqlite3.connect(self.db_path)
+        self.cursor = self.connection.cursor()
 
 
-def make_db(db_path=db_path):
-    """
-    Makes an empty database with the following tables.
+    def __enter__(self):
+        return self
 
-    mouse:
-        name TEXT: Name of the mouse.
 
-    sessions:
-        mouse_id INTEGER: ID # of the mouse, references the
-            primary key of the "mouse" table.
-        exp_date DATE: Date the session was recorded.
-        exp_time DATETIME: Time the session was recorded.
-        path: Path to the session's folder.
+    def __del__(self):
+        self.connection.close()
 
-    webcam:
-        session_id INTEGER: References the primary key of the
-            "sessions" table.
-        vid_path TEXT: Path to the video file.
-        eztrack_path TEXT: Path to the ezTrack csv.
-        dlc_path TEXT: Path to the DeepLabCut h5.
 
-    miniscope:
-        session_id INTEGER: References the primary key of the
-            "sessions" table.
-        minian_path TEXT: Path to minian folder.
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.cursor.close()
+        if isinstance(exc_val, Exception):
+            self.connection.rollback()
+        else:
+            self.connection.commit()
 
-    licking:
-        session_id INTEGER: References the primary key of the
-            "sessions" table.
-        txt_path TEXT: Path to Arduino txt file containing licking
-            timestamps.
+        self.connection.close()
 
-    aggregate:
-        session_id INTEGER: References the primary key of the
-            "sessions" table.
-        Preprocess_path: Path to the PreprocessedData.csv.
 
-    :param db_path:
-    :return:
-    """
-    with sqlite3.connect(db_path) as conn:
-        cur = conn.cursor()
-        cur.execute("""
+    def make_db(self):
+        """
+        Makes an empty database with the following tables.
+
+        mouse:
+            name TEXT: Name of the mouse.
+
+        session:
+            mouse_id INTEGER: ID # of the mouse, references the
+                primary key of the "mouse" table.
+            exp_date DATE: Date the session was recorded.
+            exp_time DATETIME: Time the session was recorded.
+            path: Path to the session's folder.
+
+        webcam:
+            session_id INTEGER: References the primary key of the
+                "session" table.
+            vid_path TEXT: Path to the video file.
+            eztrack_path TEXT: Path to the ezTrack csv.
+            dlc_path TEXT: Path to the DeepLabCut h5.
+
+        miniscope:
+            session_id INTEGER: References the primary key of the
+                "sessions" table.
+            minian_path TEXT: Path to minian folder.
+
+        licking:
+            session_id INTEGER: References the primary key of the
+                "sessions" table.
+            txt_path TEXT: Path to Arduino txt file containing licking
+                timestamps.
+
+        aggregate:
+            session_id INTEGER: References the primary key of the
+                "sessions" table.
+            Preprocess_path: Path to the PreprocessedData.csv.
+
+        :param db_path:
+        :return:
+        """
+
+        self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS mouse
             (id INTEGER PRIMARY KEY, 
             name TEXT UNIQUE)
             """)
 
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS sessions
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS session
             (id INTEGER PRIMARY KEY,
             mouse_id INTEGER,
             datetime DATETIME,
@@ -64,7 +102,7 @@ def make_db(db_path=db_path):
             UNIQUE(mouse_id, path))
             """)
 
-        cur.execute("""
+        self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS webcam
             (id INTEGER PRIMARY KEY,
             session_id INTEGER,
@@ -74,7 +112,7 @@ def make_db(db_path=db_path):
             UNIQUE(session_id, vid_path, eztrack_path, dlc_path))
             """)
 
-        cur.execute("""
+        self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS miniscope
             (id INTEGER PRIMARY KEY,
             session_id INTEGER,
@@ -82,7 +120,7 @@ def make_db(db_path=db_path):
             UNIQUE(session_id, minian_path))
             """)
 
-        cur.execute("""
+        self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS licking
             (id INTEGER PRIMARY KEY, 
             session_id INTEGER,
@@ -90,7 +128,7 @@ def make_db(db_path=db_path):
             UNIQUE(session_id, txt_path))
             """)
 
-        cur.execute("""
+        self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS aggregate
             (id INTEGER PRIMARY KEY,
             session_id INTEGER,
@@ -98,47 +136,155 @@ def make_db(db_path=db_path):
             UNIQUE(session_id, Preprocess_path))
             """)
 
-def update_db(directory=project_directory, db_path=db_path):
-    with sqlite3.connect(db_path) as conn:
-        cur = conn.cursor()
+
+    def update_db(self):
+        self.mouse_folders = \
+            [f.path for f in os.scandir(self.directory)
+             if f.is_dir()]
 
         # Update database with mice.
-        mouse_folders = update_mice(cur, directory)
+        self.update_mice()
+        self.connection.commit()
 
         # Update database with sessions.
-        update_sessions(cur, mouse_folders)
+        self.update_sessions()
+        self.connection.commit()
+
+        # Update database with behavior data.
+        self.update_behavior()
+        self.connection.commit()
+
+        # Update database with miniscope data.
+        self.update_miniscope()
+        self.connection.commit()
+
+        # Update database with licking data.
+        self.update_licking()
+        self.connection.commit()
+
+        # Update database with preprocessed data.
+        self.update_preprocess()
+        self.connection.commit()
 
 
-        conn.commit()
+    def update_mice(self):
+        mouse_names = [(os.path.split(mouse)[-1],)
+                       for mouse in self.mouse_folders]
+        self.cursor.executemany('''
+            INSERT OR IGNORE INTO mouse (name) 
+            VALUES (?)''', (mouse_names))
 
 
-def update_mice(cur, directory):
-    mouse_folders = [f.path for f in os.scandir(directory) if f.is_dir()]
-    mouse_names = [(os.path.split(mouse)[-1],) for mouse in mouse_folders]
-    cur.executemany('''
-        INSERT OR IGNORE INTO mouse (name) 
-        VALUES (?)''', (mouse_names))
+    def update_sessions(self):
+        # Lambda function for formatting date time.
+        format_datetime = lambda folder: \
+            datetime.strptime(folder.parts[-2] + ' ' + folder.parts[-1],
+                              '%m_%d_%Y H%H_M%M_S%S')
 
-    return mouse_folders
+        self.session_folders = []
+        # For each mouse, capture the datetime and directory.
+        for mouse_id, mouse_folder in enumerate(self.mouse_folders):
+            data = [(mouse_id,
+                     format_datetime(folder),
+                     str(folder)) for folder in
+                    Path(mouse_folder).rglob('H*_M*_S*')
+                    if folder.is_dir()]
 
+            self.cursor.executemany('''
+                INSERT OR IGNORE INTO session
+                (mouse_id, datetime, path)
+                VALUES (?,?,?)''', data)
 
-def update_sessions(cur, mouse_folders):
-    for mouse_id, mouse_folder in enumerate(mouse_folders):
-        data = [(mouse_id,
-                 datetime.strptime(folder.parts[-2] + ' ' +
-                                   folder.parts[-1],
-                                   '%m_%d_%Y H%H_M%M_S%S'),
-                 folder._str) for folder in
-                Path(mouse_folder).rglob('H*_M*_S*')
-                if folder.is_dir()]
-
-        cur.executemany('''
-            INSERT OR IGNORE INTO sessions (mouse_id, datetime, path)
-            VALUES (?,?,?)''', data)
+            self.session_folders.extend([Path(session[-1]) for session in data])
 
 
-#def update_sessions(cur, directory):
+    def update_behavior(self):
+        for session_folder in self.session_folders:
+            session_id = self.id_session(session_folder)
+
+            vid_path = str(session_folder / self.vid_fname)
+
+            try:
+                eztrack_path = [str(x) for x in session_folder.rglob(self.eztrack_pattern)][0]
+            except:
+                eztrack_path = None
+
+            try:
+                dlc_path = [str(x) for x in session_folder.rglob(self.DLC_pattern)][0]
+            except:
+                dlc_path = None
+
+            self.cursor.execute('''
+                INSERT OR IGNORE INTO webcam 
+                (session_id, vid_path, eztrack_path, dlc_path)
+                VALUES (?,?,?,?)''',
+                (session_id, vid_path, eztrack_path, dlc_path))
+
+
+    def update_miniscope(self):
+        for session_folder in self.session_folders:
+            session_id = self.id_session(session_folder)
+
+            minian_path = session_folder / self.minian_folder
+            if not minian_path.exists():
+                minian_path = None
+
+            self.cursor.execute('''
+                INSERT OR IGNORE INTO miniscope
+                (session_id, minian_path)
+                VALUES (?,?)''',
+                (session_id, str(minian_path)))
+
+
+    def update_licking(self):
+        for session_folder in self.session_folders:
+            session_id = self.id_session(session_folder)
+
+            try:
+                lick_path = [str(x) for x in session_folder.rglob(self.lick_pattern)][0]
+            except:
+                lick_path = None
+
+            self.cursor.execute('''
+                INSERT OR IGNORE INTO licking
+                (session_id, txt_path)
+                VALUES (?,?)''',
+                (session_id, lick_path))
+
+
+    def update_preprocess(self):
+        for session_folder in self.session_folders:
+            session_id = self.id_session(session_folder)
+
+            try:
+                preprocess_path = [str(x) for x in session_folder.rglob(self.preprocess_fname)][0]
+            except:
+                preprocess_path = None
+
+            self.cursor.execute('''
+                   INSERT OR IGNORE INTO aggregate
+                   (session_id, Preprocess_path)
+                   VALUES (?,?)''',
+                   (session_id, preprocess_path))
+
+
+    def id_session(self, session_folder):
+        self.cursor.execute('''
+            SELECT id FROM session
+            WHERE path = ? LIMIT 1''', (str(session_folder),))
+
+        return self.cursor.fetchone()[0]
+
+
+    def conditional_query(self, table, column, condition):
+        table, column, condition = (table,), (column,), (condition,)
+
+        self.cursor.execute('''
+            SELECT id FROM ? 
+            WHERE ? = ?''', (table, column, condition))
+
+        return self.cursor.fetchall()
 
 if __name__ == '__main__':
-    make_db()
-    update_db()
+    with Database() as db:
+        db.conditional_query('mouse', 'name', 'Mouse4')
