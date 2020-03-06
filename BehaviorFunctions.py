@@ -1134,10 +1134,10 @@ class Session:
 
         return sdt
 
-    def SDT(self):
+    def SDT(self, trial_blocks=4):
         """ returns a dict with d-prime measures given hits, misses, false alarms, and correct rejections"""
         # Floors an ceilings are replaced by half hits and half FA's
-        sdt = self.sdt_trials(blocks=4)
+        sdt = self.sdt_trials(blocks=trial_blocks)
         Z = norm.ppf
 
         d_prime = []
@@ -1165,7 +1165,8 @@ class Session:
             # Return d'
             d_prime.append(Z(hit_rate) - Z(fa_rate))
 
-        return d_prime
+        self.d_prime = d_prime
+        return self.d_prime
 
 
 if __name__ == '__main__':
@@ -1178,8 +1179,8 @@ if __name__ == '__main__':
 
     from CircleTrack.sql import Database
     with Database() as db:
-        mouse_id = db.conditional_ID_query('mouse', 'id', 'name', 'Mouse4')[0]
-        paths = db.conditional_ID_query('session', 'path', 'mouse_id', mouse_id)
+        mouse_id = db.conditional_query('mouse', 'id', 'name', 'Mouse4')[0]
+        paths = db.conditional_query('session', 'path', 'mouse_id', mouse_id)
 
     d = []
     for path in paths:

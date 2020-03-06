@@ -276,7 +276,7 @@ class Database:
         return self.cursor.fetchone()[0]
 
 
-    def conditional_ID_query(self, table, wanted_column, column, condition):
+    def conditional_query(self, table, wanted_column, column, condition):
         """
         Lets you find the path or ID # of mice or sessions.
 
