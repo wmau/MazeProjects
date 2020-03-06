@@ -1170,13 +1170,33 @@ class Session:
 
 if __name__ == '__main__':
     #folder = r'D:\Projects\CircleTrack\Mouse4\01_30_2020\H16_M50_S22'
-    folder = r'D:\Projects\CircleTrack\Mouse4\02_01_2020\H15_M37_S17'
-    data = Session(folder)
+    # folder = r'D:\Projects\CircleTrack\Mouse4\02_01_2020\H15_M37_S17'
+    # data = Session(folder)
     #data.save()
     #data = Session(folder)
     #data.plot_licks()
 
-    data.SDT()
+    from CircleTrack.sql import Database
+    with Database() as db:
+        mouse_id = db.conditional_ID_query('mouse', 'id', 'name', 'Mouse4')[0]
+        paths = db.conditional_ID_query('session', 'path', 'mouse_id', mouse_id)
 
+    d = []
+    for path in paths:
+        data = Session(path)
+        d.append(data.SDT())
+
+    plt.plot(d[16:], '.-')
+    for x in np.arange(3.5, 11.5, 4):
+        plt.axvline(x=x, color='r')
+    for x in np.arange(11.5, 18.5, 4):
+        plt.axvline(x=x, color='magenta')
+
+    plt.ylabel('d prime')
+    plt.xlabel('Days')
+    plt.xlim([-0.5, 19.5])
+    labels = np.arange(1, 6)
+    positions = np.arange(1.5, 21.5, 4)
+    plt.xticks(positions, labels)
 
     pass
