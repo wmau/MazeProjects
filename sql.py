@@ -184,7 +184,7 @@ class Database:
         self.session_folders = []
         # For each mouse, capture the datetime and directory.
         for mouse_id, mouse_folder in enumerate(self.mouse_folders):
-            data = [(mouse_id,
+            data = [(mouse_id + 1,
                      format_datetime(folder),
                      str(folder)) for folder in
                     Path(mouse_folder).rglob('H*_M*_S*')
@@ -276,15 +276,39 @@ class Database:
         return self.cursor.fetchone()[0]
 
 
-    def conditional_query(self, table, column, condition):
-        table, column, condition = (table,), (column,), (condition,)
+    def conditional_ID_query(self, table, wanted_column, column, condition):
+        """
+        Lets you find the path or ID # of mice or sessions.
 
-        self.cursor.execute('''
-            SELECT id FROM ? 
-            WHERE ? = ?''', (table, column, condition))
+        :parameters
+        ---
+        table: str
+            Table you want to retrieve data from (e.g., 'session').
 
-        return self.cursor.fetchall()
+        wanted_column: str
+            Column of table you want to retrieve data from (e.g., 'path').
+
+        column: str
+            Column you are conditioning on (e.g., 'mouse_id').
+
+        condition: str, tuple
+            Condition (e.g., 'Mouse4').
+        """
+        if not isinstance(condition, tuple):
+            condition = (condition,)
+
+        query = f'''
+            SELECT {wanted_column} FROM {table} 
+            WHERE {column} = ?'''
+        self.cursor.execute(query, condition)
+
+        results = self.cursor.fetchall()
+        return [result[0] for result in results]
 
 if __name__ == '__main__':
     with Database() as db:
-        db.conditional_query('mouse', 'name', 'Mouse4')
+        db.make_db()
+        db.update_db()
+        #mouse_id = db.conditional_ID_query('mouse', 'id', 'name', 'Mouse4')[0]
+        #i = db.conditional_ID_query('session', 'path', 'mouse_id', mouse_id)
+        pass
