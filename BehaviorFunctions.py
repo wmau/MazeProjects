@@ -726,7 +726,7 @@ class Preprocess:
             # This is likely from mistracking. Interpolate those data points.
             self.interp_mistracks()
 
-            #self.behavior_df = clean_lick_detection(self.behavior_df)
+            self.behavior_df = clean_lick_detection(self.behavior_df)
             self.preprocess()
 
     def preprocess(self):
