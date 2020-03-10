@@ -152,15 +152,15 @@ def sync_Arduino_outputs(Arduino_fpath, behavior_fpath, behav_cam=2,
 
     # Discard data after Miniscope acquisition has stopped.
     sysClock = np.asarray(DAQ_data.sysClock)
-    Arduino_data.drop(Arduino_data.index[Arduino_data.Timestamp >
-                                         DAQ_data.sysClock.iloc[-1]],
+    Arduino_data.drop(Arduino_data.index[(Arduino_data.Timestamp) >
+                                         sysClock[-1]],
                       inplace=True)
 
     if sync_mode == 'frame':
         if behav_cam > miniscope_cam:
-            miniscope_col, behav_col = 0, 1
+            miniscope_col, behav_col = 1,0
         else:
-            miniscope_col, behav_col = 1, 0
+            miniscope_col, behav_col = 0,1
     else:
         miniscope_col, behav_col = None, None
 
@@ -170,17 +170,17 @@ def sync_Arduino_outputs(Arduino_fpath, behavior_fpath, behav_cam=2,
     for i, row in Arduino_data.iterrows():
         if sync_mode == 'timestamp':
             closest_time = find_closest(sysClock, row.Timestamp, sorted=True)[0]
-            behav_frame = DAQ_data.loc[closest_time]['frameNum']
+            behav_frame = DAQ_data.loc[closest_time]['frameNum'] - 1
         elif sync_mode == 'frame':
             behav_frame = sync_map[sync_map[:,miniscope_col]==row.Frame, behav_col]
         else:
             raise ValueError('sync_mode must be "timestamp" or "frame"')
 
-        if not isinstance(behav_frame, (int, float)):
-            behav_frame = behav_frame[0]
-
-        if behav_frame >= nframes:
+        if behav_frame >= nframes or not behav_frame:
             continue
+
+        if not isinstance(behav_frame, (int, float, np.int64)):
+            behav_frame = behav_frame[0]
 
         val = row.Data
         behavior_df.at[behav_frame, 'lick_port'] = val
@@ -729,7 +729,7 @@ class Preprocess:
             # This is likely from mistracking. Interpolate those data points.
             self.interp_mistracks()
 
-            #self.behavior_df = clean_lick_detection(self.behavior_df)
+            self.behavior_df = clean_lick_detection(self.behavior_df)
             self.preprocess()
 
     def preprocess(self):
@@ -912,9 +912,10 @@ class Preprocess:
         ax.set_aspect('equal')
 
 
-    def track_video(self):
+    def track_video(self, start=0, stop=None):
         make_tracking_video(self.paths['BehaviorVideo'], self.paths['BehaviorData'],
-                            Arduino_path=self.paths['Arduino'])
+                            Arduino_path=self.paths['Arduino'], start=start,
+                            stop=stop)
 
 
 class Session:
@@ -1180,27 +1181,30 @@ if __name__ == '__main__':
     #data = Session(folder)
     #data.plot_licks()
 
-    from CircleTrack.sql import Database
-    with Database() as db:
-        mouse_id = db.conditional_query('mouse', 'id', 'name', 'Mouse4')[0]
-        paths = db.conditional_query('session', 'path', 'mouse_id', mouse_id)
+    # from CircleTrack.sql import Database
+    # with Database() as db:
+    #     mouse_id = db.conditional_query('mouse', 'id', 'name', 'Mouse4')[0]
+    #     paths = db.conditional_query('session', 'path', 'mouse_id', mouse_id)
+    #
+    # d = []
+    # for path in paths:
+    #     data = Session(path)
+    #     d.append(data.SDT())
+    #
+    # plt.plot(d[16:], '.-')
+    # for x in np.arange(3.5, 11.5, 4):
+    #     plt.axvline(x=x, color='r')
+    # for x in np.arange(11.5, 18.5, 4):
+    #     plt.axvline(x=x, color='magenta')
+    #
+    # plt.ylabel('d prime')
+    # plt.xlabel('Days')
+    # plt.xlim([-0.5, 19.5])
+    # labels = np.arange(1, 6)
+    # positions = np.arange(1.5, 21.5, 4)
+    # plt.xticks(positions, labels)
 
-    d = []
-    for path in paths:
-        data = Session(path)
-        d.append(data.SDT())
-
-    plt.plot(d[16:], '.-')
-    for x in np.arange(3.5, 11.5, 4):
-        plt.axvline(x=x, color='r')
-    for x in np.arange(11.5, 18.5, 4):
-        plt.axvline(x=x, color='magenta')
-
-    plt.ylabel('d prime')
-    plt.xlabel('Days')
-    plt.xlim([-0.5, 19.5])
-    labels = np.arange(1, 6)
-    positions = np.arange(1.5, 21.5, 4)
-    plt.xticks(positions, labels)
+    folder = r'Z:\Will\Lingxuan_CircleTrack\G02_0305_shaping4'
+    data = Preprocess(folder, sync_mode='frame')
 
     pass
