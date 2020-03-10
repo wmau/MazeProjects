@@ -685,7 +685,8 @@ def blocked_approach_speeds(approaches, blocks=4, plot=True, ax=None,
 
 
 class Preprocess:
-    def __init__(self, folder=None, sync_mode='frame'):
+    def __init__(self, folder=None, sync_mode='frame',
+                 behav_cam=2, miniscope_cam=6):
         """
         Preprocesses behavior data by specifying a session folder.
 
@@ -720,13 +721,15 @@ class Preprocess:
 
             self.behavior_df = sync_Arduino_outputs(self.paths['Arduino'],
                                                     self.paths['BehaviorData'],
-                                                    sync_mode=sync_mode)[0]
+                                                    sync_mode=sync_mode,
+                                                    behav_cam=behav_cam,
+                                                    miniscope_cam=miniscope_cam)[0]
 
             # Find timestamps where the mouse seemingly teleports to a new location.
             # This is likely from mistracking. Interpolate those data points.
             self.interp_mistracks()
 
-            self.behavior_df = clean_lick_detection(self.behavior_df)
+            #self.behavior_df = clean_lick_detection(self.behavior_df)
             self.preprocess()
 
     def preprocess(self):
