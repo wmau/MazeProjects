@@ -231,17 +231,20 @@ def find_water_ports(behavior_df, use_licks=True):
     # at particular ports.
     if use_licks:
         for port in range(8):
-            try:
-                licking = behavior_df['lick_port'] == port
+            licking = behavior_df['lick_port'] == port
+
+            if not np.any(licking):
+                print(f'Port {port} not detected. Using default location.')
+                x = ports.loc[port, 'x']
+                y = ports.loc[port, 'y']
+            else:
                 x = np.median(behavior_df.loc[licking, 'x'])
                 y = np.median(behavior_df.loc[licking, 'y'])
 
                 ports.loc[port, 'x'] = x
                 ports.loc[port, 'y'] = y
 
-                port_angles[port] = linearize_trajectory(behavior_df, x, y)[0]
-            except:
-                print(f'Port {port} not detected. Using default location.')
+            port_angles[port] = linearize_trajectory(behavior_df, x, y)[0]
 
 
     # Debugging purposes.
@@ -1204,7 +1207,8 @@ if __name__ == '__main__':
     # positions = np.arange(1.5, 21.5, 4)
     # plt.xticks(positions, labels)
 
-    folder = r'Z:\Will\Lingxuan_CircleTrack\G02_0305_shaping4'
-    data = Preprocess(folder, sync_mode='frame')
+    folder = r'D:\Projects\CircleTrack\Mouse5\02_04_2020\H13_M48_S6'
+    data = Session(folder)
+    data.plot_licks()
 
     pass
