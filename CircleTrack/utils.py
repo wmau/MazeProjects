@@ -8,7 +8,9 @@ tkroot.withdraw()
 from tkinter import filedialog
 from pathlib import Path
 from Behavior import convert_dlc_to_eztrack
-import glob
+import pandas as pd
+from natsort import natsorted
+from shutil import copyfile
 
 def make_pattern_dict():
     """
@@ -163,6 +165,85 @@ def get_session_folders(mouse_folder: str):
 
     return folders
 
+
+class SessionStitcher:
+    def __init__(self, folder_list, recording_duration=20,
+                 miniscope_cam=6, behav_cam=2,
+                 fps=30):
+        """
+        Combine recording folders that were split as a result of
+        the DAQ software crashing. Approach: In a new folder, copy
+        all the miniscope files from the first folder, then add a
+        file with empty frames that accounts for the time it took
+        to reconnect. Then copy all the files from the second folder.
+        For the behavior, do the same thing but merge them into one
+        file.
+
+        """
+
+        self.folder_list = folder_list
+        assert len(folder_list) == 2, "This only works for sessions with 1 crash."
+
+        self.recording_duration = recording_duration
+        self.miniscope_cam = miniscope_cam
+        self.behav_cam = behav_cam
+        self.fps = fps
+
+        self.missing_frames = self.calculate_missing_frames()
+        self.stitched_folder = self.make_stitched_folder()
+        self.copy_miniscope_files(self.folder_list[0], second=False)
+        self.make_missing_data()
+
+    def calculate_missing_frames(self):
+        # First, determine the number of missing frames.
+        # Read the timestmap.dat files.
+        timestamp_files = [os.path.join(folder, 'timestamp.dat')
+                           for folder in self.folder_list]
+        self.last_frames = []
+
+        # Get the total number of frames for both session
+        # folders.
+        for file in timestamp_files:
+            df = pd.read_csv(file, sep="\s+")
+
+            self.last_frames.append(df.loc[df.camNum==self.miniscope_cam,
+                                           'frameNum'].iloc[-1])
+
+        # Calculate the discrepancy.
+        recorded_frames = np.sum(self.last_frames)
+        ideal_frames = self.recording_duration*60*self.fps
+        missing_data_frames = ideal_frames - recorded_frames
+
+        return missing_data_frames
+
+
+    def make_stitched_folder(self):
+        folder_name = self.folder_list[0] +  '_stitched'
+        try:
+            os.mkdir(folder_name)
+        except:
+            print(f'{folder_name} already exists.')
+
+        return folder_name
+
+    def copy_miniscope_files(self, source, pattern='msCam*.avi',
+                             second=False):
+        files = natsorted([str(file) for file in Path(source).rglob(pattern)])
+        for file in files:
+            fname = os.path.split(file)[-1]
+            destination = os.path.join(self.stitched_folder, fname)
+
+            if os.path.isfile(destination):
+                print(f'{destination} already exists. Skipping.')
+            else:
+                print(f'Copying {destination}.')
+                copyfile(file, destination)
+
+
+    def make_missing_data(self):
+        pass
+
 if __name__ == '__main__':
-    path = r'Z:\Will\Circle track pilots\Mouse4'
-    get_session_folders(path)
+    folder_list = [r'Z:\Will\Lingxuan_CircleTrack\03_05_2020\H14_M30_S5',
+                   r'Z:\Will\Lingxuan_CircleTrack\03_05_2020\H14_M39_S37']
+    SessionStitcher(folder_list)
