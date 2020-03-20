@@ -1,5 +1,5 @@
 import os
-from util import get_data_paths, concat_avis
+from util import get_data_paths, concat_avis, nan_array
 import numpy as np
 import matplotlib.pyplot as plt
 import tkinter as tk
@@ -11,6 +11,9 @@ from Behavior import convert_dlc_to_eztrack
 import pandas as pd
 from natsort import natsorted
 from shutil import copyfile
+import cv2
+import re
+from Miniscope import project_image
 
 def make_pattern_dict():
     """
@@ -169,7 +172,7 @@ def get_session_folders(mouse_folder: str):
 class SessionStitcher:
     def __init__(self, folder_list, recording_duration=20,
                  miniscope_cam=6, behav_cam=2,
-                 fps=30):
+                 fps=30, pattern='msCam*.avi'):
         """
         Combine recording folders that were split as a result of
         the DAQ software crashing. Approach: In a new folder, copy
@@ -188,11 +191,13 @@ class SessionStitcher:
         self.miniscope_cam = miniscope_cam
         self.behav_cam = behav_cam
         self.fps = fps
+        self.pattern = pattern
 
         self.missing_frames = self.calculate_missing_frames()
         self.stitched_folder = self.make_stitched_folder()
         self.copy_miniscope_files(self.folder_list[0], second=False)
         self.make_missing_data()
+
 
     def calculate_missing_frames(self):
         # First, determine the number of missing frames.
@@ -226,9 +231,14 @@ class SessionStitcher:
 
         return folder_name
 
-    def copy_miniscope_files(self, source, pattern='msCam*.avi',
-                             second=False):
-        files = natsorted([str(file) for file in Path(source).rglob(pattern)])
+
+    def get_miniscope_files(self, folder):
+        files = natsorted([str(file) for file in Path(folder).rglob(self.pattern)])
+
+        return files
+
+    def copy_miniscope_files(self, source, second=False):
+        files = self.get_miniscope_files(source)
         for file in files:
             fname = os.path.split(file)[-1]
             destination = os.path.join(self.stitched_folder, fname)
@@ -240,7 +250,31 @@ class SessionStitcher:
                 copyfile(file, destination)
 
 
-    def make_missing_data(self):
+    def make_missing_data(self, frame='min'):
+        files = self.get_miniscope_files(self.folder_list[0])
+        last_video = files[-1]
+        last_number = re.findall(r'\d+', os.path.split(last_video)[-1])[0]
+
+        cap = cv2.VideoCapture(last_video)
+        size = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), \
+               int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fourcc = 0
+        fname = self.pattern.replace('*', last_number)
+        full_path = os.path.join(self.stitched_folder, fname)
+        video = cv2.VideoWriter(full_path, fourcc, float(self.fps), size)
+
+        if frame == 'nan':
+            frame = nan_array(size)
+        elif frame == 'min':
+            frame = project_image(self.folder_list[0],
+                                  projection_type=frame)
+
+        for _ in range(self.missing_frames):
+            video.write(frame)
+
+        video.release()
+        cap.release()
+
         pass
 
 if __name__ == '__main__':
