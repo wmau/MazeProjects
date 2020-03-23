@@ -197,6 +197,7 @@ class SessionStitcher:
         self.stitched_folder = self.make_stitched_folder()
         self.copy_miniscope_files(self.folder_list[0], second=False)
         self.make_missing_data()
+        self.copy_miniscope_files(self.folder_list[1], second=True)
 
 
     def calculate_missing_frames(self):
@@ -241,6 +242,12 @@ class SessionStitcher:
         files = self.get_miniscope_files(source)
         for file in files:
             fname = os.path.split(file)[-1]
+
+            if second:
+                current_number = int(re.findall(r'\d+', fname)[0])
+                new_number = current_number + self.last_number
+                fname = self.pattern.replace('*', str(new_number))
+
             destination = os.path.join(self.stitched_folder, fname)
 
             if os.path.isfile(destination):
@@ -250,32 +257,35 @@ class SessionStitcher:
                 copyfile(file, destination)
 
 
-    def make_missing_data(self, frame='min'):
+    def make_missing_data(self, frame='last'):
         files = self.get_miniscope_files(self.folder_list[0])
         last_video = files[-1]
-        last_number = re.findall(r'\d+', os.path.split(last_video)[-1])[0]
+        last_number = int(re.findall(r'\d+', os.path.split(last_video)[-1])[0])
+        self.last_number = last_number + 1
 
         cap = cv2.VideoCapture(last_video)
         size = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), \
                int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fourcc = 0
-        fname = self.pattern.replace('*', last_number)
+        fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+        fname = self.pattern.replace('*', str(last_number))
         full_path = os.path.join(self.stitched_folder, fname)
-        video = cv2.VideoWriter(full_path, fourcc, float(self.fps), size)
 
-        if frame == 'nan':
-            frame = nan_array(size)
-        elif frame == 'min':
-            frame = project_image(self.folder_list[0],
-                                  projection_type=frame)
+        if not os.path.exists(full_path):
+            video = cv2.VideoWriter(full_path, fourcc, float(self.fps), size)
 
-        for _ in range(self.missing_frames):
-            video.write(frame)
+            if frame == 'nan':
+                frame = nan_array(size)
+            elif frame == 'last':
+                cap.set(1, cap.get(7)-1)
+                ret, frame = cap.read()
 
-        video.release()
+            for _ in range(self.missing_frames):
+                video.write(frame)
+
+            video.release()
         cap.release()
 
-        pass
+
 
 if __name__ == '__main__':
     folder_list = [r'Z:\Will\Lingxuan_CircleTrack\03_05_2020\H14_M30_S5',
