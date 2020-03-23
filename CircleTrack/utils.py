@@ -172,7 +172,8 @@ def get_session_folders(mouse_folder: str):
 class SessionStitcher:
     def __init__(self, folder_list, recording_duration=20,
                  miniscope_cam=6, behav_cam=2,
-                 fps=30, pattern='msCam*.avi'):
+                 fps=30, miniscope_pattern='msCam*.avi',
+                 behavior_pattern='behavCam*.avi'):
         """
         Combine recording folders that were split as a result of
         the DAQ software crashing. Approach: In a new folder, copy
@@ -191,13 +192,20 @@ class SessionStitcher:
         self.miniscope_cam = miniscope_cam
         self.behav_cam = behav_cam
         self.fps = fps
-        self.pattern = pattern
+        self.file_patterns = {'miniscope': miniscope_pattern,
+                              'behavior': behavior_pattern}
 
         self.missing_frames = self.calculate_missing_frames()
         self.stitched_folder = self.make_stitched_folder()
-        self.copy_miniscope_files(self.folder_list[0], second=False)
-        self.make_missing_data()
-        self.copy_miniscope_files(self.folder_list[1], second=True)
+
+        self.stitch('miniscope')
+        self.stitch('behavior')
+
+
+    def stitch(self, camera):
+        self.copy_files(self.folder_list[0], camera=camera, second=False)
+        self.make_missing_data(camera=camera)
+        self.copy_files(self.folder_list[1], camera=camera, second=True)
 
 
     def calculate_missing_frames(self):
@@ -233,20 +241,23 @@ class SessionStitcher:
         return folder_name
 
 
-    def get_miniscope_files(self, folder):
-        files = natsorted([str(file) for file in Path(folder).rglob(self.pattern)])
+    def get_files(self, folder, pattern):
+        files = natsorted([str(file) for file in Path(folder).rglob(pattern)])
 
         return files
 
-    def copy_miniscope_files(self, source, second=False):
-        files = self.get_miniscope_files(source)
+
+    def copy_files(self, source, camera, second=False):
+        pattern = self.file_patterns[camera]
+
+        files = self.get_files(source, pattern)
         for file in files:
             fname = os.path.split(file)[-1]
 
             if second:
                 current_number = int(re.findall(r'\d+', fname)[0])
                 new_number = current_number + self.last_number
-                fname = self.pattern.replace('*', str(new_number))
+                fname = self.file_patterns[camera].replace('*', str(new_number))
 
             destination = os.path.join(self.stitched_folder, fname)
 
@@ -257,8 +268,9 @@ class SessionStitcher:
                 copyfile(file, destination)
 
 
-    def make_missing_data(self, frame='last'):
-        files = self.get_miniscope_files(self.folder_list[0])
+    def make_missing_data(self, camera):
+        pattern = self.file_patterns[camera]
+        files = self.get_files(self.folder_list[0], pattern)
         last_video = files[-1]
         last_number = int(re.findall(r'\d+', os.path.split(last_video)[-1])[0])
         self.last_number = last_number + 1
@@ -267,22 +279,24 @@ class SessionStitcher:
         size = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), \
                int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-        fname = self.pattern.replace('*', str(last_number))
+        fname = self.file_patterns[camera].replace('*', str(last_number))
         full_path = os.path.join(self.stitched_folder, fname)
 
         if not os.path.exists(full_path):
+            print(f'Writing {full_path}.')
+
             video = cv2.VideoWriter(full_path, fourcc, float(self.fps), size)
 
-            if frame == 'nan':
-                frame = nan_array(size)
-            elif frame == 'last':
-                cap.set(1, cap.get(7)-1)
-                ret, frame = cap.read()
+            cap.set(1, cap.get(7)-1)
+            ret, frame = cap.read()
 
             for _ in range(self.missing_frames):
                 video.write(frame)
 
             video.release()
+        else:
+            print(f'{full_path} already exists. Skipping.')
+
         cap.release()
 
 
