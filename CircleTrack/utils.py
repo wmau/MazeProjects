@@ -189,15 +189,18 @@ class SessionStitcher:
         assert len(folder_list) == 2, "This only works for sessions with 1 crash."
 
         self.recording_duration = recording_duration
-        self.miniscope_cam = miniscope_cam
-        self.behav_cam = behav_cam
         self.fps = fps
+        self.camera_numbers = {'miniscope': miniscope_cam,
+                               'behavior': behav_cam}
         self.file_patterns = {'miniscope': miniscope_pattern,
                               'behavior': behavior_pattern}
+        self.timestamp_paths = [os.path.join(folder, 'timestamp.dat')
+                                for folder in self.folder_list]
 
         self.missing_frames = self.calculate_missing_frames()
         self.stitched_folder = self.make_stitched_folder()
 
+        self.merge_timestamp_files()
         self.stitch('miniscope')
         self.stitch('behavior')
 
@@ -207,6 +210,12 @@ class SessionStitcher:
         self.make_missing_data(camera=camera)
         self.copy_files(self.folder_list[1], camera=camera, second=True)
 
+
+    def merge_timestamp_files(self):
+        session1 = pd.read_csv(self.timestamp_paths[0], sep="\s+")
+        session2 = pd.read_csv(self.timestamp_paths[1], sep="\s+")
+
+        pass
 
     def calculate_missing_frames(self):
         # First, determine the number of missing frames.
@@ -220,7 +229,7 @@ class SessionStitcher:
         for file in timestamp_files:
             df = pd.read_csv(file, sep="\s+")
 
-            self.last_frames.append(df.loc[df.camNum==self.miniscope_cam,
+            self.last_frames.append(df.loc[df.camNum==self.camera_numbers['miniscope'],
                                            'frameNum'].iloc[-1])
 
         # Calculate the discrepancy.
@@ -279,7 +288,7 @@ class SessionStitcher:
         size = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), \
                int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-        fname = self.file_patterns[camera].replace('*', str(last_number))
+        fname = self.file_patterns[camera].replace('*', str(self.last_number))
         full_path = os.path.join(self.stitched_folder, fname)
 
         if not os.path.exists(full_path):
