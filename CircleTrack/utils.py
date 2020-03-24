@@ -415,7 +415,7 @@ class SessionStitcher:
                 new_number = current_number + self.last_number
                 fname = self.file_patterns[camera].replace('*', str(new_number))
 
-            destination = os.path.join(self.folder_list[0], fname)
+            destination = os.path.join(self.stitched_folder, fname)
 
             if os.path.isfile(destination):
                 print(f'{destination} already exists. Skipping.')
@@ -447,7 +447,7 @@ class SessionStitcher:
 
     def make_missing_video(self, camera):
         pattern = self.file_patterns[camera]
-        files = self.get_files(self.stitched_folder, pattern)
+        files = self.get_files(self.folder_list[0], pattern)
         last_video = files[-1]
         last_number = int(re.findall(r'\d+', os.path.split(last_video)[-1])[0])
         self.last_number = last_number + 1
