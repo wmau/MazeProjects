@@ -203,6 +203,7 @@ class SessionStitcher:
         self.stitched_folder = self.make_stitched_folder()
 
         self.merge_timestamp_files()
+
         self.stitch('miniscope')
         self.stitch('behavior')
 
@@ -405,7 +406,7 @@ class SessionStitcher:
 
         if camera == 'behavior':
             fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-            size = tuple(crop)
+            size = tuple(crop[::-1])
 
         for file in files:
             fname = os.path.split(file)[-1]
