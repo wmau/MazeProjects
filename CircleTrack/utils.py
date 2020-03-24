@@ -233,13 +233,16 @@ class SessionStitcher:
 
 
     def stitch(self, camera):
-        self.copy_files(self.folder_list[0], camera=camera, second=False)
-        self.make_missing_data(camera=camera)
-        if camera == 'miniscope':
-            self.copy_files(self.folder_list[1], camera=camera, second=True)
+        if camera == 'behavior':
+            crop = self.find_smallest_dims()
         else:
-            self.crop_second_behavior_video()
+            crop=None
 
+        self.copy_files(self.folder_list[0], camera=camera,
+                        second=False, crop=crop)
+        self.make_missing_video(camera=camera)
+        self.copy_files(self.folder_list[1], camera=camera,
+                        second=True, crop=crop)
 
     def make_missing_timestamps(self, df):
         """
@@ -378,7 +381,8 @@ class SessionStitcher:
         return files
 
 
-    def copy_files(self, source, camera, second=False):
+    def copy_files(self, source, camera, second=False,
+                   crop=None):
         """
         Copy video files. Renumber if needed.
 
@@ -397,8 +401,16 @@ class SessionStitcher:
         """
         # Find the pattern associated with that video file.
         pattern = self.file_patterns[camera]
-
         files = self.get_files(source, pattern)
+
+        if camera == 'behavior':
+            cap = cv2.VideoCapture(files[0])
+            size = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), \
+                   int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+            cap.release()
+
+
         for file in files:
             fname = os.path.split(file)[-1]
 
@@ -412,11 +424,32 @@ class SessionStitcher:
             if os.path.isfile(destination):
                 print(f'{destination} already exists. Skipping.')
             else:
-                print(f'Copying {destination}.')
-                copyfile(file, destination)
+                if camera == 'miniscope':
+                    print(f'Copying {destination}.')
+                    copyfile(file, destination)
+                elif camera == 'behavior':
+                    print(f'Copying and cropping{destination}.')
+                    writer = cv2.VideoWriter(destination, fourcc,
+                                             float(self.fps), size)
+                    cap = cv2.VideoCapture(file)
+                    cap.set(1, 0)  # First frame.
+                    max_frames = int(cap.get(7))
+
+                    for _ in range(max_frames):
+                        ret, frame = cap.read()
+
+                        if ret:
+                            if crop is not None:
+                                frame = frame[:crop[0], :crop[1]]
+
+                            writer.write(frame)
+                        else:
+                            break
+
+                    writer.release()
 
 
-    def make_missing_data(self, camera):
+    def make_missing_video(self, camera):
         pattern = self.file_patterns[camera]
         files = self.get_files(self.folder_list[0], pattern)
         last_video = files[-1]
@@ -433,7 +466,8 @@ class SessionStitcher:
         if not os.path.exists(full_path):
             print(f'Writing {full_path}.')
 
-            video = cv2.VideoWriter(full_path, fourcc, float(self.fps), size)
+            video = cv2.VideoWriter(full_path, fourcc,
+                                    float(self.fps), size)
 
             cap.set(1, cap.get(7)-1)
             ret, frame = cap.read()
@@ -448,16 +482,18 @@ class SessionStitcher:
         cap.release()
 
 
-    def crop_second_behavior_video(self):
+    def find_smallest_dims(self):
         videos = [self.get_files(folder, self.file_patterns['behavior'])[i]
                   for folder, i in zip(self.folder_list, [-1, 0])]
 
-        projs = []
+        shapes = []
         for video in videos:
-            print(f'Projecting {video}.')
-            projs.append(self.median_projection(video))
+            cap = cv2.VideoCapture(video)
+            ret, frame = cap.read()
+            shapes.append(frame.shape)
 
-        pass
+        return np.min(shapes, axis=0)[:2]
+
 
     def median_projection(self, video_path, nframes=10):
         cap = cv2.VideoCapture(video_path)
