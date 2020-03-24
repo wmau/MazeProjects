@@ -451,7 +451,7 @@ class SessionStitcher:
 
     def make_missing_video(self, camera):
         pattern = self.file_patterns[camera]
-        files = self.get_files(self.folder_list[0], pattern)
+        files = self.get_files(self.stitched_folder, pattern)
         last_video = files[-1]
         last_number = int(re.findall(r'\d+', os.path.split(last_video)[-1])[0])
         self.last_number = last_number + 1
