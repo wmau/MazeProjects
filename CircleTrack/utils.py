@@ -404,12 +404,8 @@ class SessionStitcher:
         files = self.get_files(source, pattern)
 
         if camera == 'behavior':
-            cap = cv2.VideoCapture(files[0])
-            size = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), \
-                   int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-            cap.release()
-
+            size = tuple(crop)
 
         for file in files:
             fname = os.path.split(file)[-1]
