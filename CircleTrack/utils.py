@@ -190,13 +190,15 @@ class SessionStitcher:
 
         self.recording_duration = recording_duration
         self.fps = fps
-        self.camera_numbers = {'miniscope': miniscope_cam,
+        self.interval = int(np.round((1 / self.fps) * 1000))
+        self.camNum = {'miniscope': miniscope_cam,
                                'behavior': behav_cam}
         self.file_patterns = {'miniscope': miniscope_pattern,
                               'behavior': behavior_pattern}
         self.timestamp_paths = [os.path.join(folder, 'timestamp.dat')
                                 for folder in self.folder_list]
 
+        # Find out how many frames are missing.
         self.missing_frames = self.calculate_missing_frames()
         self.stitched_folder = self.make_stitched_folder()
 
@@ -212,10 +214,115 @@ class SessionStitcher:
 
 
     def merge_timestamp_files(self):
-        session1 = pd.read_csv(self.timestamp_paths[0], sep="\s+")
-        session2 = pd.read_csv(self.timestamp_paths[1], sep="\s+")
+        """
+        Combine the timestamp.dat files by taking the first file,
+        adding in missing data, then time-shifting the second file.
 
-        pass
+        """
+        # Read the first session's timestamp file. Drop the last
+        # entry since it's usually truncated.
+        session1 = pd.read_csv(self.timestamp_paths[0], sep="\s+")
+        session1.drop(session1.tail(1).index, inplace=True)
+
+        missing_data = self.make_missing_timestamps(session1)
+
+        session2 = pd.read_csv(self.timestamp_paths[1], sep="\s+")
+        session2 = self.timeshift_second_session(missing_data, session2)
+
+        # Merge.
+        df = pd.concat((session1, missing_data, session2))
+        path = os.path.join(self.stitched_folder, 'timestamp.dat')
+        df = df.astype({'frameNum': int,
+                        'sysClock': int,
+                        'camNum': int})
+        df.to_csv(path, sep='\t', index=False)
+
+
+    def make_missing_timestamps(self, df):
+        """
+        Build the DataFrame with the missing timestamps.
+
+        :parameter
+        ---
+        df: DataFrame
+            DataFrame from first session.
+        """
+        # Define the cameras. We can loop through these to shorten the code.
+        cameras = ['miniscope', 'behavior']
+
+        # Find the last camera entry from session 1. Convert to str keys
+        # used to access dicts.
+        last_camera = df.camNum.iloc[-1]
+        camera1 = [key for key, value in self.camNum.items() if value != last_camera][0]
+        camera2 = [key for key, value in self.camNum.items() if value == last_camera][0]
+
+        # Find the last frames and timestamps from session 1.
+        last_frames = {camera: df.loc[df.camNum == self.camNum[camera], 'frameNum'].iloc[-1] + 1
+                       for camera in cameras}
+        last_ts = {camera: df.loc[df.camNum == self.camNum[camera], 'sysClock'].iloc[-1] + self.interval
+                   for camera in cameras}
+
+        # Build new frames and timestamps.
+        frames = {camera: np.arange(last_frames[camera], last_frames[camera] + self.missing_frames)
+                  for camera in cameras}
+        ts = {camera: np.arange(last_ts[camera], last_ts[camera] + self.interval*self.missing_frames,
+                                self.interval)
+              for camera in cameras}
+
+        # Make the DataFrame.
+        data = dict()
+        data['camNum'] = np.empty((self.missing_frames*2))
+        data['frameNum'] = np.empty_like(data['camNum'])
+        data['sysClock'] = np.empty_like(data['camNum'])
+
+        for key, arr in zip(['camNum', 'frameNum', 'sysClock'],
+                            [self.camNum, frames, ts]):
+            data[key][::2] = arr[camera1]
+            data[key][1::2] = arr[camera2]
+
+        data = pd.DataFrame(data)
+        data['buffer'] = 1
+
+        return data
+
+
+    def timeshift_second_session(self, missing_df, df2):
+        """
+        Shift the second session in time so that it lines up with the
+        missing data.
+
+        :parameters
+        ---
+        missing_df: DataFrame
+            DataFrame from make_missing_timestamps()
+
+        df2: DataFrame
+            DataFrame from the second session.
+
+        """
+        cameras = ['miniscope', 'behavior']
+
+        last_frames = {camera: missing_df.loc[missing_df.camNum==self.camNum[camera],
+                                              'frameNum'].iloc[-1]
+                       for camera in cameras}
+        last_ts = missing_df.sysClock.iloc[-1]
+        df2.sysClock += last_ts
+
+        for camera in cameras:
+            df2.loc[df2.camNum==self.camNum[camera], 'frameNum'] += last_frames[camera]
+
+        # Correct that entry in sysClock that's really high at one of the
+        # first two entries of timestamp.dat.
+        i = np.argmax(df2.sysClock)
+        spike_camera = df2.loc[i, 'camNum']
+        spike_ts = df2.loc[df2.camNum==spike_camera, 'sysClock']
+        next_ts = spike_ts.iloc[np.argmax(spike_ts) + 1]
+        df2.loc[i, 'sysClock'] = next_ts - self.interval
+
+        if df2.loc[0, 'sysClock'] > df2.loc[1, 'sysClock']:
+            df2.loc[0, 'sysClock'] = df2.loc[1, 'sysClock'] - 1
+
+        return df2
 
     def calculate_missing_frames(self):
         # First, determine the number of missing frames.
@@ -229,7 +336,7 @@ class SessionStitcher:
         for file in timestamp_files:
             df = pd.read_csv(file, sep="\s+")
 
-            self.last_frames.append(df.loc[df.camNum==self.camera_numbers['miniscope'],
+            self.last_frames.append(df.loc[df.camNum==self.camNum['miniscope'],
                                            'frameNum'].iloc[-1])
 
         # Calculate the discrepancy.
@@ -311,6 +418,6 @@ class SessionStitcher:
 
 
 if __name__ == '__main__':
-    folder_list = [r'Z:\Will\Lingxuan_CircleTrack\03_05_2020\H14_M30_S5',
-                   r'Z:\Will\Lingxuan_CircleTrack\03_05_2020\H14_M39_S37']
+    folder_list = [r'Z:\Will\Lingxuan_CircleTrack\03_05_2020\H15_M20_S43',
+                   r'Z:\Will\Lingxuan_CircleTrack\03_05_2020\H15_M24_S58']
     SessionStitcher(folder_list)

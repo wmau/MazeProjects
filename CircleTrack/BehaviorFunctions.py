@@ -146,9 +146,9 @@ def sync_Arduino_outputs(Arduino_fpath, behavior_fpath, behav_cam=2,
     # Only take the rows corresponding to the behavior camera.
     DAQ_data = DAQ_data[DAQ_data.camNum == behav_cam]
     DAQ_data.reset_index(drop=True, inplace=True)
-    DAQ_data.astype({'frameNum': int,
-                     'sysClock': int,
-                     'camNum': int})
+    DAQ_data = DAQ_data.astype({'frameNum': int,
+                                'sysClock': int,
+                                'camNum': int})
 
     # Discard data after Miniscope acquisition has stopped.
     sysClock = np.asarray(DAQ_data.sysClock)
