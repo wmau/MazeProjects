@@ -415,16 +415,16 @@ class SessionStitcher:
                 new_number = current_number + self.last_number
                 fname = self.file_patterns[camera].replace('*', str(new_number))
 
-            destination = os.path.join(self.stitched_folder, fname)
+            destination = os.path.join(self.folder_list[0], fname)
 
             if os.path.isfile(destination):
                 print(f'{destination} already exists. Skipping.')
             else:
                 if camera == 'miniscope':
-                    print(f'Copying {destination}.')
+                    print(f'Copying to {destination}.')
                     copyfile(file, destination)
                 elif camera == 'behavior':
-                    print(f'Copying and cropping{destination}.')
+                    print(f'Copying and cropping to {destination}.')
                     writer = cv2.VideoWriter(destination, fourcc,
                                              float(self.fps), size)
                     cap = cv2.VideoCapture(file)
