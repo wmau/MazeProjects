@@ -358,12 +358,40 @@ class SessionStitcher:
 
 
     def get_files(self, folder, pattern):
+        """
+        Find all the files that match the pattern in this folder.
+
+        :parameters
+        ---
+        folder: str
+            Path containing behavior or miniscope videos.
+
+        pattern: regexp str
+            For example, 'msCam*.avi'.
+        """
         files = natsorted([str(file) for file in Path(folder).rglob(pattern)])
 
         return files
 
 
     def copy_files(self, source, camera, second=False):
+        """
+        Copy video files. Renumber if needed.
+
+        :parameters
+        ---
+        source: str
+            Path that you want to copy.
+
+        camera: str
+            'miniscope' or 'behavior'
+
+        second: boolean
+            Whether you are copying the second part of the session.
+
+
+        """
+        # Find the pattern associated with that video file.
         pattern = self.file_patterns[camera]
 
         files = self.get_files(source, pattern)
