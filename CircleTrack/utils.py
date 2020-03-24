@@ -241,7 +241,7 @@ class SessionStitcher:
 
         self.copy_files(self.folder_list[0], camera=camera,
                         second=False, crop=crop)
-        self.make_missing_video(camera=camera)
+        self.make_missing_video(camera=camera, crop=crop)
         self.copy_files(self.folder_list[1], camera=camera,
                         second=True, crop=crop)
 
@@ -446,10 +446,10 @@ class SessionStitcher:
                     writer.release()
 
 
-    def make_missing_video(self, camera):
+    def make_missing_video(self, camera, crop=None):
         pattern = self.file_patterns[camera]
         files = self.get_files(self.folder_list[0], pattern)
-        last_video = files[-1]
+        last_video = os.path.join(self.stitched_folder, os.path.split(files[-1])[-1])
         last_number = int(re.findall(r'\d+', os.path.split(last_video)[-1])[0])
         self.last_number = last_number + 1
 
