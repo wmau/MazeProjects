@@ -207,12 +207,6 @@ class SessionStitcher:
         self.stitch('behavior')
 
 
-    def stitch(self, camera):
-        self.copy_files(self.folder_list[0], camera=camera, second=False)
-        self.make_missing_data(camera=camera)
-        self.copy_files(self.folder_list[1], camera=camera, second=True)
-
-
     def merge_timestamp_files(self):
         """
         Combine the timestamp.dat files by taking the first file,
@@ -236,6 +230,15 @@ class SessionStitcher:
                         'sysClock': int,
                         'camNum': int})
         df.to_csv(path, sep='\t', index=False)
+
+
+    def stitch(self, camera):
+        self.copy_files(self.folder_list[0], camera=camera, second=False)
+        self.make_missing_data(camera=camera)
+        if camera == 'miniscope':
+            self.copy_files(self.folder_list[1], camera=camera, second=True)
+        else:
+            self.crop_second_behavior_video()
 
 
     def make_missing_timestamps(self, df):
@@ -323,6 +326,7 @@ class SessionStitcher:
             df2.loc[0, 'sysClock'] = df2.loc[1, 'sysClock'] - 1
 
         return df2
+
 
     def calculate_missing_frames(self):
         # First, determine the number of missing frames.
@@ -442,6 +446,41 @@ class SessionStitcher:
             print(f'{full_path} already exists. Skipping.')
 
         cap.release()
+
+
+    def crop_second_behavior_video(self):
+        videos = [self.get_files(folder, self.file_patterns['behavior'])[i]
+                  for folder, i in zip(self.folder_list, [-1, 0])]
+
+        projs = []
+        for video in videos:
+            print(f'Projecting {video}.')
+            projs.append(self.median_projection(video))
+
+        pass
+
+    def median_projection(self, video_path, nframes=10):
+        cap = cv2.VideoCapture(video_path)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
+        ret, frame = cap.read()
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        h, w = frame.shape
+        last_frame = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        collection = np.zeros((nframes, h, w))
+        samples = np.random.randint(0, last_frame, nframes)
+        for i, frame in enumerate(samples):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame)
+            ret, frame = cap.read()
+
+            collection[i] = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        cap.release()
+
+        proj = np.median(collection, axis=0)
+
+        return proj
 
 
 
