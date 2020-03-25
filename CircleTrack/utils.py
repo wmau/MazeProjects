@@ -14,6 +14,7 @@ from shutil import copyfile
 import cv2
 import re
 from Miniscope import project_image
+from skimage.feature import register_translation
 
 def make_pattern_dict():
     """
@@ -204,8 +205,10 @@ class SessionStitcher:
 
         self.merge_timestamp_files()
 
-        self.stitch('miniscope')
         self.stitch('behavior')
+        self.stitch('miniscope')
+
+        concat_avis(self.stitched_folder, pattern=self.file_patterns['behavior'])
 
 
     def merge_timestamp_files(self):
@@ -235,15 +238,14 @@ class SessionStitcher:
 
     def stitch(self, camera):
         if camera == 'behavior':
-            crop = self.find_smallest_dims()
-        else:
-            crop=None
+            self.shifts, self.behav_dims = self.align_projections()
 
         self.copy_files(self.folder_list[0], camera=camera,
-                        second=False, crop=crop)
-        self.make_missing_video(camera=camera, crop=crop)
+                        second=False)
+        self.make_missing_video(camera=camera)
         self.copy_files(self.folder_list[1], camera=camera,
-                        second=True, crop=crop)
+                        second=True)
+
 
     def make_missing_timestamps(self, df):
         """
@@ -382,8 +384,7 @@ class SessionStitcher:
         return files
 
 
-    def copy_files(self, source, camera, second=False,
-                   crop=None):
+    def copy_files(self, source, camera, second=False):
         """
         Copy video files. Renumber if needed.
 
@@ -403,10 +404,11 @@ class SessionStitcher:
         # Find the pattern associated with that video file.
         pattern = self.file_patterns[camera]
         files = self.get_files(source, pattern)
+        do_shift = True if second else False
 
         if camera == 'behavior':
             fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-            size = tuple(crop[::-1])
+            size = self.behav_dims[::-1]
 
         for file in files:
             fname = os.path.split(file)[-1]
@@ -436,17 +438,17 @@ class SessionStitcher:
                         ret, frame = cap.read()
 
                         if ret:
-                            if crop is not None:
-                                frame = frame[:crop[0], :crop[1]]
+                            frame = frame[:self.common_dims[0], :self.common_dims[1]]
+                            final_frame = self.correct_frame(frame, do_shift=do_shift)
 
-                            writer.write(frame)
+                            writer.write(final_frame)
                         else:
                             break
 
                     writer.release()
 
 
-    def make_missing_video(self, camera, crop=None):
+    def make_missing_video(self, camera):
         pattern = self.file_patterns[camera]
         files = self.get_files(self.folder_list[0], pattern)
         last_video = os.path.join(self.stitched_folder, os.path.split(files[-1])[-1])
@@ -492,13 +494,16 @@ class SessionStitcher:
         return np.min(shapes, axis=0)[:2]
 
 
-    def median_projection(self, video_path, nframes=10):
+    def median_projection(self, video_path, nframes=100, crop=None):
         cap = cv2.VideoCapture(video_path)
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
-        ret, frame = cap.read()
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        h, w = frame.shape
+        if crop is not None:
+            h, w = crop
+        else:
+            ret, frame = cap.read()
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            h, w = frame.shape
         last_frame = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         collection = np.zeros((nframes, h, w))
@@ -507,7 +512,12 @@ class SessionStitcher:
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame)
             ret, frame = cap.read()
 
-            collection[i] = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+            if crop is not None:
+                collection[i] = gray[:crop[0], :crop[1]]
+            else:
+                collection[i] = gray
 
         cap.release()
 
@@ -516,6 +526,48 @@ class SessionStitcher:
         return proj
 
 
+    def align_projections(self, nframes=100):
+        self.common_dims = self.find_smallest_dims()
+        videos = [self.get_files(folder, self.file_patterns['behavior'])[i]
+                  for folder, i in zip(self.folder_list, [-1, 0])]
+
+        projs = []
+        for video in videos:
+            projs.append(self.median_projection(video, nframes=nframes,
+                                                crop=self.common_dims))
+
+        shifts= register_translation(projs[0], projs[1],
+                                     return_error=False)
+        self.shifts = shifts.astype(int)
+
+        shifted = self.correct_frame(projs[1], do_shift=True)
+        new_dims = shifted.shape
+
+        return self.shifts, new_dims
+
+
+    def correct_frame(self, img, do_shift=True):
+        if do_shift:
+            shifted = np.roll(img, self.shifts, (0,1))
+        else:
+            shifted = img
+        final = self.trim(shifted)
+
+        return final
+
+
+    def trim(self, img):
+        for i, shift in enumerate(self.shifts):
+            if shift > 0:
+                to_delete = np.arange(0, shift + 1)
+            elif shift == 0:
+                to_delete = []
+            else:
+                to_delete = np.arange(-shift, 0)
+
+            img = np.delete(img, to_delete, axis=i)
+
+        return img
 
 if __name__ == '__main__':
     folder_list = [r'Z:\Will\Lingxuan_CircleTrack\03_05_2020\H15_M20_S43',
