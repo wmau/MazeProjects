@@ -254,6 +254,15 @@ class SessionStitcher:
 
 
     def stitch(self, camera):
+        """
+        Copy session half #1, fill in missing values, copy session
+        half #2.
+
+        :parameter
+        ---
+        camera: str
+            'behavior' or 'miniscope'.
+        """
         if camera == 'behavior':
             self.shifts, self.behav_dims = self.align_projections()
 
@@ -272,6 +281,11 @@ class SessionStitcher:
         ---
         df: DataFrame
             DataFrame from first session.
+
+        :return
+        ---
+        data: DataFrame
+            Missing data buffer.
         """
         # Define the cameras. We can loop through these to shorten the code.
         cameras = ['miniscope', 'behavior']
@@ -325,6 +339,11 @@ class SessionStitcher:
         df2: DataFrame
             DataFrame from the second session.
 
+        :return
+        ---
+        df2: DataFrame
+            Timeshifted DataFrame.
+
         """
         cameras = ['miniscope', 'behavior']
 
@@ -352,6 +371,15 @@ class SessionStitcher:
 
 
     def calculate_missing_frames(self):
+        """
+        Calculate the number of missing frames by taking the difference
+        between recorded and ideal number of frames.
+
+        :return
+        ---
+        missing_data_frames: int
+            Number of missing frames.
+        """
         # First, determine the number of missing frames.
         # Read the timestmap.dat files.
         timestamp_files = [os.path.join(folder, 'timestamp.dat')
@@ -375,6 +403,13 @@ class SessionStitcher:
 
 
     def make_stitched_folder(self):
+        """
+        Makes the folder containing the merged files.
+
+        :return:
+        ---
+        folder_name: str
+        """
         folder_name = self.folder_list[0] +  '_stitched'
         try:
             print(f'Creating new directory called {folder_name}.')
@@ -396,6 +431,11 @@ class SessionStitcher:
 
         pattern: regexp str
             For example, 'msCam*.avi'.
+
+        :return
+        ---
+        files: list
+            List of files matching that pattern.
         """
         files = natsorted([str(file) for file in Path(folder).rglob(pattern)])
 
@@ -467,12 +507,26 @@ class SessionStitcher:
 
 
     def make_missing_video(self, camera):
+        """
+        Makes the avi file with the missing data (duration of time
+        between the crash and getting the data stream started again).
+        Currently this writes the last frame before the crash into
+        the missing data.
+
+        :parameters
+        ---
+        camera: str
+            'miniscope' or 'behavior'.
+        """
+        # Find the filename of the last video before the crash.
+        # The missing data video will use the next number.
         pattern = self.file_patterns[camera]
         files = self.get_files(self.folder_list[0], pattern)
         last_video = os.path.join(self.stitched_folder, os.path.split(files[-1])[-1])
         last_number = int(re.findall(r'\d+', os.path.split(last_video)[-1])[0])
         self.last_number = last_number + 1
 
+        # Video writing properties.
         cap = cv2.VideoCapture(last_video)
         size = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), \
                int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -486,6 +540,7 @@ class SessionStitcher:
             video = cv2.VideoWriter(full_path, fourcc,
                                     float(self.fps), size)
 
+            # Read the last frame of the last video.
             cap.set(1, cap.get(7)-1)
             ret, frame = cap.read()
 
@@ -500,9 +555,26 @@ class SessionStitcher:
 
 
     def find_smallest_dims(self):
-        videos = [self.get_files(folder, self.file_patterns['behavior'])[i]
-                  for folder, i in zip(self.folder_list, [-1, 0])]
+        """
+        In order to merge the behavior videos, we must first crop
+        and align the two halves of the session. Since the DAQ software
+        requires cropping of the behavior camera FOV, it's hard to get
+        the exact crop right for both before and after the crash.
+        This function finds the dimension sizes that will accommodate
+        both recordings. Then we can use those dimensions to crop
+        and align the two halves.
 
+        :return
+        ---
+        dims: [h,w] list
+            Smallest dimensions for both height and width for the
+            two session halves.
+
+        """
+        videos = [self.get_files(folder, self.file_patterns['behavior'])[0]
+                  for folder in self.folder_list]
+
+        # Get the frame size for two videos.
         shapes = []
         for video in videos:
             cap = cv2.VideoCapture(video)
@@ -513,6 +585,29 @@ class SessionStitcher:
 
 
     def median_projection(self, video_path, nframes=100, crop=None):
+        """
+        We will shift each frame in the second half based on a
+        cross correlation between their median projections. This
+        function calculates the median projection for one video in
+        each half.
+
+        :parameters
+        ---
+        video_path: str
+            Path to a video, including file name.
+
+        nframes: int
+            Number of frames to subsample to compute median projection.
+
+        crop: (row, col) tuple or None
+            Usually will be the smallest dimension sizes that accommodate
+            both videos. Get this from self.find_smallest_dims().
+
+        :return
+        ---
+        proj: (h,w) array
+            Median projection.
+        """
         cap = cv2.VideoCapture(video_path)
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
@@ -545,19 +640,40 @@ class SessionStitcher:
 
 
     def align_projections(self, nframes=100):
+        """
+        Compute the optimal (row, col) translation to align the two
+        session halves. Also crops out the strips of the frame that
+        get translated.
+
+        :parameter
+        ---
+        nframes: int
+            Number of frames to subsample to compute median projection.
+
+        :return
+        ---
+        self.shifts: (x, y) tuple
+            Optimal shifts.
+
+        new_dims: (h, w) tuple
+            New dimensions after cropping away the translated regions.
+        """
         self.common_dims = self.find_smallest_dims()
         videos = [self.get_files(folder, self.file_patterns['behavior'])[i]
                   for folder, i in zip(self.folder_list, [-1, 0])]
 
+        # Get median projections.
         projs = []
         for video in videos:
             projs.append(self.median_projection(video, nframes=nframes,
                                                 crop=self.common_dims))
 
+        # Get optimal shifts.
         shifts= register_translation(projs[0], projs[1],
                                      return_error=False)
         self.shifts = shifts.astype(int)
 
+        # Shift and compute new dimension size.
         shifted = self.correct_frame(projs[1], do_shift=True)
         new_dims = shifted.shape
 
@@ -565,6 +681,19 @@ class SessionStitcher:
 
 
     def correct_frame(self, img, do_shift=True):
+        """
+        Crops frame to appropriate size, also aligns the image if
+        applicable (session half #2).
+
+        :parameters
+        ---
+        img: (h, w) array
+            Image to align and/or crop.
+
+        do_shift: boolean
+            Whether to do the alignment. Only do this for session
+            half #2.
+        """
         if do_shift:
             shifted = np.roll(img, self.shifts, (0,1))
         else:
@@ -575,6 +704,15 @@ class SessionStitcher:
 
 
     def trim(self, img):
+        """
+        Crops the image to the size that remains after alignment
+        and cropping.
+
+        :parameter
+        ---
+        img: (h, w) array
+            Image to crop.
+        """
         for i, shift in enumerate(self.shifts):
             if shift > 0:
                 to_delete = np.arange(0, shift + 1)
