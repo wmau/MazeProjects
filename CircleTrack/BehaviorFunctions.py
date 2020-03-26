@@ -688,7 +688,7 @@ def blocked_approach_speeds(approaches, blocks=4, plot=True, ax=None,
 
 
 class Preprocess:
-    def __init__(self, folder=None, sync_mode='frame',
+    def __init__(self, folder=None, sync_mode='timestamp',
                  behav_cam=2, miniscope_cam=6):
         """
         Preprocesses behavior data by specifying a session folder.
