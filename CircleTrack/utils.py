@@ -171,9 +171,11 @@ def get_session_folders(mouse_folder: str):
 
 
 class SessionStitcher:
-    def __init__(self, folder_list, recording_duration=20,
+    def __init__(self, folder_list,
+                 recording_duration=20,
                  miniscope_cam=6, behav_cam=2,
-                 fps=30, miniscope_pattern='msCam*.avi',
+                 fps=30,
+                 miniscope_pattern='msCam*.avi',
                  behavior_pattern='behavCam*.avi'):
         """
         Combine recording folders that were split as a result of
@@ -201,14 +203,29 @@ class SessionStitcher:
 
         # Find out how many frames are missing.
         self.missing_frames = self.calculate_missing_frames()
+        print(f'Estimated missing frames: {int(self.missing_frames)} or '
+              f'{np.round(self.missing_frames/30,2)} seconds.')
         self.stitched_folder = self.make_stitched_folder()
 
+        print('MERGING TIMESTAMP FILES.')
         self.merge_timestamp_files()
+        print('DONE.')
 
+        print('MERGING BEHAVIOR VIDEOS')
+        print('If interrupted, delete the last video file in the folder.')
         self.stitch('behavior')
-        self.stitch('miniscope')
+        print('DONE.')
 
+        print('MERGING MINISCOPE VIDEOS')
+        print('If interrupted, delete the last video file in the folder')
+        self.stitch('miniscope')
+        print('DONE.')
+
+        print('CONCATENATING BEHAVIOR VIDEOS')
+        print('If interrupted, delete "Merged.avi".')
         concat_avis(self.stitched_folder, pattern=self.file_patterns['behavior'])
+
+        print('ALL PROCESSES COMPLETED.')
 
 
     def merge_timestamp_files(self):
@@ -360,6 +377,7 @@ class SessionStitcher:
     def make_stitched_folder(self):
         folder_name = self.folder_list[0] +  '_stitched'
         try:
+            print(f'Creating new directory called {folder_name}.')
             os.mkdir(folder_name)
         except:
             print(f'{folder_name} already exists.')
