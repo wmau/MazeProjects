@@ -384,20 +384,21 @@ class SessionStitcher:
         # Read the timestmap.dat files.
         timestamp_files = [os.path.join(folder, 'timestamp.dat')
                            for folder in self.folder_list]
-        self.last_frames = []
+        self.last_timestamps = []
 
         # Get the total number of frames for both session
         # folders.
         for file in timestamp_files:
             df = pd.read_csv(file, sep="\s+")
 
-            self.last_frames.append(df.loc[df.camNum==self.camNum['miniscope'],
-                                           'frameNum'].iloc[-1])
+            self.last_timestamps.append(df.loc[df.camNum == self.camNum['miniscope'],
+                                               'sysClock'].iloc[-1])
 
         # Calculate the discrepancy.
-        recorded_frames = np.sum(self.last_frames)
-        ideal_frames = self.recording_duration*60*self.fps
-        missing_data_frames = ideal_frames - recorded_frames
+        recorded_duration_s = np.sum(self.last_timestamps)/1000
+        ideal_duration_s = self.recording_duration*60
+        difference = ideal_duration_s - recorded_duration_s
+        missing_data_frames = np.round(difference*self.fps).astype(int)
 
         return missing_data_frames
 
@@ -728,4 +729,4 @@ class SessionStitcher:
 if __name__ == '__main__':
     folder_list = [r'Z:\Will\Lingxuan_CircleTrack\03_05_2020\H15_M20_S43',
                    r'Z:\Will\Lingxuan_CircleTrack\03_05_2020\H15_M24_S58']
-    SessionStitcher(folder_list)
+    SessionStitcher(folder_list, recording_duration=15)
