@@ -172,7 +172,7 @@ def get_session_folders(mouse_folder: str):
 
 class SessionStitcher:
     def __init__(self, folder_list,
-                 recording_duration=20,
+                 recording_duration,
                  miniscope_cam=6, behav_cam=2,
                  fps=30,
                  miniscope_pattern='msCam*.avi',
