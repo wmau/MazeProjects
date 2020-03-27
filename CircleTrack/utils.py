@@ -391,8 +391,7 @@ class SessionStitcher:
         for file in timestamp_files:
             df = pd.read_csv(file, sep="\s+")
 
-            self.last_timestamps.append(df.loc[df.camNum == self.camNum['miniscope'],
-                                               'sysClock'].iloc[-1])
+            self.last_timestamps.append(df.sysClock.iloc[-1])
 
         # Calculate the discrepancy.
         recorded_duration_s = np.sum(self.last_timestamps)/1000
