@@ -2,8 +2,8 @@ import os
 import numpy as np
 import pandas as pd
 from matplotlib.animation import FFMpegWriter
-from LickArduino import clean_Arduino_output
-from util import read_eztrack, find_closest, ScrollPlot, disp_frame, \
+from CaImaging.LickArduino import clean_Arduino_output
+from CaImaging.util import read_eztrack, find_closest, ScrollPlot, disp_frame, \
     consecutive_dist, sync_cameras, nan_array
 from scipy.stats import zscore
 from scipy.stats import norm
@@ -1141,10 +1141,10 @@ class Session:
 
         return sdt
 
-    def SDT(self, trial_blocks=4):
+    def SDT(self, trial_blocks=4, plot=False):
         """ returns a dict with d-prime measures given hits, misses, false alarms, and correct rejections"""
         # Floors an ceilings are replaced by half hits and half FA's
-        sdt = self.sdt_trials(blocks=trial_blocks)
+        sdt = self.sdt_trials(blocks=trial_blocks, plot=plot)
         Z = norm.ppf
 
         d_prime = []
@@ -1184,31 +1184,33 @@ if __name__ == '__main__':
     #data = Session(folder)
     #data.plot_licks()
 
-    # from CircleTrack.sql import Database
-    # with Database() as db:
-    #     mouse_id = db.conditional_query('mouse', 'id', 'name', 'Mouse4')[0]
-    #     paths = db.conditional_query('session', 'path', 'mouse_id', mouse_id)
-    #
-    # d = []
-    # for path in paths:
-    #     data = Session(path)
-    #     d.append(data.SDT())
-    #
-    # plt.plot(d[16:], '.-')
-    # for x in np.arange(3.5, 11.5, 4):
-    #     plt.axvline(x=x, color='r')
-    # for x in np.arange(11.5, 18.5, 4):
-    #     plt.axvline(x=x, color='magenta')
-    #
-    # plt.ylabel('d prime')
-    # plt.xlabel('Days')
-    # plt.xlim([-0.5, 19.5])
-    # labels = np.arange(1, 6)
-    # positions = np.arange(1.5, 21.5, 4)
-    # plt.xticks(positions, labels)
+    from CircleTrack.sql import Database
+    with Database() as db:
+        mouse_id = db.conditional_query('mouse', 'id', 'name', 'Mouse4')[0]
+        paths = db.conditional_query('session', 'path', 'mouse_id', mouse_id)
 
-    folder = r'D:\Projects\CircleTrack\Mouse5\02_04_2020\H13_M48_S6'
-    data = Session(folder)
-    data.plot_licks()
+    d = []
+    for path in paths:
+        data = Session(path)
+        d.extend(data.SDT(plot=False))
+
+    plt.plot(d[16:], '.-')
+    for x in np.arange(3.5, 11.5, 4):
+        plt.axvline(x=x, color='r')
+    for x in np.arange(11.5, 18.5, 4):
+        plt.axvline(x=x, color='magenta')
+
+    plt.text(3.6, -1, 'Context1', rotation=45, color='r')
+    plt.text(11.6, -1, 'Context2', rotation=45, color='magenta')
+    plt.ylabel('d prime')
+    plt.xlabel('Days')
+    plt.xlim([-0.5, 19.5])
+    labels = np.arange(1, 6)
+    positions = np.arange(1.5, 21.5, 4)
+    plt.xticks(positions, labels)
+
+    # folder = r'D:\Projects\CircleTrack\Mouse5\02_04_2020\H13_M48_S6'
+    # data = Session(folder)
+    # data.plot_licks()
 
     pass

@@ -1,5 +1,5 @@
 import os
-from util import get_data_paths, concat_avis, nan_array
+from CaImaging.util import get_data_paths, concat_avis, nan_array
 import numpy as np
 import matplotlib.pyplot as plt
 import tkinter as tk
@@ -7,13 +7,13 @@ tkroot = tk.Tk()
 tkroot.withdraw()
 from tkinter import filedialog
 from pathlib import Path
-from Behavior import convert_dlc_to_eztrack
+from CaImaging.Behavior import convert_dlc_to_eztrack
 import pandas as pd
 from natsort import natsorted
 from shutil import copyfile
 import cv2
 import re
-from Miniscope import project_image
+from CaImaging.Miniscope import project_image
 from skimage.feature import register_translation
 
 def make_pattern_dict():
@@ -181,7 +181,7 @@ class SessionStitcher:
         Combine recording folders that were split as a result of
         the DAQ software crashing. Approach: In a new folder, copy
         all the miniscope files from the first folder, then add a
-        file with empty frames that accounts for the time it took
+        file with junk frames that accounts for the time it took
         to reconnect. Then copy all the files from the second folder.
         For the behavior, do the same thing but merge them into one
         file.
