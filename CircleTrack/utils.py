@@ -175,22 +175,55 @@ def get_session_folders(mouse_folder: str):
 def sync(folder, csv_fname='PreprocessedBehavior.csv',
          timestamp_fname='timestamp.dat', miniscope_cam=5,
          behav_cam=1):
+    """
+    Synchronizes minian and behavior files. Does specific correction
+    for circle track data. The regular sync_data function downsamples
+    the behavior data to match the minian data. However, lick and
+    water delivery frames must not be skipped, so we mark the next
+    closest frame post-hoc.
+
+    :parameters
+    ---
+    folder: str
+        Path containing all the necessary data files:
+            -Behavior csv
+            -timestamp.dat
+            -minian folder
+
+    csv_fname: str
+        File name of the Preprocess() csv.
+
+    timestamp_fname: str
+        File name of the timestamp file (default from Miniscope
+        DAQ is timsetamp.dat).
+
+    miniscope_cam: int
+        Camera number corresponding to the miniscope.
+
+    behav_cam: int
+        Camera number corresponding to the behavior camera.
+    """
+    # Check files.
     csv = os.path.join(folder, csv_fname)
     assert os.path.isfile(csv), FileNotFoundError('Run Preprocess first.')
 
     timestamp = os.path.join(folder, timestamp_fname)
     assert os.path.isfile(timestamp), FileNotFoundError(f'{timestamp} missing.')
 
+    # Sync data by downsampling behavior.
     synced, minian, behavior = sync_data(csv, folder, timestamp,
                                          miniscope_cam=miniscope_cam,
                                          behav_cam=behav_cam)
 
+    # Find all water delivery frames and relocate them to the
+    # next closest frame that survived downsample.
     water_frames = behavior.frame.loc[behavior.water]
     synced_frames = synced.frame
     for frame in water_frames:
         matching_frame = find_closest(synced_frames, frame, sorted=True)[0]
         synced.loc[matching_frame, 'water'] = True
 
+    # Do the same to lick frames. 
     lick_frames = behavior.frame.loc[behavior.lick_port > -1]
     ports = behavior.lick_port.loc[behavior.lick_port > -1]
     for port, frame in zip(ports, lick_frames):
