@@ -1,5 +1,5 @@
 import os
-from CaImaging.util import get_data_paths, concat_avis, nan_array
+from CaImaging.util import get_data_paths, concat_avis, sync_data, find_closest
 import numpy as np
 import matplotlib.pyplot as plt
 import tkinter as tk
@@ -15,6 +15,8 @@ import cv2
 import re
 from CaImaging.Miniscope import project_image
 from skimage.feature import register_translation
+from CircleTrack.sql import Database
+
 
 def make_pattern_dict():
     """
@@ -168,6 +170,34 @@ def get_session_folders(mouse_folder: str):
     folders = [folder for folder in Path(mouse_folder).rglob('H??_M*_S??')]
 
     return folders
+
+
+def sync(folder, csv_fname='PreprocessedBehavior.csv',
+         timestamp_fname='timestamp.dat', miniscope_cam=5,
+         behav_cam=1):
+    csv = os.path.join(folder, csv_fname)
+    assert os.path.isfile(csv), FileNotFoundError('Run Preprocess first.')
+
+    timestamp = os.path.join(folder, timestamp_fname)
+    assert os.path.isfile(timestamp), FileNotFoundError(f'{timestamp} missing.')
+
+    synced, minian, behavior = sync_data(csv, folder, timestamp,
+                                         miniscope_cam=miniscope_cam,
+                                         behav_cam=behav_cam)
+
+    water_frames = behavior.frame.loc[behavior.water]
+    synced_frames = synced.frame
+    for frame in water_frames:
+        matching_frame = find_closest(synced_frames, frame, sorted=True)[0]
+        synced.loc[matching_frame, 'water'] = True
+
+    lick_frames = behavior.frame.loc[behavior.lick_port > -1]
+    ports = behavior.lick_port.loc[behavior.lick_port > -1]
+    for port, frame in zip(ports, lick_frames):
+        matching_frame = find_closest(synced_frames, frame, sorted=True)[0]
+        synced.loc[matching_frame, 'lick_port'] = port
+
+    return synced, minian, behavior
 
 
 class SessionStitcher:
@@ -725,7 +755,9 @@ class SessionStitcher:
 
         return img
 
+
+
+
 if __name__ == '__main__':
-    folder_list = [r'Z:\Will\Lingxuan_CircleTrack\03_05_2020\H15_M20_S43',
-                   r'Z:\Will\Lingxuan_CircleTrack\03_05_2020\H15_M24_S58']
-    SessionStitcher(folder_list, recording_duration=15)
+    folder = r'Z:\Will\Lingxuan_CircleTrack\G02\03_12_2020\H15_M39_S55'
+    sync(folder)
