@@ -3,8 +3,9 @@ import numpy as np
 import pandas as pd
 from matplotlib.animation import FFMpegWriter
 from CaImaging.LickArduino import clean_Arduino_output
-from CaImaging.util import read_eztrack, find_closest, ScrollPlot, disp_frame, \
+from CaImaging.util import find_closest, ScrollPlot, disp_frame, \
     consecutive_dist, sync_cameras, nan_array
+from CaImaging.Behavior import read_eztrack
 from scipy.stats import zscore
 from scipy.stats import norm
 import matplotlib.pyplot as plt
