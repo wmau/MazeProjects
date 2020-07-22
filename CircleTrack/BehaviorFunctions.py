@@ -5,12 +5,13 @@ from matplotlib.animation import FFMpegWriter
 from CaImaging.LickArduino import clean_Arduino_output
 from CaImaging.util import find_closest, ScrollPlot, disp_frame, \
     consecutive_dist, sync_cameras, nan_array
-from CaImaging.Behavior import read_eztrack
+from CaImaging.Behavior import read_eztrack, convert_dlc_to_eztrack
 from scipy.stats import zscore
 from scipy.stats import norm
 import matplotlib.pyplot as plt
 import cv2
-from CircleTrack.utils import circle_sizes, cart2pol, grab_paths, convert_dlc_to_eztrack
+from CircleTrack.utils import circle_sizes, cart2pol
+from util import grab_paths
 import tkinter as tk
 tkroot = tk.Tk()
 tkroot.withdraw()
@@ -114,8 +115,8 @@ def make_tracking_video(vid_path, preprocessed=True, csv_path=None,
             plt.cla()
 
 
-def sync_Arduino_outputs(Arduino_fpath, behavior_fpath, behav_cam=2,
-                         miniscope_cam=6, sync_mode='timestamp'):
+def sync_Arduino_outputs(Arduino_fpath, behavior_fpath, behav_cam=0,
+                         miniscope_cam=1, sync_mode='timestamp'):
     """
     This function is meant to be used in conjunction with the above
     functions and Miniscope software recordings. Miniscope software
@@ -177,18 +178,22 @@ def sync_Arduino_outputs(Arduino_fpath, behavior_fpath, behav_cam=2,
         else:
             raise ValueError('sync_mode must be "timestamp" or "frame"')
 
-        if behav_frame >= nframes or not behav_frame:
-            continue
-
+        # Handles edge cases where multiple frames correspond to lick timestamp.
         if not isinstance(behav_frame, (int, float, np.int64)):
             behav_frame = behav_frame[0]
+
+        # Ignore if lick timestamp exceeds recorded frames.
+        if behav_frame >= nframes or not behav_frame:
+            continue
 
         val = row.Data
         behavior_df.at[behav_frame, 'lick_port'] = val
         if val == -1 or val == 'Water':
             behavior_df.at[behav_frame, 'water'] = True
 
+    # Not sure what this is for tbh.
     behavior_df.loc[behavior_df['lick_port'] == 'Water', 'lick_port'] = -1
+
     behavior_df = behavior_df.astype({'frame': int,
                                       'water': bool,
                                       'lick_port': int})
@@ -1177,6 +1182,27 @@ class Session:
         return self.d_prime
 
 
+def dlc_to_csv(folder: str):
+    """
+    Finds the DLC output file and converts it to csv, mirroring
+    the format of ezTrack outputs.
+
+    :parameter
+    ---
+    folder: str
+        Directory containing DLC output file (h5).
+
+    :return
+    ---
+    data: DataFrame
+        DLC data.
+    """
+    paths = grab_paths(folder)
+    data = convert_dlc_to_eztrack(paths['DLC'])[0]
+
+    return data
+
+
 if __name__ == '__main__':
     #folder = r'D:\Projects\CircleTrack\Mouse4\01_30_2020\H16_M50_S22'
     # folder = r'D:\Projects\CircleTrack\Mouse4\02_01_2020\H15_M37_S17'
@@ -1185,33 +1211,39 @@ if __name__ == '__main__':
     #data = Session(folder)
     #data.plot_licks()
 
-    from CircleTrack.sql import Database
-    with Database() as db:
-        mouse_id = db.conditional_query('mouse', 'id', 'name', 'Mouse4')[0]
-        paths = db.conditional_query('session', 'path', 'mouse_id', mouse_id)
-
-    d = []
-    for path in paths:
-        data = Session(path)
-        d.extend(data.SDT(plot=False))
-
-    plt.plot(d[16:], '.-')
-    for x in np.arange(3.5, 11.5, 4):
-        plt.axvline(x=x, color='r')
-    for x in np.arange(11.5, 18.5, 4):
-        plt.axvline(x=x, color='magenta')
-
-    plt.text(3.6, -1, 'Context1', rotation=45, color='r')
-    plt.text(11.6, -1, 'Context2', rotation=45, color='magenta')
-    plt.ylabel('d prime')
-    plt.xlabel('Days')
-    plt.xlim([-0.5, 19.5])
-    labels = np.arange(1, 6)
-    positions = np.arange(1.5, 21.5, 4)
-    plt.xticks(positions, labels)
+    # from CircleTrack.sql import Database
+    # with Database() as db:
+    #     mouse_id = db.conditional_query('mouse', 'id', 'name', 'Mouse4')[0]
+    #     paths = db.conditional_query('session', 'path', 'mouse_id', mouse_id)
+    #
+    # d = []
+    # for path in paths:
+    #     data = Session(path)
+    #     d.extend(data.SDT(plot=False))
+    #
+    # plt.plot(d[16:], '.-')
+    # for x in np.arange(3.5, 11.5, 4):
+    #     plt.axvline(x=x, color='r')
+    # for x in np.arange(11.5, 18.5, 4):
+    #     plt.axvline(x=x, color='magenta')
+    #
+    # plt.text(3.6, -1, 'Context1', rotation=45, color='r')
+    # plt.text(11.6, -1, 'Context2', rotation=45, color='magenta')
+    # plt.ylabel('d prime')
+    # plt.xlabel('Days')
+    # plt.xlim([-0.5, 19.5])
+    # labels = np.arange(1, 6)
+    # positions = np.arange(1.5, 21.5, 4)
+    # plt.xticks(positions, labels)
 
     # folder = r'D:\Projects\CircleTrack\Mouse5\02_04_2020\H13_M48_S6'
     # data = Session(folder)
     # data.plot_licks()
 
+    folder = r'C:\Users\wm228\Documents\GitHub\Miniscope_DAQ_Software\x64\Release\data\7_22_2020\H11_M12_S16'
+    P = Preprocess(folder, miniscope_cam=1, behav_cam=0,
+                   sync_mode='frame')
+
     pass
+
+

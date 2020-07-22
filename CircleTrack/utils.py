@@ -1,43 +1,17 @@
 import os
-from CaImaging.util import get_data_paths, concat_avis, sync_data, find_closest
+from CaImaging.util import concat_avis, sync_data, find_closest
 import numpy as np
-import matplotlib.pyplot as plt
 import tkinter as tk
+
 tkroot = tk.Tk()
 tkroot.withdraw()
-from tkinter import filedialog
 from pathlib import Path
-from CaImaging.Behavior import convert_dlc_to_eztrack
 import pandas as pd
 from natsort import natsorted
 from shutil import copyfile
 import cv2
 import re
-from CaImaging.Miniscope import project_image
 from skimage.feature import register_translation
-from CircleTrack.sql import Database
-
-
-def make_pattern_dict():
-    """
-    Makes the dictionary that tells get_data_paths() where each data
-    file lives.
-
-    :return:
-    ---
-    pattern_dict: dict
-        Dictionary where fields are
-    """
-    pattern_dict = {
-        'Arduino': 'H??_M??_S??.???? ????.txt',
-        'BehaviorVideo': 'Merged.avi',
-        'DLC': '*DLC_*_circletrack*_*.h5',
-        'BehaviorData': '*_LocationOutput.csv',
-        'settings': 'settings_and_notes.dat',
-        'timestamps': 'timestamp.dat'
-    }
-
-    return pattern_dict
 
 
 def circle_sizes(x, y):
@@ -63,23 +37,6 @@ def circle_sizes(x, y):
     center = [np.mean(x_extrema), np.mean(y_extrema)]
 
     return (width, height, radius, center)
-
-
-def grab_paths(session_folder=None):
-    """
-    Get the data paths for a session folder.
-
-    :param session_folder:
-    :return:
-    """
-    pattern_dict = make_pattern_dict()
-
-    if session_folder is None:
-        session_folder = filedialog.askdirectory()
-
-    paths = get_data_paths(session_folder, pattern_dict)
-
-    return paths
 
 
 def cart2pol(x, y):
@@ -129,28 +86,6 @@ def batch_concat_avis(mouse_folder):
                             fname='Merged.avi', fps=30)
             except:
                 print(f'Failed to create {merged_file}')
-
-
-
-def dlc_to_csv(folder: str):
-    """
-    Finds the DLC output file and converts it to csv, mirroring
-    the format of ezTrack outputs.
-
-    :parameter
-    ---
-    folder: str
-        Directory containing DLC output file (h5).
-
-    :return
-    ---
-    data: DataFrame
-        DLC data.
-    """
-    paths = grab_paths(folder)
-    data = convert_dlc_to_eztrack(paths['DLC'])
-
-    return data
 
 
 def get_session_folders(mouse_folder: str):
