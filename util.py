@@ -67,33 +67,44 @@ class Metadata_CSV:
             self.project_folder = filedialog.askdirectory()
         else:
             self.project_folder = folder
+        self.filename = filename
         self.path_levels = {'mouse': mouse,
                             'date': date,
                             'session': session,
                             }
 
-        self.session_folders = self.get_all_sessions()
-        self.files_per_folder = [grab_paths(folder)
-                                 for folder in self.session_folders]
+        try:
+            self.df = pd.read_csv(os.path.join(self.project_folder,
+                                               filename))
 
-        master_dict = {
-            'Mouse': self.get_metadata('mouse'),
-            'Group': None,
-            'Session': self.get_metadata('date'),
-            'Path': self.session_folders,
-            'CellRegPath': None,
-            'MiniscopeCam': None,
-            'BehaviorCam': None,
-            'BehaviorVideo': [files['BehaviorVideo']
-                              for files in self.files_per_folder],
-            'Timestamps': [files['timestamps']
-                           for files in self.files_per_folder],
-            'BehaviorData': self.resolve_behavior_data()
-                       }
+        except:
+            self.session_folders = self.get_all_sessions()
+            self.files_per_folder = [grab_paths(folder)
+                                     for folder in self.session_folders]
 
-        df = pd.DataFrame(master_dict)
-        df.to_csv(os.path.join(self.project_folder, filename),
-                  index=False)
+            master_dict = {
+                'Mouse': self.get_metadata('mouse'),
+                'Group': None,
+                'Session': self.get_metadata('date'),
+                'Path': self.session_folders,
+                'CellRegPath': None,
+                'MiniscopeCam': None,
+                'BehaviorCam': None,
+                'BehaviorVideo': [files['BehaviorVideo']
+                                  for files in self.files_per_folder],
+                'Timestamps': [files['timestamps']
+                               for files in self.files_per_folder],
+                'BehaviorData': self.resolve_behavior_data()
+                           }
+
+            self.df = pd.DataFrame(master_dict)
+            self.save()
+
+
+
+    def save(self):
+        self.df.to_csv(os.path.join(self.project_folder,
+                                    self.filename), index=False)
 
     def get_all_sessions(self):
         session_folders = [folder for folder in
@@ -144,9 +155,24 @@ class Metadata_CSV:
         return behavior_files
 
 
+    def update(self, session_folder):
+        idx = self.df['Path'] == session_folder
+        entry_match = self.df.loc[idx]
+
+        new_paths = grab_paths(entry_match['Path'].values[0])
+
+        try:
+            behavior_path = convert_dlc_to_eztrack(new_paths['DLC'])[1]
+        except:
+            behavior_path =  new_paths['BehaviorData']
+
+        self.df.loc[idx, 'BehaviorData'] = behavior_path
+
+        self.save()
 
 if __name__ == '__main__':
-    project_folder = r'Z:\Will\Drift\Pilots'
-    Metadata_CSV(project_folder)
+    project_folder = r'Z:\Will\Drift\Data'
+    M = Metadata_CSV(project_folder)
+    M.update(r'Z:\Will\Drift\Data\M1\07_11_2020_TMazeFreeChoice1\H14_M46_S13')
 
 

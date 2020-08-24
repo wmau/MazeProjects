@@ -38,7 +38,7 @@ class Preprocess:
         self.camera_numbers = {'miniscope': int(entry_match['MiniscopeCam']),
                                'behavior': int(entry_match['BehaviorCam'])}
         keys = ['BehaviorVideo', 'Timestamps', 'BehaviorData']
-        self.paths = {key: str(entry_match[key].iloc[-1])
+        self.paths = {key: entry_match[key].values[0]
                       for key in keys}
         self.paths['PreprocessedBehavior'] = \
             os.path.join(self.folder, 'PreprocessedBehavior.csv')
