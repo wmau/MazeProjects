@@ -409,7 +409,7 @@ def find_rewarded_ports(behavior_df):
     water_delivered = np.asarray(
         [np.sum(behavior_df.loc[one_before, 'lick_port'] == i)
          for i in range(8)])
-    rewarded_ports = np.where(water_delivered > np.std(water_delivered))[0]
+    rewarded_ports = np.where(water_delivered > 0.2*np.std(water_delivered))[0]
 
     return rewarded_ports
 
@@ -1106,13 +1106,25 @@ class Session:
             ax.set_xlabel('Water port #')
             ax.set_ylabel('Trial')
 
-        return np.asarray(all_licks)
+        self.all_licks = np.asarray(all_licks)
+
+        return self.all_licks
 
 
     def plot_licks(self):
-        all_licks = self.get_licks(plot=False)
+        """
+        Plots licks as a line plot.
 
-        pass
+        :return:
+        """
+        if not hasattr(self, 'all_licks'):
+            self.all_licks = self.get_licks(plot=False)
+
+        fig, ax = plt.subplots()
+        ax.plot(self.all_licks[:, self.rewarded], 'cornflowerblue')
+        ax.plot(self.all_licks[:, ~self.rewarded], 'gray', alpha=0.6)
+        ax.set_xlabel('Trials')
+        ax.set_ylabel('Licks')
 
 
     def sdt_trials(self, blocks=None, plot=True):
@@ -1256,7 +1268,7 @@ if __name__ == '__main__':
     # data = Session(folder)
     # data.plot_licks()
 
-    folder = r'Z:\Will\Drift\Data\Betelgeuse_Scope25\08_04_2020_CircleTrackReversal2\H16_M42_S11'
+    folder = r'Z:\Will\Drift\Data\Alcor_Scope20\08_01_2020_CircleTrackGoals1\H14_M34_S14'
     S = Session(folder)
     S.plot_licks()
 

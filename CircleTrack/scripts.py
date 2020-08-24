@@ -4,6 +4,10 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['svg.fonttype'] = 'none'
 plt.rcParams['text.usetex'] = False
 plt.rcParams.update({'font.size': 12})
+from util import Metadata_CSV
+
+project_folder = r'Z:\Will\Drift\Data'
+M = Metadata_CSV(project_folder)
 
 def PlotApproaches(folder, accleration=True, window=(-15,15)):
     """
@@ -22,10 +26,27 @@ def PlotBlockedApproaches(folder, acceleration=True, blocks=4):
     data.blocked_port_approaches()
 
 
+def Sessions_by_Mouse(mouse, behavior='CircleTrack'):
+    """
+    Gathers session data for one mouse.
+
+    :param mouse:
+    :param behavior:
+    :return:
+    """
+    # Find the folders corresponding to the correct mouse and behavior.
+    mouse_entries = M.df.loc[M.df['Mouse'] == mouse]
+    sessions = mouse_entries.loc[mouse_entries['Session'].str.find(behavior) > 0]
+
+    S = []
+    for folder in sessions['Path']:
+        S.append(Session(folder))
+
+    return S
+
+
+
 
 if __name__ == '__main__':
-    PlotApproaches(r'D:\Projects\CircleTrack\Mouse4\01_30_2020\H16_M50_S22')
-    PlotApproaches(r'D:\Projects\CircleTrack\Mouse4\02_01_2020\H15_M37_S17')
-
-    #PlotBlockedApproaches(r'D:\Projects\CircleTrack\Mouse4\01_30_2020\H16_M50_S22')
-    pass
+    mouse = 'Alcor_Scope20'
+    Sessions_by_Mouse(mouse, behavior='CircleTrack')
