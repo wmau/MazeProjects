@@ -23,7 +23,6 @@ def PlotBlockedApproaches(folder, acceleration=True, blocks=4):
 
 
 
-
 if __name__ == '__main__':
     PlotApproaches(r'D:\Projects\CircleTrack\Mouse4\01_30_2020\H16_M50_S22')
     PlotApproaches(r'D:\Projects\CircleTrack\Mouse4\02_01_2020\H15_M37_S17')

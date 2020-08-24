@@ -406,9 +406,12 @@ def find_rewarded_ports(behavior_df):
     one_before = np.where(behavior_df.water)[0]
 
     # Find unique port numbers.
-    rewarded_ports = np.unique(behavior_df.loc[one_before, 'lick_port'])
+    water_delivered = np.asarray(
+        [np.sum(behavior_df.loc[one_before, 'lick_port'] == i)
+         for i in range(8)])
+    rewarded_ports = np.where(water_delivered > np.std(water_delivered))[0]
 
-    return rewarded_ports[rewarded_ports > -1]
+    return rewarded_ports
 
 
 def bin_position(linearized_position):
@@ -987,7 +990,7 @@ class Session:
         self.n_rewarded = np.sum(self.rewarded)
 
 
-    def plot_licks(self):
+    def plot_licks_spiral(self):
         """
         Plot the trajectory and licks in a spiral pattern (polar plot).
 
@@ -1103,12 +1106,18 @@ class Session:
             ax.set_xlabel('Water port #')
             ax.set_ylabel('Trial')
 
-        return all_licks
+        return np.asarray(all_licks)
+
+
+    def plot_licks(self):
+        all_licks = self.get_licks(plot=False)
+
+        pass
 
 
     def sdt_trials(self, blocks=None, plot=True):
         # Get number of licks per port.
-        self.all_licks = np.asarray(self.get_licks(plot=False))
+        self.all_licks = self.get_licks(plot=False)
 
         # Split the session into N blocks.
         if blocks is not None:
@@ -1152,6 +1161,7 @@ class Session:
             ax.legend(('Hits', 'Correct rejections'))
 
         return sdt
+
 
     def SDT(self, trial_blocks=4, plot=False):
         """ returns a dict with d-prime measures given hits, misses, false alarms, and correct rejections"""
@@ -1246,10 +1256,8 @@ if __name__ == '__main__':
     # data = Session(folder)
     # data.plot_licks()
 
-    folder = r'C:\Users\wm228\Documents\GitHub\Miniscope_DAQ_Software\x64\Release\data\7_22_2020\H11_M12_S16'
-    P = Preprocess(folder, miniscope_cam=1, behav_cam=0,
-                   sync_mode='frame')
-
-    pass
+    folder = r'Z:\Will\Drift\Data\Betelgeuse_Scope25\08_04_2020_CircleTrackReversal2\H16_M42_S11'
+    S = Session(folder)
+    S.plot_licks()
 
 
