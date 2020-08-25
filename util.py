@@ -1,10 +1,9 @@
 import os
-import glob
 from pathlib import Path
+import pickle as pkl
 import tkinter as tk
 
 from CaImaging.util import get_data_paths
-from CaImaging.Behavior import convert_dlc_to_eztrack
 
 tkroot = tk.Tk()
 tkroot.withdraw()
@@ -80,17 +79,19 @@ class Session_Metadata:
             self.session_folder = session_folder
 
         # Get full file path to the metadata csv.
-        self.full_path = os.path.join(session_folder, 'metadata.csv')
+        self.full_path = os.path.join(session_folder, 'metadata.pkl')
 
         if overwrite:
             self.build()
             self.save()
+            self.meta_dict = pkl.load(self.full_path, 'rb')
         else:
             try:
-                self.df = pd.read_csv(self.full_path)
+                self.meta_dict = pkl.load(self.full_path, 'rb')
             except:
                 self.build()
                 self.save()
+                self.meta_dict = pkl.load(self.full_path, 'rb')
 
 
     def build(self):
@@ -99,7 +100,6 @@ class Session_Metadata:
 
         """
         self.filepaths = grab_paths(self.session_folder)
-        self.df = pd.DataFrame(self.filepaths, index=[0])
 
 
     def save(self):
@@ -108,7 +108,8 @@ class Session_Metadata:
 
 
         """
-        self.df.to_csv(self.full_path)
+        with open(self.full_path, 'wb') as file:
+            pkl.dump(self.filepaths, file)
 
 
 
@@ -157,7 +158,7 @@ class Metadata_CSV:
             'Session': self.get_metadata('date'),
             'Path': self.session_folders,
             'CellRegPath': None,
-            'Metadata': [os.path.join(folder, 'metadata.csv')
+            'Metadata': [os.path.join(folder, 'metadata.pkl')
                          for folder in self.session_folders]
         }
 
