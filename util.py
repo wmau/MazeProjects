@@ -27,9 +27,10 @@ def make_pattern_dict():
         'Arduino': 'H??_M??_S??.???? ????.txt',
         'BehaviorVideo': 'Merged.avi',
         'DLC': '*DLC_resnet*.h5',
-        'BehaviorData': '*_LocationOutput.csv',
+        'ezTrack': '*_LocationOutput.csv',
         'settings': 'settings_and_notes.dat',
-        'timestamps': 'timestamp.dat'
+        'timestamps': 'timestamp.dat',
+        'PreprocessedBehavior': 'PreprocessedBehavior.csv',
     }
 
     return pattern_dict
@@ -50,6 +51,65 @@ def grab_paths(session_folder=None):
     paths = get_data_paths(session_folder, pattern_dict)
 
     return paths
+
+
+class Session_Metadata:
+    def __init__(self, session_folder=None, overwrite=False):
+        """
+        Locate the metadata in a session. This will typically
+        include things like minian output folder, behavior
+        tracking csvs, timestamps, etc. The files found
+        are defined by the pattern dict in the function
+        make_pattern_dict().
+
+        :parameters
+        ---
+        session_folder: str
+            Full path to the folder you want to extract
+            metadata from.
+
+        overwrite: bool
+            Whether or not to overwrite the existing
+            metadata csv.
+
+        """
+        # If folder is not specified, open a dialog box.
+        if session_folder is None:
+            self.session_folder = filedialog.askdirectory()
+        else:
+            self.session_folder = session_folder
+
+        # Get full file path to the metadata csv.
+        self.full_path = os.path.join(session_folder, 'metadata.csv')
+
+        if overwrite:
+            self.build()
+            self.save()
+        else:
+            try:
+                self.df = pd.read_csv(self.full_path)
+            except:
+                self.build()
+                self.save()
+
+
+    def build(self):
+        """
+        Gather all the paths.
+
+        """
+        self.filepaths = grab_paths(self.session_folder)
+        self.df = pd.DataFrame(self.filepaths, index=[0])
+
+
+    def save(self):
+        """
+        Save the csv to disk.
+
+         
+        """
+        self.df.to_csv(self.full_path)
+
 
 
 class Metadata_CSV:
@@ -103,15 +163,19 @@ class Metadata_CSV:
                               for files in self.files_per_folder],
             'Timestamps': [files['timestamps']
                            for files in self.files_per_folder],
+            'Arduino': [files['Arduino']
+                        for files in self.files_per_folder],
             'BehaviorData': self.resolve_behavior_data()
         }
 
         self.df = pd.DataFrame(master_dict)
         self.save()
 
+
     def save(self):
         self.df.to_csv(os.path.join(self.project_folder,
                                     self.filename), index=False)
+
 
     def get_all_sessions(self):
         session_folders = [folder for folder in
@@ -149,8 +213,8 @@ class Metadata_CSV:
         for paths in self.files_per_folder:
 
             # Keep this order in the if statement.
-            if paths['BehaviorData']:
-                behavior_files.append(paths['BehaviorData'])
+            if paths['ezTrack']:
+                behavior_files.append(paths['ezTrack'])
             elif paths['DLC']:
                 behavior_file = convert_dlc_to_eztrack(paths['DLC'])[1]
                 behavior_files.append(behavior_file)
@@ -178,8 +242,6 @@ class Metadata_CSV:
         self.save()
 
 if __name__ == '__main__':
-    project_folder = r'Z:\Will\Drift\Data'
-    M = Metadata_CSV(project_folder)
-    M.update(r'Z:\Will\Drift\Data\M1\07_11_2020_TMazeFreeChoice1\H14_M46_S13')
+    Session_Metadata(r'Z:\Will\Drift\Data\M1\07_11_2020_TMazeFreeChoice1\H14_M46_S13')
 
 
