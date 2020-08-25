@@ -106,7 +106,7 @@ class Session_Metadata:
         """
         Save the csv to disk.
 
-         
+
         """
         self.df.to_csv(self.full_path)
 
@@ -136,20 +136,20 @@ class Metadata_CSV:
         fname = os.path.join(self.project_folder, filename)
 
         if overwrite:
-            self.build_csv()
+            self.build()
+            self.save()
             self.df = pd.read_csv(fname)
+        else:
+            try:
+                self.df = pd.read_csv(fname)
+            except:
+                self.build()
+                self.save()
+                self.df = pd.read_csv(fname)
 
-        try:
-            self.df = pd.read_csv(fname)
-        except:
-            self.build_csv()
-            self.df = pd.read_csv(fname)
 
-
-    def build_csv(self):
+    def build(self):
         self.session_folders = self.get_all_sessions()
-        self.files_per_folder = [grab_paths(folder)
-                                 for folder in self.session_folders]
 
         master_dict = {
             'Mouse': self.get_metadata('mouse'),
@@ -157,19 +157,11 @@ class Metadata_CSV:
             'Session': self.get_metadata('date'),
             'Path': self.session_folders,
             'CellRegPath': None,
-            'MiniscopeCam': None,
-            'BehaviorCam': None,
-            'BehaviorVideo': [files['BehaviorVideo']
-                              for files in self.files_per_folder],
-            'Timestamps': [files['timestamps']
-                           for files in self.files_per_folder],
-            'Arduino': [files['Arduino']
-                        for files in self.files_per_folder],
-            'BehaviorData': self.resolve_behavior_data()
+            'Metadata': [os.path.join(folder, 'metadata.csv')
+                         for folder in self.session_folders]
         }
 
         self.df = pd.DataFrame(master_dict)
-        self.save()
 
 
     def save(self):
@@ -198,48 +190,6 @@ class Metadata_CSV:
                 for session in self.session_folders]
 
         return mice
-
-
-    def resolve_behavior_data(self):
-        """
-        Some session will have ezTrack-analyzed csvs and others will
-        have DeepLabCut-analyzed h5s. This function picks one or the
-        other to be written to the Metadata csv. If the session has
-        DLC-analyzed data, first convert it to a csv.
-
-        :return:
-        """
-        behavior_files = []
-        for paths in self.files_per_folder:
-
-            # Keep this order in the if statement.
-            if paths['ezTrack']:
-                behavior_files.append(paths['ezTrack'])
-            elif paths['DLC']:
-                behavior_file = convert_dlc_to_eztrack(paths['DLC'])[1]
-                behavior_files.append(behavior_file)
-            else:
-                print('No analyzed behavior found. '
-                      'Run ezTrack or DeepLabCut')
-                behavior_files.append(None)
-
-        return behavior_files
-
-
-    def update(self, session_folder):
-        idx = self.df['Path'] == session_folder
-        entry_match = self.df.loc[idx]
-
-        new_paths = grab_paths(entry_match['Path'].values[0])
-
-        try:
-            behavior_path = convert_dlc_to_eztrack(new_paths['DLC'])[1]
-        except:
-            behavior_path =  new_paths['BehaviorData']
-
-        self.df.loc[idx, 'BehaviorData'] = behavior_path
-
-        self.save()
 
 if __name__ == '__main__':
     Session_Metadata(r'Z:\Will\Drift\Data\M1\07_11_2020_TMazeFreeChoice1\H14_M46_S13')

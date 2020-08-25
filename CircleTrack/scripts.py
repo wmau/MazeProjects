@@ -7,10 +7,6 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['svg.fonttype'] = 'none'
 plt.rcParams['text.usetex'] = False
 plt.rcParams.update({'font.size': 12})
-from util import Metadata_CSV
-
-project_folder = r'Z:\Will\Drift\Data'
-M = Metadata_CSV(project_folder)
 
 def PlotApproaches(folder, accleration=True, window=(-15,15)):
     """

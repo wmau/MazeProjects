@@ -10,7 +10,6 @@ from scipy.stats import zscore
 from scipy.stats import norm
 import matplotlib.pyplot as plt
 import cv2
-from util import Metadata_CSV
 
 from CircleTrack.utils import circle_sizes, cart2pol
 from util import grab_paths
@@ -1241,11 +1240,10 @@ def MultiAnimal(mice, project_folder=r'Z:\Will\Drift\Data',
     :param behavior:
     :return:
     """
-    M = Metadata_CSV(project_folder)
 
     S = dict()
     for mouse in mice:
-        S[mouse] = MultiSession(mouse, M, behavior=behavior)
+        S[mouse] = MultiSession(mouse, behavior=behavior)
 
 
 def dlc_to_csv(folder: str):
