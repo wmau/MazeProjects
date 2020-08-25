@@ -27,7 +27,7 @@ def make_pattern_dict():
         'Arduino': 'H??_M??_S??.???? ????.txt',
         'BehaviorVideo': 'Merged.avi',
         'DLC': '*DLC_resnet*.h5',
-        'ezTrack': '*_LocationOutput.csv',
+        'BehaviorData': '*_LocationOutput.csv',
         'settings': 'settings_and_notes.dat',
         'timestamps': 'timestamp.dat',
         'PreprocessedBehavior': 'PreprocessedBehavior.csv',

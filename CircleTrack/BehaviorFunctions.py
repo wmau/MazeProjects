@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import cv2
 
 from CircleTrack.utils import circle_sizes, cart2pol
-from util import grab_paths
+from util import grab_paths, Metadata_CSV, Session_Metadata
 import tkinter as tk
 tkroot = tk.Tk()
 tkroot.withdraw()
@@ -719,9 +719,7 @@ class Preprocess:
             self.folder = folder
 
         # Get the paths to relevant files.
-        self.paths = grab_paths(self.folder)
-        self.paths['PreprocessedBehavior'] = \
-            os.path.join(self.folder, 'PreprocessedBehavior.csv')
+        self.paths = Session_Metadata(self.folder).df
 
         # Check if Preprocess has been ran already by attempting
         # to load a pkl file.
@@ -1240,10 +1238,13 @@ def MultiAnimal(mice, project_folder=r'Z:\Will\Drift\Data',
     :param behavior:
     :return:
     """
+    M = Metadata_CSV(project_folder)
 
     S = dict()
     for mouse in mice:
-        S[mouse] = MultiSession(mouse, behavior=behavior)
+        S[mouse] = MultiSession(mouse, M, behavior=behavior)
+
+    pass
 
 
 def dlc_to_csv(folder: str):
