@@ -192,7 +192,10 @@ class Metadata_CSV:
 
 
     def get_session_type(self):
-        pass
+        session_types = [folder._parts[self.path_levels['date']].split('_')[-1]
+                         for folder in self.session_folders]
+
+        return session_types
 
 
     def get_metadata(self, path_level):
