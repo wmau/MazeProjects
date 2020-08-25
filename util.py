@@ -168,6 +168,7 @@ class Metadata_CSV:
             'Mouse': self.get_metadata('mouse'),
             'Group': None,
             'Session': self.get_metadata('date'),
+            'Session_Type': self.get_session_type(),
             'Path': self.session_folders,
             'CellRegPath': None,
             'Metadata': [os.path.join(folder, 'metadata.pkl')
@@ -190,6 +191,10 @@ class Metadata_CSV:
         return session_folders
 
 
+    def get_session_type(self):
+        pass
+
+
     def get_metadata(self, path_level):
         """
         Get the metadata associated with each path.
@@ -205,6 +210,6 @@ class Metadata_CSV:
         return mice
 
 if __name__ == '__main__':
-    Session_Metadata(r'Z:\Will\Drift\Data\M1\07_11_2020_TMazeFreeChoice1\H14_M46_S13')
+    Metadata_CSV(r'Z:\Will\Drift\Data', overwrite=True)
 
 

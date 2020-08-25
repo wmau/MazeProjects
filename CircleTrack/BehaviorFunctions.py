@@ -1222,7 +1222,7 @@ def MultiSession(mouse, Metadata_CSV, behavior='CircleTrack'):
     mouse_entries = Metadata_CSV.df.loc[Metadata_CSV.df['Mouse'] == mouse]
     sessions = mouse_entries.loc[mouse_entries['Session'].str.find(behavior) > 0]
 
-    S = []
+    S = dict()
     for folder in sessions['Path']:
         S.append(Session(folder))
 
@@ -1240,11 +1240,11 @@ def MultiAnimal(mice, project_folder=r'Z:\Will\Drift\Data',
     """
     M = Metadata_CSV(project_folder)
 
-    S = dict()
+    sessions_by_mouse = dict()
     for mouse in mice:
-        S[mouse] = MultiSession(mouse, M, behavior=behavior)
+        sessions_by_mouse[mouse] = MultiSession(mouse, M, behavior=behavior)
 
-    pass
+    return sessions_by_mouse
 
 
 def dlc_to_csv(folder: str):
