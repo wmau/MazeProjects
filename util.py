@@ -84,14 +84,14 @@ class Session_Metadata:
         if overwrite:
             self.build()
             self.save()
-            self.meta_dict = pkl.load(self.full_path, 'rb')
+            self.meta_dict = self.load()
         else:
             try:
-                self.meta_dict = pkl.load(self.full_path, 'rb')
+                self.meta_dict = self.load()
             except:
                 self.build()
                 self.save()
-                self.meta_dict = pkl.load(self.full_path, 'rb')
+                self.meta_dict = self.load()
 
 
     def build(self):
@@ -104,12 +104,24 @@ class Session_Metadata:
 
     def save(self):
         """
-        Save the csv to disk.
+        Pickle the dict to disk. .
 
 
         """
         with open(self.full_path, 'wb') as file:
             pkl.dump(self.filepaths, file)
+
+
+    def load(self):
+        """
+        Load pickled dict.
+
+        :return:
+        """
+        with open(self.full_path, 'rb') as file:
+            meta_dict = pkl.load(file)
+
+        return meta_dict
 
 
 
