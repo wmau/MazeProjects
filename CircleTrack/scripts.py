@@ -1,5 +1,8 @@
 from CircleTrack.BehaviorFunctions import *
 import matplotlib.pyplot as plt
+
+from CircleTrack.BehaviorFunctions import MultiSession
+
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['svg.fonttype'] = 'none'
 plt.rcParams['text.usetex'] = False
@@ -26,27 +29,6 @@ def PlotBlockedApproaches(folder, acceleration=True, blocks=4):
     data.blocked_port_approaches()
 
 
-def Sessions_by_Mouse(mouse, behavior='CircleTrack'):
-    """
-    Gathers session data for one mouse.
-
-    :param mouse:
-    :param behavior:
-    :return:
-    """
-    # Find the folders corresponding to the correct mouse and behavior.
-    mouse_entries = M.df.loc[M.df['Mouse'] == mouse]
-    sessions = mouse_entries.loc[mouse_entries['Session'].str.find(behavior) > 0]
-
-    S = []
-    for folder in sessions['Path']:
-        S.append(Session(folder))
-
-    return S
-
-
-
-
 if __name__ == '__main__':
     mouse = 'Alcor_Scope20'
-    Sessions_by_Mouse(mouse, behavior='CircleTrack')
+    MultiSession(mouse, behavior='CircleTrack')

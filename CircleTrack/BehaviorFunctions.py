@@ -10,6 +10,8 @@ from scipy.stats import zscore
 from scipy.stats import norm
 import matplotlib.pyplot as plt
 import cv2
+from util import Metadata_CSV
+
 from CircleTrack.utils import circle_sizes, cart2pol
 from util import grab_paths
 import tkinter as tk
@@ -17,6 +19,7 @@ tkroot = tk.Tk()
 tkroot.withdraw()
 from tkinter import filedialog
 from scipy.ndimage import gaussian_filter1d
+
 
 def make_tracking_video(vid_path, preprocessed=True, csv_path=None,
                         Arduino_path=None, output_fname='Tracking.avi',
@@ -1210,6 +1213,41 @@ class Session:
         return self.d_prime
 
 
+def MultiSession(mouse, Metadata_CSV, behavior='CircleTrack'):
+    """
+    Gathers session data for one mouse.
+
+    :param mouse:
+    :param behavior:
+    :return:
+    """
+    # Find the folders corresponding to the correct mouse and behavior.
+    mouse_entries = Metadata_CSV.df.loc[Metadata_CSV.df['Mouse'] == mouse]
+    sessions = mouse_entries.loc[mouse_entries['Session'].str.find(behavior) > 0]
+
+    S = []
+    for folder in sessions['Path']:
+        S.append(Session(folder))
+
+    return S
+
+
+def MultiAnimal(mice, project_folder=r'Z:\Will\Drift\Data',
+                behavior='CircleTrack'):
+    """
+    Gathers all sessions for all specified mice.
+
+    :param project_folder:
+    :param behavior:
+    :return:
+    """
+    M = Metadata_CSV(project_folder)
+
+    S = dict()
+    for mouse in mice:
+        S[mouse] = MultiSession(mouse, M, behavior=behavior)
+
+
 def dlc_to_csv(folder: str):
     """
     Finds the DLC output file and converts it to csv, mirroring
@@ -1268,8 +1306,6 @@ if __name__ == '__main__':
     # data = Session(folder)
     # data.plot_licks()
 
-    folder = r'Z:\Will\Drift\Data\Alcor_Scope20\08_01_2020_CircleTrackGoals1\H14_M34_S14'
-    S = Session(folder)
-    S.plot_licks()
+    A = MultiAnimal(['Betelgeuse_Scope25', 'Alcor_Scope20', 'M1', 'M2', 'M3', 'M4'])
 
 
