@@ -720,6 +720,8 @@ class Preprocess:
 
         # Get the paths to relevant files.
         self.paths = Session_Metadata(self.folder).meta_dict
+        self.paths['PreprocessedBehavior'] = os.path.join(self.folder,
+                                                          'PreprocessedBehavior.csv')
 
         # Check if Preprocess has been ran already by attempting
         # to load a pkl file.
