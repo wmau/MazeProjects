@@ -25,6 +25,30 @@ def PlotBlockedApproaches(folder, acceleration=True, blocks=4):
     data.blocked_port_approaches()
 
 
+
+class BatchBehaviorAnalyses:
+    def __init__(self, mice, project_folder=r'Z:\Will\Drift\Data'):
+        """
+        This class definition will contain behavior analyses spanning
+        the entire dataset (or at least the specified mice).
+
+        :param mice:
+        :param project_folder:
+        """
+        self.all_sessions = MultiAnimal(mice, project_folder, behavior='CircleTrack')
+        for animal, sessions in self.all_sessions:
+            for session in sessions:
+                session.get_licks(plot=False)
+
+
+        pass
+
+
+    #def arrange_licking(self):
+
+
+
+
+
 if __name__ == '__main__':
-    mouse = 'Alcor_Scope20'
-    MultiSession(mouse, behavior='CircleTrack')
+    B = BatchBehaviorAnalyses(['Betelgeuse_Scope25', 'Alcor_Scope20', 'M1', 'M2', 'M3', 'M4'])

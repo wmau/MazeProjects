@@ -1223,8 +1223,8 @@ def MultiSession(mouse, Metadata_CSV, behavior='CircleTrack'):
     sessions = mouse_entries.loc[mouse_entries['Session'].str.find(behavior) > 0]
 
     S = dict()
-    for folder in sessions['Path']:
-        S.append(Session(folder))
+    for folder, session_type in zip(sessions['Path'], sessions['Session_Type']):
+        S[session_type] = (Session(folder))
 
     return S
 
