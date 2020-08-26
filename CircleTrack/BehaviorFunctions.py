@@ -966,7 +966,7 @@ class Session:
             self.folder = folder
 
         # Find paths.
-        self.paths = grab_paths(self.folder)
+        self.paths = Session_Metadata(self.folder).meta_dict
         self.paths['PreprocessedBehavior'] = \
             os.path.join(self.folder, 'PreprocessedBehavior.csv')
 
