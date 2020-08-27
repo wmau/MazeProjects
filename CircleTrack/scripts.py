@@ -1,7 +1,6 @@
 from CircleTrack.BehaviorFunctions import *
 import matplotlib.pyplot as plt
-
-from CircleTrack.BehaviorFunctions import MultiSession
+from CaImaging.util import sem, errorfill
 
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['svg.fonttype'] = 'none'
@@ -139,6 +138,10 @@ class BatchBehaviorAnalyses:
                     rewarded_matrix[session_type][m] = \
                         rewarded
 
+                    # If the session is called 'Shaping', mark
+                    # all ports as rewarded. Some ports get marked
+                    # as non-rewarded sometimes because they were never
+                    # visited due mouse shyness (⁄ ⁄•⁄ω⁄•⁄ ⁄)
                     if 'Shaping' in session_type and not all(rewarded):
                         print('Non-rewarded ports found during a '
                               'shaping session. Setting all ports '
@@ -148,6 +151,7 @@ class BatchBehaviorAnalyses:
                 except KeyError:
                     pass
 
+            # Turn it into a boolean for indexing.
             rewarded_matrix[session_type] = \
                 rewarded_matrix[session_type].astype(bool)
 
@@ -155,9 +159,20 @@ class BatchBehaviorAnalyses:
 
 
     def plot_rewarded_licks(self, session_type):
+        """
+        Plot the licks rewarded and non-rewarded port averaged
+        across animals for each trial.
+
+        :param session_type:
+        :return:
+        """
+        # Get the licks across mice for that session.
+        # Also get the port numbers that were rewarded.
         licks = self.licks[session_type]
         rewarded_ports = self.rewarded_ports[session_type]
 
+        # Find the number of rewarded ports to allocate
+        # two arrays -- one each for rewarded and non-rewarded licks.
         n_rewarded = np.unique(np.sum(rewarded_ports, axis=1))
         assert len(n_rewarded)==1, \
             'Number of rewarded ports differ in some mice!'
@@ -168,9 +183,41 @@ class BatchBehaviorAnalyses:
                                       licks.shape[1],
                                       8 - n_rewarded[0]))
 
-        for rewarded_ports_in_this_mouse in rewarded_ports:
+        # For each mouse, find the rewarded and non-rewarded ports.
+        # Place them into the appropriate array.
+        for mouse, rewarded_ports_in_this_mouse \
+                in enumerate(rewarded_ports):
+            rewarded_licks[mouse] = \
+                licks[mouse, :, rewarded_ports_in_this_mouse].T
 
-            pass
+            nonrewarded_licks[mouse] = \
+                licks[mouse, :, ~rewarded_ports_in_this_mouse].T
+
+        # Plot rewarded and non-rewarded ports in different colors.
+        fig, ax = plt.subplots(figsize=(4.3, 4.8))
+        for licks_to_plot, colors in zip([rewarded_licks, nonrewarded_licks],
+                                         ['cornflowerblue', 'gray']):
+            # Take the mean across mice and trials.
+            mean_across_mice = np.nanmean(licks_to_plot, axis=0)
+            mean_across_trials = np.nanmean(mean_across_mice, axis=1)
+
+            # To calculate the standard error, treat all the ports
+            # in the same category (rewarded or non-rewarded) as
+            # different samples. The n will actually be number of
+            # mice multiplied by number of ports in that category.
+            stacked_ports = (licks_to_plot[:,:,port]
+                             for port in range(licks_to_plot.shape[2]))
+            reshaped = np.vstack(stacked_ports)
+            standard_error = sem(reshaped, axis=0)
+
+            # Plot.
+            trials = range(mean_across_trials.shape[0])     # x-axis
+            errorfill(trials, mean_across_trials,
+                      standard_error, color=colors, ax=ax)
+            ax.set_xlabel('Trials')
+            ax.set_ylabel('Licks')
+
+        pass
 
 
 
@@ -182,4 +229,4 @@ if __name__ == '__main__':
                                'M2',
                                'M3',
                                'M4'])
-    B.plot_rewarded_licks('CircleTrackShaping1')
+    B.plot_rewarded_licks('CircleTrackGoals1')
