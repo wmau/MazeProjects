@@ -38,6 +38,7 @@ class BatchBehaviorAnalyses:
         # Compile data for all animals.
         self.all_sessions = MultiAnimal(mice, project_folder,
                                         behavior='CircleTrack')
+        self.mice = mice
         self.n_mice = len(mice)
 
         # Get the number of licks for every single session.
@@ -62,7 +63,7 @@ class BatchBehaviorAnalyses:
         # Gather the number of trials for each session type and
         # arrange it in a (mouse, session) array.
         self.trial_counts, self.max_trials = self.count_trials()
-        self.gather_licks()
+        self.licks, self.rewarded_ports = self.gather_licks()
 
         pass
 
@@ -76,15 +77,16 @@ class BatchBehaviorAnalyses:
         trial_counts = nan_array((self.n_mice,
                                   len(self.session_types)))
         for s, session_type in enumerate(self.session_types):
-            for a, animal in enumerate(self.all_sessions.values()):
+            for m, mouse in enumerate(self.mice):
+                animal = self.all_sessions[mouse]
                 try:
-                    trial_counts[a,s] = animal[session_type].ntrials
+                    trial_counts[m,s] = int(animal[session_type].ntrials)
                 except KeyError:
-                    trial_counts[a,s] = np.nan
+                    trial_counts[m,s] = np.nan
 
         # Get the highest number of trials across all mice for a particular
         # session type.
-        max_trials = np.nanmax(trial_counts, axis=0)
+        max_trials = np.nanmax(trial_counts, axis=0).astype(int)
 
         return trial_counts, max_trials
 
@@ -105,26 +107,79 @@ class BatchBehaviorAnalyses:
 
     def gather_licks(self):
         """
-        For each mouse, session type, and trial, get the number of licks.
+        For each mouse, session type, and trial, get the number of
+        licks.
         :return:
         """
+        # Get lick data and rearrange it so that it's in a dict where
+        # every key references a session type. In those entries,
+        # make a (mouse, trial, port #) matrix.
+        lick_matrix = dict()
+        rewarded_matrix = dict()
+        for max_trials, session_type in zip(self.max_trials,
+                                            self.session_types):
+            lick_matrix[session_type] = nan_array((self.n_mice,
+                                                   max_trials,
+                                                   8))
+            rewarded_matrix[session_type] = nan_array((self.n_mice,
+                                                       8))
 
-        lick_matrix = nan_array((self.n_mice,
-                                 self.max_trials, # Different for each session type!
-                                 8))
-        for m, mouse in enumerate(self.all_sessions.values()):
-            for s, session in enumerate(mouse.values()):
-                pass
-                #lick_matrix[m, :session.all_licks.shape[0], ]
+            # Get the lick data for each session.
+            for m, mouse in enumerate(self.mice):
+                animal = self.all_sessions[mouse]
+                try:
+                    session_licks = animal[session_type].all_licks
+                    mat_size = session_licks.shape
+
+                    lick_matrix[session_type][m, :mat_size[0], :mat_size[1]] = \
+                        session_licks
+
+                    # Also get which ports were rewarded
+                    rewarded = animal[session_type].rewarded
+                    rewarded_matrix[session_type][m] = \
+                        rewarded
+
+                    if 'Shaping' in session_type and not all(rewarded):
+                        print('Non-rewarded ports found during a '
+                              'shaping session. Setting all ports '
+                              'to rewarded')
+                        rewarded_matrix[session_type][m] = \
+                            np.ones_like(rewarded_matrix)
+                except KeyError:
+                    pass
+
+            rewarded_matrix[session_type] = \
+                rewarded_matrix[session_type].astype(bool)
+
+        return lick_matrix, rewarded_matrix
 
 
+    def plot_rewarded_licks(self, session_type):
+        licks = self.licks[session_type]
+        rewarded_ports = self.rewarded_ports[session_type]
 
+        n_rewarded = np.unique(np.sum(rewarded_ports, axis=1))
+        assert len(n_rewarded)==1, \
+            'Number of rewarded ports differ in some mice!'
+        rewarded_licks = np.zeros((self.n_mice,
+                                   licks.shape[1],
+                                   n_rewarded[0]))
+        nonrewarded_licks = np.zeros((self.n_mice,
+                                      licks.shape[1],
+                                      8 - n_rewarded[0]))
 
-    #def arrange_licking(self):
+        for rewarded_ports_in_this_mouse in rewarded_ports:
 
+            pass
 
 
 
 
 if __name__ == '__main__':
-    B = BatchBehaviorAnalyses(['Betelgeuse_Scope25', 'Alcor_Scope20', 'M1', 'M2', 'M3', 'M4'])
+    B = BatchBehaviorAnalyses(['Betelgeuse_Scope25',
+                               'Alcor_Scope20',
+                               'M1',
+                               'M2',
+                               'M3',
+                               'M4'])
+    B.plot_rewarded_licks('CircleTrackShaping1')
