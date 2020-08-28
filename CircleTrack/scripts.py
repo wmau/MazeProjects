@@ -120,8 +120,8 @@ class BatchBehaviorAnalyses:
             lick_matrix[session_type] = nan_array((self.n_mice,
                                                    max_trials,
                                                    8))
-            rewarded_matrix[session_type] = nan_array((self.n_mice,
-                                                       8))
+            rewarded_matrix[session_type] = np.zeros((self.n_mice,
+                                                      8), dtype=bool)
 
             # Get the lick data for each session.
             for m, mouse in enumerate(self.mice):
@@ -147,13 +147,9 @@ class BatchBehaviorAnalyses:
                               'shaping session. Setting all ports '
                               'to rewarded')
                         rewarded_matrix[session_type][m] = \
-                            np.ones_like(rewarded_matrix)
+                            np.ones_like(rewarded_matrix, dtype=bool)
                 except KeyError:
                     pass
-
-            # Turn it into a boolean for indexing.
-            rewarded_matrix[session_type] = \
-                rewarded_matrix[session_type].astype(bool)
 
         return lick_matrix, rewarded_matrix
 
@@ -171,15 +167,23 @@ class BatchBehaviorAnalyses:
         licks = self.licks[session_type]
         rewarded_ports = self.rewarded_ports[session_type]
 
+        # Some mice might not have the specified session.
+        # Exclude those.
+        mice_to_include = [session_type in mouse
+                           for mouse in self.all_sessions.values()]
+        n_mice = np.sum(mice_to_include)
+        licks = licks[mice_to_include]
+        rewarded_ports = rewarded_ports[mice_to_include]
+
         # Find the number of rewarded ports to allocate
         # two arrays -- one each for rewarded and non-rewarded licks.
         n_rewarded = np.unique(np.sum(rewarded_ports, axis=1))
         assert len(n_rewarded)==1, \
             'Number of rewarded ports differ in some mice!'
-        rewarded_licks = np.zeros((self.n_mice,
+        rewarded_licks = np.zeros((n_mice,
                                    licks.shape[1],
                                    n_rewarded[0]))
-        nonrewarded_licks = np.zeros((self.n_mice,
+        nonrewarded_licks = np.zeros((n_mice,
                                       licks.shape[1],
                                       8 - n_rewarded[0]))
 
@@ -229,4 +233,4 @@ if __name__ == '__main__':
                                'M2',
                                'M3',
                                'M4'])
-    B.plot_rewarded_licks('CircleTrackGoals1')
+    B.plot_rewarded_licks('CircleTrackRecall')
