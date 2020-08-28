@@ -154,7 +154,16 @@ class BatchBehaviorAnalyses:
         return lick_matrix, rewarded_matrix
 
 
-    def plot_rewarded_licks(self, session_type):
+    def plot_all_session_licks(self):
+        fig, axs = plt.subplots(3,2,sharey=True, sharex=True)
+        for ax, session_type, label in zip(axs.flatten(),
+                                           self.session_types,
+                                           self.session_labels):
+            self.plot_rewarded_licks(session_type, ax)
+            ax.set_title(label)
+
+
+    def plot_rewarded_licks(self, session_type, ax=None):
         """
         Plot the licks rewarded and non-rewarded port averaged
         across animals for each trial.
@@ -167,61 +176,131 @@ class BatchBehaviorAnalyses:
         licks = self.licks[session_type]
         rewarded_ports = self.rewarded_ports[session_type]
 
+        # Find the previous session to figure out what was previously rewarded.
+        try:
+            previously_rewarded = self.get_previous_rewards(session_type)
+        except AssertionError:
+            previously_rewarded = np.ones_like(rewarded_ports, dtype=bool)
+
+        # If the rewards from the last session match this session,
+        # we're going to treat this a little differently.
+        same_rewards = True \
+            if np.all(previously_rewarded == rewarded_ports) \
+            else False
+        if np.any(previously_rewarded == rewarded_ports) and not same_rewards:
+            print('Warning! At least one reward port overlaps '
+                  'with the previous day. Are you sure this is correct?')
+
         # Some mice might not have the specified session.
-        # Exclude those.
+        # Exclude those mice.
         mice_to_include = [session_type in mouse
                            for mouse in self.all_sessions.values()]
         n_mice = np.sum(mice_to_include)
         licks = licks[mice_to_include]
         rewarded_ports = rewarded_ports[mice_to_include]
+        previously_rewarded = previously_rewarded[mice_to_include]
 
         # Find the number of rewarded ports to allocate
-        # two arrays -- one each for rewarded and non-rewarded licks.
+        # two arrays -- one each for rewarded, previously rewarded,
+        # and non-rewarded licks.
         n_rewarded = np.unique(np.sum(rewarded_ports, axis=1))
+        n_previously_rewarded = np.unique(np.sum(previously_rewarded, axis=1))
         assert len(n_rewarded)==1, \
             'Number of rewarded ports differ in some mice!'
+        assert len(n_previously_rewarded)==1, \
+            'Number of previously rewarded ports differ in some mice!'
         rewarded_licks = np.zeros((n_mice,
                                    licks.shape[1],
                                    n_rewarded[0]))
-        nonrewarded_licks = np.zeros((n_mice,
-                                      licks.shape[1],
-                                      8 - n_rewarded[0]))
+        previously_rewarded_licks = np.zeros((n_mice,
+                                              licks.shape[1],
+                                              n_previously_rewarded[0]))
+
+        # If the current sessions' rewards don't match the day before's,
+        # the remaining ports is total ports minus currently rewarded
+        # minus previously rewarded.
+        if not same_rewards:
+            remainder = 8 - n_rewarded[0] - n_previously_rewarded[0]
+        # Otherwise, since they overlap, it's total ports minus
+        # current ports (which are the same as the day before's).
+        else:
+            remainder = 8 - n_rewarded[0]
+        remainder = 0 if remainder < 0 else remainder
+        other_licks = np.zeros((n_mice,
+                                licks.shape[1],
+                                remainder))
 
         # For each mouse, find the rewarded and non-rewarded ports.
         # Place them into the appropriate array.
-        for mouse, rewarded_ports_in_this_mouse \
-                in enumerate(rewarded_ports):
+        for mouse, (rewarded_ports_in_this_mouse,
+                    previously_rewarded_ports_in_this_mouse) \
+                in enumerate(zip(rewarded_ports, previously_rewarded)):
             rewarded_licks[mouse] = \
                 licks[mouse, :, rewarded_ports_in_this_mouse].T
 
-            nonrewarded_licks[mouse] = \
-                licks[mouse, :, ~rewarded_ports_in_this_mouse].T
+            previously_rewarded_licks[mouse] = \
+                licks[mouse, :, previously_rewarded_ports_in_this_mouse].T
+
+            if remainder > 0:
+                other_licks[mouse] = \
+                    licks[mouse, :, (~rewarded_ports_in_this_mouse
+                                     & ~previously_rewarded_ports_in_this_mouse)].T
+
+        # Plot these lick data.
+        licks_to_plot = [rewarded_licks]
+        colors = ['cornflowerblue']
+        # If the previous day's rewards are different, add them to the list.
+        if not same_rewards:
+            licks_to_plot.append(previously_rewarded_licks)
+            colors.append('lightcoral')
+        # If there are any more ports to plot, add them to the list.
+        if remainder > 0:
+            licks_to_plot.append(other_licks)
+            colors.append('gray')
 
         # Plot rewarded and non-rewarded ports in different colors.
-        fig, ax = plt.subplots(figsize=(4.3, 4.8))
-        for licks_to_plot, colors in zip([rewarded_licks, nonrewarded_licks],
-                                         ['cornflowerblue', 'gray']):
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(4.3, 4.8))
+        for licks_in_this_category, color \
+                in zip(licks_to_plot, colors):
             # Take the mean across mice and trials.
-            mean_across_mice = np.nanmean(licks_to_plot, axis=0)
+            mean_across_mice = np.nanmean(licks_in_this_category, axis=0)
             mean_across_trials = np.nanmean(mean_across_mice, axis=1)
 
             # To calculate the standard error, treat all the ports
             # in the same category (rewarded or non-rewarded) as
             # different samples. The n will actually be number of
             # mice multiplied by number of ports in that category.
-            stacked_ports = (licks_to_plot[:,:,port]
-                             for port in range(licks_to_plot.shape[2]))
+            stacked_ports = (licks_in_this_category[:,:,port]
+                             for port in range(licks_in_this_category.shape[2]))
             reshaped = np.vstack(stacked_ports)
             standard_error = sem(reshaped, axis=0)
 
             # Plot.
             trials = range(mean_across_trials.shape[0])     # x-axis
             errorfill(trials, mean_across_trials,
-                      standard_error, color=colors, ax=ax)
+                      standard_error, color=color, ax=ax)
             ax.set_xlabel('Trials')
             ax.set_ylabel('Licks')
 
-        pass
+
+    def get_previous_rewards(self, session_type):
+        """
+        Gets the rewarded ports from the session previous to the one
+        specified.
+
+        :param session_type:
+        :return:
+        """
+        # If it's the first session, don't get the previous session.
+        previous_session_number = self.session_types.index(session_type) - 1
+        assert previous_session_number > -1, \
+            KeyError('No other session before this one!')
+
+        previous_session = self.session_types[previous_session_number]
+        previously_rewarded = self.rewarded_ports[previous_session]
+
+        return previously_rewarded
 
 
 
@@ -233,4 +312,4 @@ if __name__ == '__main__':
                                'M2',
                                'M3',
                                'M4'])
-    B.plot_rewarded_licks('CircleTrackRecall')
+    B.plot_rewarded_licks('CircleTrackShaping1')
