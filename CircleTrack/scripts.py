@@ -62,7 +62,8 @@ class BatchBehaviorAnalyses:
         # Gather the number of trials for each session type and
         # arrange it in a (mouse, session) array.
         self.trial_counts, self.max_trials = self.count_trials()
-        self.licks, self.rewarded_ports = self.gather_licks()
+        self.licks, self.rewarded_ports, self.n_drinks, self.p_drinks \
+            = self.resort_data()
 
         pass
 
@@ -104,7 +105,7 @@ class BatchBehaviorAnalyses:
         plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
 
 
-    def gather_licks(self):
+    def resort_data(self):
         """
         For each mouse, session type, and trial, get the number of
         licks.
@@ -115,6 +116,8 @@ class BatchBehaviorAnalyses:
         # make a (mouse, trial, port #) matrix.
         lick_matrix = dict()
         rewarded_matrix = dict()
+        drink_matrix = dict()
+        p_drink_matrix = dict()
         for max_trials, session_type in zip(self.max_trials,
                                             self.session_types):
             lick_matrix[session_type] = nan_array((self.n_mice,
@@ -122,21 +125,29 @@ class BatchBehaviorAnalyses:
                                                    8))
             rewarded_matrix[session_type] = np.zeros((self.n_mice,
                                                       8), dtype=bool)
+            drink_matrix[session_type] = nan_array((self.n_mice,
+                                                    max_trials))
+            p_drink_matrix[session_type] = nan_array((self.n_mice,
+                                                      max_trials))
 
             # Get the lick data for each session.
             for m, mouse in enumerate(self.mice):
-                animal = self.all_sessions[mouse]
+                mouse_data = self.all_sessions[mouse]
                 try:
-                    session_licks = animal[session_type].all_licks
+                    session_licks = mouse_data[session_type].all_licks
                     mat_size = session_licks.shape
-
                     lick_matrix[session_type][m, :mat_size[0], :mat_size[1]] = \
                         session_licks
 
-                    # Also get which ports were rewarded
-                    rewarded = animal[session_type].rewarded
+                    # Also get which ports were rewarded.
+                    rewarded = mouse_data[session_type].rewarded_ports
                     rewarded_matrix[session_type][m] = \
                         rewarded
+
+                    # Also get number of drinks for each trial.
+                    session_drinks = mouse_data[session_type].n_drinks
+                    drink_matrix[session_type][m, :session_drinks.shape[0]] = \
+                        session_drinks
 
                     # If the session is called 'Shaping', mark
                     # all ports as rewarded. Some ports get marked
@@ -148,10 +159,15 @@ class BatchBehaviorAnalyses:
                               'to rewarded')
                         rewarded_matrix[session_type][m] = \
                             np.ones_like(rewarded_matrix, dtype=bool)
-                except KeyError:
-                    pass
 
-        return lick_matrix, rewarded_matrix
+                    # And percentage of water deliveries out of all rewarded ports.
+                    n_rewarded_ports = np.sum(rewarded_matrix[session_type][m])
+                    p_drink_matrix[session_type][m, :session_drinks.shape[0]] = \
+                        session_drinks / n_rewarded_ports
+                except KeyError:
+                    print(f'{session_type} not found for mouse {mouse}! Skipping...')
+
+        return lick_matrix, rewarded_matrix, drink_matrix, p_drink_matrix
 
 
     def plot_all_session_licks(self):

@@ -987,10 +987,26 @@ class Session:
 
         # Find rewarded ports
         rewarded_ports = find_rewarded_ports(self.behavior_df)
-        self.rewarded = np.zeros(8, dtype=bool)
-        self.rewarded[rewarded_ports] = True
-        self.n_rewarded = np.sum(self.rewarded)
+        self.rewarded_ports = np.zeros(8, dtype=bool)
+        self.rewarded_ports[rewarded_ports] = True
+        self.n_rewarded_ports = np.sum(self.rewarded_ports)
+        self.n_drinks = self.count_drinks()
 
+
+    def count_drinks(self):
+        """
+        Count number of rewards retrieved per trial.
+
+        :return:
+        """
+        n_rewards = []
+        for trial in range(self.ntrials):
+            water_deliveries = np.sum(self.behavior_df.loc[
+                                          self.behavior_df['trials'] == trial]
+                                      ['water'])
+            n_rewards.append(water_deliveries)
+
+        return np.asarray(n_rewards)
 
     def plot_licks_spiral(self):
         """
@@ -1123,8 +1139,8 @@ class Session:
             self.all_licks = self.get_licks(plot=False)
 
         fig, ax = plt.subplots()
-        ax.plot(self.all_licks[:, self.rewarded], 'cornflowerblue')
-        ax.plot(self.all_licks[:, ~self.rewarded], 'gray', alpha=0.6)
+        ax.plot(self.all_licks[:, self.rewarded_ports], 'cornflowerblue')
+        ax.plot(self.all_licks[:, ~self.rewarded_ports], 'gray', alpha=0.6)
         ax.set_xlabel('Trials')
         ax.set_ylabel('Licks')
 
@@ -1148,14 +1164,14 @@ class Session:
         for trial_block in licks:
             # Get number of passes through ports that should or should not be licked.
             ntrials = len(trial_block)
-            go_trials = ntrials * self.n_rewarded
-            nogo_trials = ntrials * (8-self.n_rewarded)
+            go_trials = ntrials * self.n_rewarded_ports
+            nogo_trials = ntrials * (8 - self.n_rewarded_ports)
 
             # Binarized the lick array so that at least one lick will mark it as
             # correct.
             binarized = trial_block > 0
-            correct_licks = np.sum(binarized[:, self.rewarded])
-            incorrect_licks = np.sum(binarized[:, ~self.rewarded])
+            correct_licks = np.sum(binarized[:, self.rewarded_ports])
+            incorrect_licks = np.sum(binarized[:, ~self.rewarded_ports])
 
             # Get rates for hits, misses, false alarms, and correct rejections.
             hit_rate = correct_licks / go_trials
