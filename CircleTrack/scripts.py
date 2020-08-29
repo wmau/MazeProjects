@@ -44,6 +44,7 @@ class BatchBehaviorAnalyses:
         for animal, sessions in self.all_sessions.items():
             for session_type, session in sessions.items():
                 session.get_licks(plot=False)
+                session.SDT(trial_blocks=6, plot=False)
 
         # Define session types here. Watch out for typos.
         # Order matters. Plots will be in the order presented here.
@@ -204,7 +205,7 @@ class BatchBehaviorAnalyses:
             if np.all(previously_rewarded == rewarded_ports) \
             else False
         if np.any(previously_rewarded == rewarded_ports) and not same_rewards:
-            print('Warning! At least one reward port overlaps '
+            print(f'Warning! At least one reward port for {session_type} overlaps '
                   'with the previous day. Are you sure this is correct?')
 
         # Some mice might not have the specified session.

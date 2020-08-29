@@ -1198,14 +1198,18 @@ class Session:
         # Floors an ceilings are replaced by half hits and half FA's
         sdt = self.sdt_trials(blocks=trial_blocks, plot=plot)
         Z = norm.ppf
+        n_trials = np.array_split(self.all_licks, trial_blocks)[0].shape[0]
 
         d_prime = []
         for hits, misses, fas, crs in zip(sdt['hits'],
                                           sdt['misses'],
                                           sdt['FAs'],
                                           sdt['CRs']):
-            half_hit = 0.5 / (hits + misses)
-            half_fa = 0.5 / (fas + crs)
+            #half_hit = 0.5 / (hits + misses)
+            #half_fa = 0.5 / (fas + crs)
+
+            half_hit = 1 / (2*n_trials)
+            half_fa = 2*(n_trials)
 
             # Calculate hit_rate and avoid d' infinity
             hit_rate = hits / (hits + misses)
