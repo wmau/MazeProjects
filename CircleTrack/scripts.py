@@ -41,10 +41,9 @@ class BatchBehaviorAnalyses:
         self.n_mice = len(mice)
 
         # Get the number of licks for every single session.
-        for animal, sessions in self.all_sessions.items():
-            for session_type, session in sessions.items():
+        for sessions in self.all_sessions.values():
+            for session in sessions.values():
                 session.get_licks(plot=False)
-                session.SDT(trial_blocks=6, plot=False)
 
         # Define session types here. Watch out for typos.
         # Order matters. Plots will be in the order presented here.
@@ -67,6 +66,143 @@ class BatchBehaviorAnalyses:
             = self.resort_data()
 
         pass
+
+
+    def signal_detection_analysis(self, n_trial_blocks):
+        """
+        Run signal detection on all sessions. This calculates
+        hits, misses, correct rejections, and false alarms over
+        a series of trials. Specify the number of trials to
+        compute signal detection over for each session.
+        n_trial_blocks will evenly split trials into that
+        number of blocks.
+
+        :parameter
+        ---
+        n_trial_blocks: int
+            Splits all trials in that session into n blocks.
+        """
+        # Compute signal detection calculations.
+        for sessions in self.all_sessions.values():
+            for session in sessions.values():
+                session.SDT(n_trial_blocks=n_trial_blocks,
+                            plot=False)
+
+        # Resort data into session types, listed by mouse.
+        sdt_matrix = dict()
+        sdt_categories = ['hits', 'misses', 'FAs', 'CRs', 'd_prime']
+        for session_type in self.session_types:
+            sdt_matrix[session_type] = {key: nan_array((self.n_mice,
+                                                        n_trial_blocks))
+                                        for key in sdt_categories}
+
+            for m, mouse in enumerate(self.mice):
+                mouse_data = self.all_sessions[mouse]
+
+                try:
+                    for key in sdt_categories:
+                        sdt_matrix[session_type][key][m] = \
+                            mouse_data[session_type].sdt[key]
+                except KeyError:
+                    print(f'{session_type} not found for '
+                          f'mouse {mouse}! Skipping...')
+
+        return sdt_matrix
+
+
+    def plot_all_sdts(self, n_trial_blocks):
+        """
+        Plot the hit and correct rejection rate for all sessions.
+        Also plot d'.
+
+        :parameter
+        ---
+        n_trial_blocks: int
+            Splits all trials in that session into n blocks.
+
+        """
+        # Preallocate the figure axes.
+        fig, axs = plt.subplots(3,2, sharey='all', figsize=(7,8))
+        d_prime_axs = []
+        for ax, session_type, label in zip(axs.flatten(),
+                                           self.session_types,
+                                           self.session_labels):
+            self.plot_sdt('hits', n_trial_blocks, session_type, ax)
+
+            # Ignore shaping sessions.
+            if 'Shaping' not in session_type:
+                self.plot_sdt('CRs', n_trial_blocks, session_type, ax)
+
+                # Use a different axis for d'.
+                d_prime_ax = ax.twinx()
+                d_prime_axs.append(d_prime_ax)
+                self.plot_sdt('d_prime', n_trial_blocks,
+                              session_type, d_prime_ax)
+            ax.set_title(label)
+
+        # Link the d' axes.
+        for d_prime_ax in d_prime_axs[1:]:
+            d_prime_axs[0].get_shared_y_axes().join(d_prime_axs[0],
+                                                    d_prime_ax)
+        d_prime_axs[0].autoscale()
+        fig.tight_layout(pad=0.5)
+
+        pass
+
+
+    def plot_sdt(self, category, n_trial_blocks,
+                  session_type, ax=None):
+        """
+        Plot the signal detection accuracy for a given session
+        type and split into n blocks.
+
+        :parameters
+        ---
+        category: str
+            'hits', 'misses', 'FAs', 'CRs', or 'd_prime'
+
+        n_trial_blocks: int
+            Splits all trials in that session into n blocks.
+
+        session_type: str
+            'CircleTrackingGoals1', etc.
+
+        """
+        # Get signal detection computations if not already there.
+        if not hasattr(self, 'sdt'):
+            self.sdt = self.signal_detection_analysis(n_trial_blocks)
+        elif self.sdt[session_type][category].shape[1] != n_trial_blocks:
+            self.sdt = self.signal_detection_analysis(n_trial_blocks)
+
+        # Color differs for each category.
+        colors = {'hits': 'forestgreen',
+                  'misses': 'darkred',
+                  'FAs': 'goldenrod',
+                  'CRs': 'steelblue',
+                  'd_prime': 'black'}
+
+        # For spacing apart data points.
+        jitter = {'hits': -.1,
+                  'misses': -.1,
+                  'FAs': .1,
+                  'CRs': .1,
+                  'd_prime': 0}
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        # Get the x and y axis values.
+        plot_me = self.sdt[session_type][category].T
+        trial_number = np.asarray(list(range(n_trial_blocks)), dtype=float)
+        trial_number += jitter[category]
+
+        ax.plot(trial_number, plot_me, 'o-', color=colors[category],
+                alpha=0.6)
+        ax.set_xlabel('Trial blocks')
+
+        # Only put % on the left side of the plot.
+        if 'd_prime' not in category:
+            ax.set_ylabel('%')
 
 
     def count_trials(self):
@@ -172,12 +308,13 @@ class BatchBehaviorAnalyses:
 
 
     def plot_all_session_licks(self):
-        fig, axs = plt.subplots(3,2,sharey=True, sharex=True)
+        fig, axs = plt.subplots(3,2,sharey='all', sharex='all')
         for ax, session_type, label in zip(axs.flatten(),
                                            self.session_types,
                                            self.session_labels):
             self.plot_rewarded_licks(session_type, ax)
             ax.set_title(label)
+        fig.tight_layout(pad=0.5)
 
 
     def plot_rewarded_licks(self, session_type, ax=None):
@@ -329,4 +466,4 @@ if __name__ == '__main__':
                                'M2',
                                'M3',
                                'M4'])
-    B.plot_rewarded_licks('CircleTrackShaping1')
+    B.plot_all_sdts(4)

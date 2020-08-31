@@ -1145,22 +1145,20 @@ class Session:
         ax.set_ylabel('Licks')
 
 
-    def sdt_trials(self, blocks=None, plot=True):
+    def sdt_trials(self, n_trial_blocks=None, plot=True):
         # Get number of licks per port.
         self.all_licks = self.get_licks(plot=False)
 
         # Split the session into N blocks.
-        if blocks is not None:
-            licks = np.array_split(self.all_licks, blocks)
+        if n_trial_blocks is not None:
+            licks = np.array_split(self.all_licks,
+                                   n_trial_blocks)
         else:
             licks = [self.all_licks]
 
         # Preallocate dict.
-        sdt = {'hits': [],
-               'misses': [],
-               'FAs': [],
-               'CRs': []
-               }
+        sdt = {key: [] for key in ['hits', 'misses', 'FAs', 'CRs']}
+
         for trial_block in licks:
             # Get number of passes through ports that should or should not be licked.
             ntrials = len(trial_block)
@@ -1190,26 +1188,27 @@ class Session:
             ax.plot(sdt['CRs'])
             ax.legend(('Hits', 'Correct rejections'))
 
-        return sdt
+        self.sdt = sdt
+        return self.sdt
 
 
-    def SDT(self, trial_blocks=4, plot=False):
+    def SDT(self, n_trial_blocks=4, plot=False):
         """ returns a dict with d-prime measures given hits, misses, false alarms, and correct rejections"""
         # Floors an ceilings are replaced by half hits and half FA's
-        sdt = self.sdt_trials(blocks=trial_blocks, plot=plot)
+        self.sdt_trials(n_trial_blocks=n_trial_blocks, plot=plot)
         Z = norm.ppf
-        n_trials = np.array_split(self.all_licks, trial_blocks)[0].shape[0]
+        #n_trials = np.array_split(self.all_licks, n_trial_blocks)[0].shape[0]
 
         d_prime = []
-        for hits, misses, fas, crs in zip(sdt['hits'],
-                                          sdt['misses'],
-                                          sdt['FAs'],
-                                          sdt['CRs']):
-            #half_hit = 0.5 / (hits + misses)
-            #half_fa = 0.5 / (fas + crs)
+        for hits, misses, fas, crs in zip(self.sdt['hits'],
+                                          self.sdt['misses'],
+                                          self.sdt['FAs'],
+                                          self.sdt['CRs']):
+            half_hit = 0.5 / (hits + misses)
+            half_fa = 0.5 / (fas + crs)
 
-            half_hit = 1 / (2*n_trials)
-            half_fa = 2*(n_trials)
+            #half_hit = 1 / (2*n_trials)
+            #half_fa = 2*(n_trials)
 
             # Calculate hit_rate and avoid d' infinity
             hit_rate = hits / (hits + misses)
@@ -1228,8 +1227,8 @@ class Session:
             # Return d'
             d_prime.append(Z(hit_rate) - Z(fa_rate))
 
-        self.d_prime = d_prime
-        return self.d_prime
+        self.sdt['d_prime'] = d_prime
+        return self.sdt['d_prime']
 
 
 def MultiSession(mouse, Metadata_CSV, behavior='CircleTrack'):
