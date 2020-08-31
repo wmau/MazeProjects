@@ -148,11 +148,15 @@ class BatchBehaviorAnalyses:
         fig.tight_layout(pad=0.5)
 
 
-    def verify_sdt(self, n_trial_blocks):
+    def verify_sdt(self, n_trial_blocks, session_type, category):
         if not hasattr(self, 'sdt'):
             self.sdt = self.signal_detection_analysis(n_trial_blocks)
-        elif self.sdt['CircleTrackReversal1']['hits'].shape[1] != n_trial_blocks:
+        elif self.sdt[session_type][category].shape[1] != n_trial_blocks:
             self.sdt = self.signal_detection_analysis(n_trial_blocks)
+
+
+    def compare_reversal_learning(self, n_trial_blocks):
+        self.verify_sdt(n_trial_blocks, 'CircleTrackReversal1', 'd_prime')
 
         session1 = self.sdt['CircleTrackReversal1']['d_prime']
         session2 = self.sdt['CircleTrackReversal2']['d_prime']
@@ -167,6 +171,8 @@ class BatchBehaviorAnalyses:
                 np.max([ax.get_xlim(), ax.get_ylim()]),  # max of both axes
             ]
             ax.plot(lims, lims, 'k-', alpha=0.75, zorder=0)
+
+        pass
 
     #def compare_reversal_learning(self, n_trial_blocks):
 
@@ -488,4 +494,4 @@ if __name__ == '__main__':
                                'M2',
                                'M3',
                                'M4'])
-    B.verify_sdt(8)
+    B.compare_reversal_learning(8)
