@@ -122,7 +122,7 @@ class BatchBehaviorAnalyses:
 
         """
         # Preallocate the figure axes.
-        fig, axs = plt.subplots(3,2, sharey='all', figsize=(7,8))
+        fig, axs = plt.subplots(4,2, sharey='all', figsize=(7,9.5))
         d_prime_axs = []
         for ax, session_type, label in zip(axs.flatten(),
                                            self.session_types,
@@ -147,7 +147,29 @@ class BatchBehaviorAnalyses:
         d_prime_axs[0].autoscale()
         fig.tight_layout(pad=0.5)
 
-        pass
+
+    def verify_sdt(self, n_trial_blocks):
+        if not hasattr(self, 'sdt'):
+            self.sdt = self.signal_detection_analysis(n_trial_blocks)
+        elif self.sdt['CircleTrackReversal1']['hits'].shape[1] != n_trial_blocks:
+            self.sdt = self.signal_detection_analysis(n_trial_blocks)
+
+        session1 = self.sdt['CircleTrackReversal1']['d_prime']
+        session2 = self.sdt['CircleTrackReversal2']['d_prime']
+
+        fig, axs = plt.subplots(4,2, sharex='all', sharey='all')
+        for ax, block in zip(axs.flatten(), range(session1.shape[1])):
+            ax.scatter(session1[:, block], session2[:, block])
+
+        for ax in axs.flatten():
+            lims = [
+                np.min([ax.get_xlim(), ax.get_ylim()]),  # min of both axes
+                np.max([ax.get_xlim(), ax.get_ylim()]),  # max of both axes
+            ]
+            ax.plot(lims, lims, 'k-', alpha=0.75, zorder=0)
+
+    #def compare_reversal_learning(self, n_trial_blocks):
+
 
 
     def plot_sdt(self, category, n_trial_blocks,
@@ -466,4 +488,4 @@ if __name__ == '__main__':
                                'M2',
                                'M3',
                                'M4'])
-    B.plot_all_sdts(4)
+    B.verify_sdt(8)
