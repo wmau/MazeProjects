@@ -2,6 +2,8 @@ from CircleTrack.BehaviorFunctions import *
 import matplotlib.pyplot as plt
 from CaImaging.util import sem, errorfill
 from grid_strategy.strategies import RectangularStrategy
+from scipy.stats import wilcoxon
+from statsmodels.stats.multitest import multipletests
 
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['svg.fonttype'] = 'none'
@@ -148,6 +150,8 @@ class BatchBehaviorAnalyses:
         d_prime_axs[0].autoscale()
         fig.tight_layout(pad=0.5)
 
+        pass
+
 
     def verify_sdt(self, n_trial_blocks, session_type, category):
         if not hasattr(self, 'sdt'):
@@ -156,11 +160,16 @@ class BatchBehaviorAnalyses:
             self.sdt = self.signal_detection_analysis(n_trial_blocks)
 
 
-    def compare_reversal_learning(self, n_trial_blocks):
-        self.verify_sdt(n_trial_blocks, 'CircleTrackReversal1', 'd_prime')
+    def compare_d_prime(self, n_trial_blocks,
+                        session1_type, session2_type):
+        self.verify_sdt(n_trial_blocks, session1_type, 'd_prime')
+        self.verify_sdt(n_trial_blocks, session2_type, 'd_prime')
 
-        session1 = self.sdt['CircleTrackReversal1']['d_prime']
-        session2 = self.sdt['CircleTrackReversal2']['d_prime']
+        session1 = self.sdt[session1_type]['d_prime']
+        session2 = self.sdt[session2_type]['d_prime']
+
+        labels = [self.session_labels[self.session_types.index(session_type)]
+                  for session_type in [session1_type, session2_type]]
 
         grid = RectangularStrategy.get_grid_arrangement(n_trial_blocks)
 
@@ -168,21 +177,30 @@ class BatchBehaviorAnalyses:
                                 sharex='all', sharey='all',
                                 figsize=(6.5,7.5))
         flattened_axs = axs.flatten()
+        p_vals = []
         for ax, block in zip(flattened_axs, range(session1.shape[1])):
             ax.scatter(session1[:, block], session2[:, block])
+            p = wilcoxon(session1[:, block], session2[:, block]).pvalue
+            p_vals.append(p)
+        corrected_ps = multipletests(p_vals, method='fdr_bh')[1]
 
         ax = flattened_axs[0]
         lims = [
             np.min([ax.get_xlim(), ax.get_ylim()]),  # min of both axes
             np.max([ax.get_xlim(), ax.get_ylim()]),  # max of both axes
         ]
-        for ax in axs.flatten():
+        for ax, p, cp in zip(flattened_axs,
+                             p_vals,
+                             corrected_ps):
             ax.plot(lims, lims, 'k-', alpha=0.75, zorder=0)
-            ax.set_xlabel("Reversal1 d'")
-            ax.set_ylabel("Reversal2 d'")
+            ax.set_xlabel(f"{labels[0]} d'")
+            ax.set_ylabel(f"{labels[1]} d'")
+            ax.set_title(f'p = {str(np.round(p, 2))}, '
+                         f'{str(np.round(cp, 2))}')
         fig.tight_layout()
 
-        pass
+        return session1, session2
+
 
     #def compare_reversal_learning(self, n_trial_blocks):
 
@@ -207,10 +225,7 @@ class BatchBehaviorAnalyses:
 
         """
         # Get signal detection computations if not already there.
-        if not hasattr(self, 'sdt'):
-            self.sdt = self.signal_detection_analysis(n_trial_blocks)
-        elif self.sdt[session_type][category].shape[1] != n_trial_blocks:
-            self.sdt = self.signal_detection_analysis(n_trial_blocks)
+        self.verify_sdt(n_trial_blocks, session_type, category)
 
         # Color differs for each category.
         colors = {'hits': 'forestgreen',
@@ -504,4 +519,4 @@ if __name__ == '__main__':
                                'M2',
                                'M3',
                                'M4'])
-    B.compare_reversal_learning(8)
+    B.compare_d_prime(8, 'CircleTrackGoals2', 'CircleTrackReversal1')
