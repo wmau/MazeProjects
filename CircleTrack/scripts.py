@@ -154,6 +154,22 @@ class BatchBehaviorAnalyses:
 
 
     def verify_sdt(self, n_trial_blocks, session_type, category):
+        """
+        Verify that the current values stored in self.sdt match the
+        expected size of the trial blocks. If self.sdt doesn't exist,
+        compute it.
+
+        :parameters
+        ---
+        n_trial_blocks: int
+            Splits all trials in that session into n blocks.
+
+        session_type: str
+            Training stage (e.g., CircleTrackShaping1).
+
+        category: str
+            'hits', 'misses', 'FAs', or 'CRs'.
+        """
         if not hasattr(self, 'sdt'):
             self.sdt = self.signal_detection_analysis(n_trial_blocks)
         elif self.sdt[session_type][category].shape[1] != n_trial_blocks:
@@ -162,17 +178,30 @@ class BatchBehaviorAnalyses:
 
     def compare_d_prime(self, n_trial_blocks,
                         session1_type, session2_type):
+        """
+        Compare the d' across trial blocks of different session types.
+
+        :parameters
+        ---
+        n_trial_blocks: int
+            Splits all trials in that session into n blocks.
+
+        session1_type and session2_type: strs
+            Session types that you want to compare d' from.
+
+        """
+        # Make sure the d' exists first.
         self.verify_sdt(n_trial_blocks, session1_type, 'd_prime')
         self.verify_sdt(n_trial_blocks, session2_type, 'd_prime')
 
+        # Get the data from those sesssions and mice.
         session1 = self.sdt[session1_type]['d_prime']
         session2 = self.sdt[session2_type]['d_prime']
 
-        labels = [self.session_labels[self.session_types.index(session_type)]
-                  for session_type in [session1_type, session2_type]]
-
+        # Get the best way to arrange subplots. Plot all d's.
+        # Also record p-values of signed-rank tests and
+        # get their multiple comparisons corrected values.
         grid = RectangularStrategy.get_grid_arrangement(n_trial_blocks)
-
         fig, axs = plt.subplots(max(grid), len(grid),
                                 sharex='all', sharey='all',
                                 figsize=(6.5,7.5))
@@ -184,11 +213,18 @@ class BatchBehaviorAnalyses:
             p_vals.append(p)
         corrected_ps = multipletests(p_vals, method='fdr_bh')[1]
 
+        # Get size of y=x line.
         ax = flattened_axs[0]
         lims = [
             np.min([ax.get_xlim(), ax.get_ylim()]),  # min of both axes
             np.max([ax.get_xlim(), ax.get_ylim()]),  # max of both axes
         ]
+
+        # Get x and y axis labels.
+        labels = [self.session_labels[self.session_types.index(session_type)]
+                  for session_type in [session1_type, session2_type]]
+
+        # Labels. 
         for ax, p, cp in zip(flattened_axs,
                              p_vals,
                              corrected_ps):
@@ -200,10 +236,6 @@ class BatchBehaviorAnalyses:
         fig.tight_layout()
 
         return session1, session2
-
-
-    #def compare_reversal_learning(self, n_trial_blocks):
-
 
 
     def plot_sdt(self, category, n_trial_blocks,
