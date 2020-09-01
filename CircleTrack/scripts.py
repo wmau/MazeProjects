@@ -4,6 +4,7 @@ from CaImaging.util import sem, errorfill
 from grid_strategy.strategies import RectangularStrategy
 from scipy.stats import wilcoxon
 from statsmodels.stats.multitest import multipletests
+import matplotlib.patches as mpatches
 
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['svg.fonttype'] = 'none'
@@ -124,31 +125,70 @@ class BatchBehaviorAnalyses:
             Splits all trials in that session into n blocks.
 
         """
-        # Preallocate the figure axes.
-        fig, axs = plt.subplots(4,2, sharey='all', figsize=(7,9.5))
-        d_prime_axs = []
-        for ax, session_type, label in zip(axs.flatten(),
-                                           self.session_types,
-                                           self.session_labels):
-            self.plot_sdt('hits', n_trial_blocks, session_type, ax)
+        if n_trial_blocks == 1:
+            fig, axs = plt.subplots(2, 1, figsize=(7,9.5))
+            hits = nan_array((self.n_mice, len(self.session_types)))
+            CRs = nan_array((self.n_mice, len(self.session_types)))
+            d_primes = nan_array((self.n_mice, len(self.session_types)))
 
-            # Ignore shaping sessions.
-            if 'Shaping' not in session_type:
-                self.plot_sdt('CRs', n_trial_blocks, session_type, ax)
+            for s, (session_type, label) \
+                    in enumerate(zip(self.session_types,
+                                     self.session_labels)):
+                self.verify_sdt(1, session_type, 'hits')
+                self.verify_sdt(1, session_type, 'CRs')
+                self.verify_sdt(1, session_type, 'd_prime')
 
-                # Use a different axis for d'.
-                d_prime_ax = ax.twinx()
-                d_prime_axs.append(d_prime_ax)
-                self.plot_sdt('d_prime', n_trial_blocks,
-                              session_type, d_prime_ax)
-            ax.set_title(label)
+                for m, mouse in enumerate(self.mice):
+                    try:
+                        session_data = \
+                            self.all_sessions[mouse][session_type]
 
-        # Link the d' axes.
-        for d_prime_ax in d_prime_axs[1:]:
-            d_prime_axs[0].get_shared_y_axes().join(d_prime_axs[0],
-                                                    d_prime_ax)
-        d_prime_axs[0].autoscale()
-        fig.tight_layout(pad=0.5)
+                        hits[m, s] = session_data.sdt['hits'][0]
+                        CRs[m, s] = session_data.sdt['CRs'][0]
+                        d_primes[m, s] = session_data.sdt['d_prime'][0]
+                    except KeyError:
+                        print(f'{session_type} not found for '
+                              f'mouse {mouse}!')
+
+            axs[0].plot(self.session_labels, hits.T, 'o-',
+                        color='forestgreen', label='Hits')
+            axs[0].set_ylabel('%')
+            axs[0].plot(CRs.T, 'o-', color='steelblue',
+                        label='Correct rejections')
+            axs[1].plot(self.session_labels, d_primes.T, 'o-',
+                        color='black')
+            axs[1].set_ylabel("d'")
+            for ax in axs:
+                plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+            fig.tight_layout()
+
+
+        else:
+            # Preallocate the figure axes.
+            fig, axs = plt.subplots(4,2, sharey='all', figsize=(7,9.5))
+            d_prime_axs = []
+            for ax, session_type, label in zip(axs.flatten(),
+                                               self.session_types,
+                                               self.session_labels):
+                self.plot_sdt('hits', n_trial_blocks, session_type, ax)
+
+                # Ignore shaping sessions.
+                if 'Shaping' not in session_type:
+                    self.plot_sdt('CRs', n_trial_blocks, session_type, ax)
+
+                    # Use a different axis for d'.
+                    d_prime_ax = ax.twinx()
+                    d_prime_axs.append(d_prime_ax)
+                    self.plot_sdt('d_prime', n_trial_blocks,
+                                  session_type, d_prime_ax)
+                ax.set_title(label)
+
+            # Link the d' axes.
+            for d_prime_ax in d_prime_axs[1:]:
+                d_prime_axs[0].get_shared_y_axes().join(d_prime_axs[0],
+                                                        d_prime_ax)
+            d_prime_axs[0].autoscale()
+            fig.tight_layout(pad=0.5)
 
         pass
 
@@ -393,13 +433,14 @@ class BatchBehaviorAnalyses:
 
 
     def plot_all_session_licks(self):
-        fig, axs = plt.subplots(3,2,sharey='all', sharex='all')
+        fig, axs = plt.subplots(4,2,sharey='all', sharex='all',
+                                figsize=(6.6, 9.4))
         for ax, session_type, label in zip(axs.flatten(),
                                            self.session_types,
                                            self.session_labels):
             self.plot_rewarded_licks(session_type, ax)
             ax.set_title(label)
-        fig.tight_layout(pad=0.5)
+        fig.tight_layout(pad=0.2)
 
 
     def plot_rewarded_licks(self, session_type, ax=None):
@@ -551,4 +592,5 @@ if __name__ == '__main__':
                                'M2',
                                'M3',
                                'M4'])
-    B.compare_d_prime(8, 'CircleTrackGoals2', 'CircleTrackReversal1')
+    B.plot_all_sdts(1)
+    B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
