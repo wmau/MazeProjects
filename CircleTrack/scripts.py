@@ -1,6 +1,7 @@
 from CircleTrack.BehaviorFunctions import *
 import matplotlib.pyplot as plt
 from CaImaging.util import sem, errorfill
+from grid_strategy.strategies import RectangularStrategy
 
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['svg.fonttype'] = 'none'
@@ -161,16 +162,25 @@ class BatchBehaviorAnalyses:
         session1 = self.sdt['CircleTrackReversal1']['d_prime']
         session2 = self.sdt['CircleTrackReversal2']['d_prime']
 
-        fig, axs = plt.subplots(4,2, sharex='all', sharey='all')
-        for ax, block in zip(axs.flatten(), range(session1.shape[1])):
+        grid = RectangularStrategy.get_grid_arrangement(n_trial_blocks)
+
+        fig, axs = plt.subplots(max(grid), len(grid),
+                                sharex='all', sharey='all',
+                                figsize=(6.5,7.5))
+        flattened_axs = axs.flatten()
+        for ax, block in zip(flattened_axs, range(session1.shape[1])):
             ax.scatter(session1[:, block], session2[:, block])
 
+        ax = flattened_axs[0]
+        lims = [
+            np.min([ax.get_xlim(), ax.get_ylim()]),  # min of both axes
+            np.max([ax.get_xlim(), ax.get_ylim()]),  # max of both axes
+        ]
         for ax in axs.flatten():
-            lims = [
-                np.min([ax.get_xlim(), ax.get_ylim()]),  # min of both axes
-                np.max([ax.get_xlim(), ax.get_ylim()]),  # max of both axes
-            ]
             ax.plot(lims, lims, 'k-', alpha=0.75, zorder=0)
+            ax.set_xlabel("Reversal1 d'")
+            ax.set_ylabel("Reversal2 d'")
+        fig.tight_layout()
 
         pass
 
