@@ -162,7 +162,11 @@ class BatchBehaviorAnalyses:
                 plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
             fig.tight_layout()
 
-
+            hit_patch = mpatches.Patch(color='forestgreen',
+                                       label='Hits')
+            cr_patch = mpatches.Patch(color='steelblue',
+                                      label='Correct rejections')
+            axs[0].legend(handles=[hit_patch, cr_patch])
         else:
             # Preallocate the figure axes.
             fig, axs = plt.subplots(4,2, sharey='all', figsize=(7,9.5))
