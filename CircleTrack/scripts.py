@@ -442,6 +442,8 @@ class BatchBehaviorAnalyses:
             ax.set_title(label)
         fig.tight_layout(pad=0.2)
 
+        pass
+
 
     def plot_rewarded_licks(self, session_type, ax=None):
         """
@@ -592,5 +594,6 @@ if __name__ == '__main__':
                                'M2',
                                'M3',
                                'M4'])
+    B.plot_all_session_licks()
     B.plot_all_sdts(1)
     B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
