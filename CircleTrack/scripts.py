@@ -44,11 +44,6 @@ class BatchBehaviorAnalyses:
         self.mice = mice
         self.n_mice = len(mice)
 
-        # Get the number of licks for every single session.
-        for sessions in self.all_sessions.values():
-            for session in sessions.values():
-                session.get_licks(plot=False)
-
         # Define session types here. Watch out for typos.
         # Order matters. Plots will be in the order presented here.
         self.session_types = ['CircleTrackShaping1',

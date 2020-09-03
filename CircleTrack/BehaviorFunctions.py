@@ -990,8 +990,9 @@ class Session:
         self.rewarded_ports = np.zeros(8, dtype=bool)
         self.rewarded_ports[rewarded_ports] = True
         self.n_rewarded_ports = np.sum(self.rewarded_ports)
+        self.all_licks = self.get_licks(plot=False)
         self.n_drinks = self.count_drinks()
-
+        self.get_learning_curve(5)
 
     def count_drinks(self):
         """
@@ -1007,6 +1008,7 @@ class Session:
             n_rewards.append(water_deliveries)
 
         return np.asarray(n_rewards)
+
 
     def plot_licks_spiral(self):
         """
@@ -1124,9 +1126,9 @@ class Session:
             ax.set_xlabel('Water port #')
             ax.set_ylabel('Trial')
 
-        self.all_licks = np.asarray(all_licks)
+        all_licks = np.asarray(all_licks)
 
-        return self.all_licks
+        return all_licks
 
 
     def plot_licks(self):
@@ -1135,9 +1137,6 @@ class Session:
 
         :return:
         """
-        if not hasattr(self, 'all_licks'):
-            self.all_licks = self.get_licks(plot=False)
-
         fig, ax = plt.subplots()
         ax.plot(self.all_licks[:, self.rewarded_ports], 'cornflowerblue')
         ax.plot(self.all_licks[:, ~self.rewarded_ports], 'gray', alpha=0.6)
@@ -1146,9 +1145,6 @@ class Session:
 
 
     def sdt_trials(self, n_trial_blocks=None, plot=True):
-        # Get number of licks per port.
-        self.all_licks = self.get_licks(plot=False)
-
         # Split the session into N blocks.
         if n_trial_blocks is not None:
             licks = np.array_split(self.all_licks,
@@ -1232,6 +1228,17 @@ class Session:
 
         self.sdt['d_prime'] = d_prime
         return self.sdt['d_prime']
+
+
+    def get_learning_curve(self, smooth_factor):
+        licks = self.all_licks
+        rewarded_ports = self.rewarded_ports
+        rejections = licks[:, ~rewarded_ports] == 0
+        hits = licks[:, rewarded_ports] > 1
+        correct_responses = np.sum(np.hstack((rejections, hits)), axis=1)
+
+        pass
+
 
 
 def MultiSession(mouse, Metadata_CSV, behavior='CircleTrack'):
@@ -1329,6 +1336,6 @@ if __name__ == '__main__':
     # data = Session(folder)
     # data.plot_licks()
 
-    A = MultiAnimal(['Betelgeuse_Scope25', 'Alcor_Scope20', 'M1', 'M2', 'M3', 'M4'])
-
+    #A = MultiAnimal(['Betelgeuse_Scope25', 'Alcor_Scope20', 'M1', 'M2', 'M3', 'M4'])
+    S = Session(r'Z:\Will\Drift\Data\Betelgeuse_Scope25\08_01_2020_CircleTrackGoals1\H15_M13_S8')
 
