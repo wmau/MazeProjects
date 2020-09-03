@@ -4,7 +4,7 @@ import pandas as pd
 from matplotlib.animation import FFMpegWriter
 from CaImaging.LickArduino import clean_Arduino_output
 from CaImaging.util import find_closest, ScrollPlot, disp_frame, \
-    consecutive_dist, sync_cameras, nan_array
+    consecutive_dist, sync_cameras, nan_array, smooth
 from CaImaging.Behavior import read_eztrack, convert_dlc_to_eztrack
 from scipy.stats import zscore
 from scipy.stats import norm
@@ -992,7 +992,7 @@ class Session:
         self.n_rewarded_ports = np.sum(self.rewarded_ports)
         self.all_licks = self.get_licks(plot=False)
         self.n_drinks = self.count_drinks()
-        self.get_learning_curve(5)
+        self.get_learning_curve(9)
 
     def count_drinks(self):
         """
@@ -1231,11 +1231,23 @@ class Session:
 
 
     def get_learning_curve(self, smooth_factor):
+        if all(self.rewarded_ports):
+            print(f'All ports are rewarded for '
+                  f'{self.folder}. Learning curve is pointless')
+            return
+
         licks = self.all_licks
         rewarded_ports = self.rewarded_ports
         rejections = licks[:, ~rewarded_ports] == 0
         hits = licks[:, rewarded_ports] > 1
         correct_responses = np.sum(np.hstack((rejections, hits)), axis=1)
+
+        fig, ax = plt.subplots()
+        ax.plot(smooth(correct_responses, smooth_factor))
+        ax.set_xlabel('Trials')
+        ax.set_ylabel('Correct responses')
+        ax.set_ylim([0,8])
+        ax.set_title(os.path.split(os.path.split(self.folder)[0])[-1])
 
         pass
 
