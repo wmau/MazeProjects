@@ -125,12 +125,17 @@ class BatchBehaviorAnalyses:
             Splits all trials in that session into n blocks.
 
         """
+        # Handle the case where you want the entire session's hit/
+        # correct rejection rate/d'. Plots two subplots, one of
+        # hit/correct rejection rate, another for d' across all sessions.
         if n_trial_blocks == 1:
+            # Preallocate.
             fig, axs = plt.subplots(2, 1, figsize=(7,9.5))
             hits = nan_array((self.n_mice, len(self.session_types)))
             CRs = nan_array((self.n_mice, len(self.session_types)))
             d_primes = nan_array((self.n_mice, len(self.session_types)))
 
+            # Acquire data and sort by session.
             for s, (session_type, label) \
                     in enumerate(zip(self.session_types,
                                      self.session_labels)):
@@ -150,6 +155,7 @@ class BatchBehaviorAnalyses:
                         print(f'{session_type} not found for '
                               f'mouse {mouse}!')
 
+            # Plot the values.
             axs[0].plot(self.session_labels, hits.T, 'o-',
                         color='forestgreen', label='Hits')
             axs[0].set_ylabel('%')
@@ -162,11 +168,15 @@ class BatchBehaviorAnalyses:
                 plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
             fig.tight_layout()
 
+            # Build the legend.
             hit_patch = mpatches.Patch(color='forestgreen',
                                        label='Hits')
             cr_patch = mpatches.Patch(color='steelblue',
                                       label='Correct rejections')
             axs[0].legend(handles=[hit_patch, cr_patch])
+
+        # Otherwise, split the sessions into trial blocks and
+        # plot d' etc per block.
         else:
             # Preallocate the figure axes.
             fig, axs = plt.subplots(4,2, sharey='all', figsize=(7,9.5))
@@ -437,6 +447,15 @@ class BatchBehaviorAnalyses:
 
 
     def plot_all_session_licks(self):
+        """
+        Categorizes ports as ones that are currently rewarded,
+        rewarded from the last session, or not recently rewarded.
+        Collapses across those categories and plots lick rates
+        across all sessions.
+
+        :return:
+        """
+        # Plot lick rates.
         fig, axs = plt.subplots(4,2,sharey='all', sharex='all',
                                 figsize=(6.6, 9.4))
         for ax, session_type, label in zip(axs.flatten(),
@@ -444,6 +463,18 @@ class BatchBehaviorAnalyses:
                                            self.session_labels):
             self.plot_rewarded_licks(session_type, ax)
             ax.set_title(label)
+
+        # Build the legend.
+        rewarded_patch = mpatches.Patch(color='cornflowerblue',
+                                        label='Rewarded')
+        prev_rewarded_patch = mpatches.Patch(color='lightcoral',
+                                             label='Rewarded last session')
+        not_rewarded_patch = mpatches.Patch(color='gray',
+                                            label='Not recently rewarded')
+        axs.flatten()[-1].legend(handles=[rewarded_patch,
+                                          prev_rewarded_patch,
+                                          not_rewarded_patch])
+
         fig.tight_layout(pad=0.2)
 
         pass

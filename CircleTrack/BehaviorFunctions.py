@@ -1197,32 +1197,35 @@ class Session:
         # Floors an ceilings are replaced by half hits and half FA's
         self.sdt_trials(n_trial_blocks=n_trial_blocks, plot=plot)
         Z = norm.ppf
-        n_trials = np.array_split(self.all_licks, n_trial_blocks)[0].shape[0]
 
         d_prime = []
         for hits, misses, fas, crs in zip(self.sdt['hits'],
                                           self.sdt['misses'],
                                           self.sdt['FAs'],
                                           self.sdt['CRs']):
+            # One way to prevent d' infinity.
             #half_hit = 0.5 / (hits + misses)
             #half_fa = 0.5 / (fas + crs)
 
-            half_hit = 1 / (2*n_trials)
-            half_fa = 2*(n_trials)
+            # Another way.
+            n_trials = np.array_split(self.all_licks, n_trial_blocks)[0].shape[0]
+            correction = 1 / (2*n_trials)
 
             # Calculate hit_rate and avoid d' infinity
             hit_rate = hits / (hits + misses)
             if hit_rate == 1:
-                hit_rate = 1 - half_hit
-            if hit_rate == 0:
-                hit_rate = half_hit
+                hit_rate = 1 - correction
+                #hit_rate = 1 - half_hit
+            #if hit_rate == 0:
+                #hit_rate = half_hit
 
             # Calculate false alarm rate and avoid d' infinity
             fa_rate = fas / (fas + crs)
-            if fa_rate == 1:
-                fa_rate = 1 - half_fa
+            #if fa_rate == 1:
+                #fa_rate = 1 - half_fa
             if fa_rate == 0:
-                fa_rate = half_fa
+                #fa_rate = half_fa
+                fa_rate = correction
 
             # Return d'
             d_prime.append(Z(hit_rate) - Z(fa_rate))
