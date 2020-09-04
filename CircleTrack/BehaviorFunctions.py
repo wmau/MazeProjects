@@ -4,10 +4,10 @@ import pandas as pd
 from matplotlib.animation import FFMpegWriter
 from CaImaging.LickArduino import clean_Arduino_output
 from CaImaging.util import find_closest, ScrollPlot, disp_frame, \
-    consecutive_dist, sync_cameras, nan_array, smooth
+    consecutive_dist, sync_cameras, nan_array, round_up_to_odd
 from CaImaging.Behavior import read_eztrack, convert_dlc_to_eztrack
-from scipy.stats import zscore
-from scipy.stats import norm
+from scipy.stats import zscore, norm
+from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
 import cv2
 
@@ -1097,8 +1097,6 @@ class Session:
 
         fig.tight_layout()
 
-        pass
-
 
     def get_licks(self, plot=True):
         """
@@ -1243,11 +1241,19 @@ class Session:
         correct_responses = np.sum(np.hstack((rejections, hits)), axis=1)
 
         fig, ax = plt.subplots()
-        ax.plot(smooth(correct_responses, smooth_factor))
+        ax.plot(correct_responses, 'k.')
         ax.set_xlabel('Trials')
         ax.set_ylabel('Correct responses')
         ax.set_ylim([0,8])
         ax.set_title(os.path.split(os.path.split(self.folder)[0])[-1])
+        smoothed = savgol_filter(correct_responses,
+                                 round_up_to_odd(self.ntrials/3), 3)
+        ax.plot(smoothed, 'r')
+
+        d1 = np.diff(smoothed, prepend=smoothed[0])
+        ax.plot(zscore(d1), 'r')
+
+
 
         pass
 
