@@ -1244,16 +1244,17 @@ class Session:
         ax.plot(correct_responses, 'k.')
         ax.set_xlabel('Trials')
         ax.set_ylabel('Correct responses')
-        ax.set_ylim([0,8])
+        #ax.set_ylim([0,8])
         ax.set_title(os.path.split(os.path.split(self.folder)[0])[-1])
         smoothed = savgol_filter(correct_responses,
                                  round_up_to_odd(self.ntrials/3), 3)
         ax.plot(smoothed, 'r')
 
         d1 = np.diff(smoothed, prepend=smoothed[0])
-        ax.plot(zscore(d1), 'r')
+        zd1 = zscore(d1)
+        ax.plot(zd1, 'g')
 
-
+        ax.axhline(0)
 
         pass
 
