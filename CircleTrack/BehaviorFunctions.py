@@ -4,7 +4,8 @@ import pandas as pd
 from matplotlib.animation import FFMpegWriter
 from CaImaging.LickArduino import clean_Arduino_output
 from CaImaging.util import find_closest, ScrollPlot, disp_frame, \
-    consecutive_dist, sync_cameras, nan_array, round_up_to_odd
+    consecutive_dist, sync_cameras, nan_array, round_up_to_odd, \
+    contiguous_regions
 from CaImaging.Behavior import read_eztrack, convert_dlc_to_eztrack
 from scipy.stats import zscore, norm
 from scipy.signal import savgol_filter
@@ -1228,7 +1229,7 @@ class Session:
         return self.sdt['d_prime']
 
 
-    def get_learning_curve(self, smooth_factor):
+    def get_learning_curve(self, trial_threshold=5):
         if all(self.rewarded_ports):
             print(f'All ports are rewarded for '
                   f'{self.folder}. Learning curve is pointless')
@@ -1244,15 +1245,26 @@ class Session:
         ax.plot(correct_responses, 'k.')
         ax.set_xlabel('Trials')
         ax.set_ylabel('Correct responses')
-        #ax.set_ylim([0,8])
+        ax.set_ylim([0,8])
         ax.set_title(os.path.split(os.path.split(self.folder)[0])[-1])
         smoothed = savgol_filter(correct_responses,
                                  round_up_to_odd(self.ntrials/3), 3)
         ax.plot(smoothed, 'r')
 
         d1 = np.diff(smoothed, prepend=smoothed[0])
-        zd1 = zscore(d1)
-        ax.plot(zd1, 'g')
+        # ax.plot(d1, 'g')
+
+        consecutive_runs = contiguous_regions(d1 > 0)
+        for run in consecutive_runs:
+            learning_duration = np.diff(run)
+            if learning_duration > trial_threshold:
+                start_of_learning = run[0]
+                middle_of_learning = np.floor(np.mean(run))
+
+                ax.axvline(start_of_learning, color='g')
+                ax.axvline(middle_of_learning, color='y')
+
+                break
 
         ax.axhline(0)
 
