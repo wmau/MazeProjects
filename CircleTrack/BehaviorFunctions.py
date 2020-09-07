@@ -999,7 +999,7 @@ class Session:
             self.learning['correct_responses'], self.learning['curve'], \
             self.learning['start'], self.learning['inflection'] = \
                 self.get_learning_curve(5)
-        except:
+        except AssertionError:
             pass
 
     def count_drinks(self):

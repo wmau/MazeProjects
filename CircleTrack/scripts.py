@@ -63,6 +63,7 @@ class BatchBehaviorAnalyses:
         self.trial_counts, self.max_trials = self.count_trials()
         self.licks, self.rewarded_ports, self.n_drinks, self.p_drinks \
             = self.resort_data()
+        self.learning_trials = self.get_learning_trials()
 
         pass
 
@@ -339,6 +340,34 @@ class BatchBehaviorAnalyses:
             ax.set_ylabel('%')
 
 
+    def get_learning_trials(self):
+        learning_trials = {'start': nan_array((self.n_mice,
+                                               len(self.session_types))),
+                           'inflection': nan_array((self.n_mice,
+                                                    len(self.session_types)))}
+
+        for s, session_type in enumerate(self.session_types):
+            for m, mouse in enumerate(self.mice):
+                mouse_data = self.all_sessions[mouse]
+                try:
+                    learning_trials['start'][m, s] = \
+                        mouse_data.learning['start']
+                    learning_trials['inflection'][m, s] = \
+                        mouse_data.learning['inflection']
+                except KeyError:
+                    pass
+
+        return learning_trials
+
+
+    def plot_learning_trials(self, ax=None):
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        ax.plot(self.session_labels, self.learning_trials['start'], 'go-')
+        ax.plot(self.session_labels, self.learning_trials['inflection'], 'yo-')
+
+
     def count_trials(self):
         """
         Count the number of trials for each mouse and each session type.
@@ -349,9 +378,9 @@ class BatchBehaviorAnalyses:
                                   len(self.session_types)))
         for s, session_type in enumerate(self.session_types):
             for m, mouse in enumerate(self.mice):
-                animal = self.all_sessions[mouse]
+                mouse_data = self.all_sessions[mouse]
                 try:
-                    trial_counts[m,s] = int(animal[session_type].ntrials)
+                    trial_counts[m,s] = int(mouse_data[session_type].ntrials)
                 except KeyError:
                     trial_counts[m,s] = np.nan
 
@@ -389,6 +418,8 @@ class BatchBehaviorAnalyses:
         rewarded_matrix = dict()
         drink_matrix = dict()
         p_drink_matrix = dict()
+        learning_start = dict()
+        learning_inflection = dict()
         for max_trials, session_type in zip(self.max_trials,
                                             self.session_types):
             lick_matrix[session_type] = nan_array((self.n_mice,
@@ -400,8 +431,10 @@ class BatchBehaviorAnalyses:
                                                     max_trials))
             p_drink_matrix[session_type] = nan_array((self.n_mice,
                                                       max_trials))
+            learning_start[session_type] = nan_array((self.n_mice,))
+            learning_inflection[session_type] = nan_array((self.n_mice,))
 
-            # Get the lick data for each session.
+            # Get data and sort by session type. .
             for m, mouse in enumerate(self.mice):
                 mouse_data = self.all_sessions[mouse]
                 try:
