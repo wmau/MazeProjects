@@ -993,7 +993,14 @@ class Session:
         self.n_rewarded_ports = np.sum(self.rewarded_ports)
         self.all_licks = self.get_licks(plot=False)
         self.n_drinks = self.count_drinks()
-        self.get_learning_curve(9)
+
+        try:
+            self.learning = dict()
+            self.learning['correct_responses'], self.learning['curve'], \
+            self.learning['start'], self.learning['inflection'] = \
+                self.get_learning_curve(5)
+        except:
+            pass
 
     def count_drinks(self):
         """
@@ -1230,46 +1237,83 @@ class Session:
 
 
     def get_learning_curve(self, trial_threshold=5):
-        if all(self.rewarded_ports):
-            print(f'All ports are rewarded for '
-                  f'{self.folder}. Learning curve is pointless')
-            return
+        """
+        Get the smoothed number of correct responses over trials.
+        Also get the trial number corresponding to when the mouse
+        first starts exhibiting learning and the middle of that
+        epoch as well. This epoch is determined by number of
+        consecutive trials of improvement, which the user provides
+        in trial_threshold.
 
+        :parameter
+        ---
+        trial_threshold: int
+            Number of trials where the mouse is continuously
+            improving. This determines the trial at which the
+            moues first demonstrates learning and also the
+            inflection point of performance.
+
+        """
+        # If all the ports are rewarded in e.g. a shaping session,
+        # it doesn't make sense to find the learning curve.
+        assert not all(self.rewarded_ports),\
+            f'All ports are rewarded for {self.folder}. ' \
+                'Learning curve is pointless'
+
+        # Get licks, rewarded ports, and categorize responses.
         licks = self.all_licks
         rewarded_ports = self.rewarded_ports
         rejections = licks[:, ~rewarded_ports] == 0
         hits = licks[:, rewarded_ports] > 1
         correct_responses = np.sum(np.hstack((rejections, hits)), axis=1)
 
-        fig, ax = plt.subplots()
-        ax.plot(correct_responses, 'k.')
-        ax.set_xlabel('Trials')
-        ax.set_ylabel('Correct responses')
-        ax.set_ylim([0,8])
-        ax.set_title(os.path.split(os.path.split(self.folder)[0])[-1])
+        # Smooth the correct response time series.
         smoothed = savgol_filter(correct_responses,
                                  round_up_to_odd(self.ntrials/3), 3)
-        ax.plot(smoothed, 'r')
 
-        d1 = np.diff(smoothed, prepend=smoothed[0])
-        # ax.plot(d1, 'g')
+        # Learning rate is the first derivative wrt to trials.
+        # Continuous improvement is the stretch of the learning rate above 0.
+        learning_rate = np.diff(smoothed, prepend=smoothed[0])
+        consecutive_improvements = contiguous_regions(learning_rate > 0)
 
-        consecutive_runs = contiguous_regions(d1 > 0)
-        for run in consecutive_runs:
+        # For each stretch of consecutive improvement, check how many
+        # trials it spans. If it's greater than the threshold, this means
+        # the mouse is learning.
+        start_of_learning = np.nan
+        middle_of_learning = np.nan
+        for run in consecutive_improvements:
             learning_duration = np.diff(run)
             if learning_duration > trial_threshold:
                 start_of_learning = run[0]
                 middle_of_learning = np.floor(np.mean(run))
 
-                ax.axvline(start_of_learning, color='g')
-                ax.axvline(middle_of_learning, color='y')
-
                 break
 
-        ax.axhline(0)
+        return correct_responses, smoothed, \
+               start_of_learning, middle_of_learning
 
-        pass
 
+    def plot_learning_curve(self, ax=None):
+        """
+        Plot the learning curve
+        :param ax:
+        :return:
+        """
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        try:
+            ax.plot(self.learning['correct_responses'], 'k.')
+            ax.plot(self.learning['curve'], 'r')
+            ax.set_xlabel('Trials')
+            ax.set_ylabel('Correct responses')
+            ax.set_ylim([0,8])
+            ax.set_title(os.path.split(os.path.split(self.folder)[0])[-1])
+
+            ax.axvline(self.learning['start'], color='g')
+            ax.axvline(self.learning['inflection'], color='y')
+        except KeyError:
+            print('Learning data not found.')
 
 
 def MultiSession(mouse, Metadata_CSV, behavior='CircleTrack'):
