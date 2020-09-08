@@ -1264,7 +1264,7 @@ class Session:
 
         # If all the ports are rewarded in e.g. a shaping session,
         # it doesn't make sense to find the learning curve.
-        if not all(self.rewarded_ports):
+        if all(self.rewarded_ports):
             print(f'All ports are rewarded for {self.folder}. '
                   f'Learning curve is pointless')
             return correct_responses, smoothed, np.nan, np.nan
@@ -1305,9 +1305,9 @@ class Session:
             ax.plot(self.learning['correct_responses'], 'k.')
             ax.plot(self.learning['curve'], 'r')
             ax.set_xlabel('Trials')
-            ax.set_ylabel('Correct responses')
+            #ax.set_ylabel('Correct responses')
             ax.set_ylim([0,8])
-            ax.set_title(os.path.split(os.path.split(self.folder)[0])[-1])
+            #ax.set_title(os.path.split(os.path.split(self.folder)[0])[-1])
 
             ax.axvline(self.learning['start'], color='g')
             ax.axvline(self.learning['inflection'], color='y')
