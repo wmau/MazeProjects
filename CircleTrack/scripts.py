@@ -351,9 +351,9 @@ class BatchBehaviorAnalyses:
                 mouse_data = self.all_sessions[mouse]
                 try:
                     learning_trials['start'][m, s] = \
-                        mouse_data.learning['start']
+                        mouse_data[session_type].learning['start']
                     learning_trials['inflection'][m, s] = \
-                        mouse_data.learning['inflection']
+                        mouse_data[session_type].learning['inflection']
                 except KeyError:
                     pass
 
@@ -657,6 +657,7 @@ if __name__ == '__main__':
                                'M2',
                                'M3',
                                'M4'])
+    B.plot_learning_trials()
     B.plot_all_session_licks()
     B.plot_all_sdts(1)
     B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')

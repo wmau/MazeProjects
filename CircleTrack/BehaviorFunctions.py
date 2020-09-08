@@ -994,13 +994,10 @@ class Session:
         self.all_licks = self.get_licks(plot=False)
         self.n_drinks = self.count_drinks()
 
-        try:
-            self.learning = dict()
-            self.learning['correct_responses'], self.learning['curve'], \
-            self.learning['start'], self.learning['inflection'] = \
-                self.get_learning_curve(5)
-        except AssertionError:
-            pass
+        self.learning = dict()
+        self.learning['correct_responses'], self.learning['curve'], \
+        self.learning['start'], self.learning['inflection'] = \
+            self.get_learning_curve(5)
 
     def count_drinks(self):
         """
@@ -1254,12 +1251,6 @@ class Session:
             inflection point of performance.
 
         """
-        # If all the ports are rewarded in e.g. a shaping session,
-        # it doesn't make sense to find the learning curve.
-        assert not all(self.rewarded_ports),\
-            f'All ports are rewarded for {self.folder}. ' \
-                'Learning curve is pointless'
-
         # Get licks, rewarded ports, and categorize responses.
         licks = self.all_licks
         rewarded_ports = self.rewarded_ports
@@ -1271,8 +1262,16 @@ class Session:
         smoothed = savgol_filter(correct_responses,
                                  round_up_to_odd(self.ntrials/3), 3)
 
+        # If all the ports are rewarded in e.g. a shaping session,
+        # it doesn't make sense to find the learning curve.
+        if not all(self.rewarded_ports):
+            print(f'All ports are rewarded for {self.folder}. '
+                  f'Learning curve is pointless')
+            return correct_responses, smoothed, np.nan, np.nan
+
         # Learning rate is the first derivative wrt to trials.
-        # Continuous improvement is the stretch of the learning rate above 0.
+        # Continuous improvement is the stretch of the learning rate
+        # above 0.
         learning_rate = np.diff(smoothed, prepend=smoothed[0])
         consecutive_improvements = contiguous_regions(learning_rate > 0)
 
