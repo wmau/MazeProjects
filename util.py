@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import pickle as pkl
 import tkinter as tk
+import re
 
 from CaImaging.util import get_data_paths
 
@@ -166,11 +167,11 @@ class Metadata_CSV:
 
         master_dict = {
             'Mouse': self.get_metadata('mouse'),
-            'Group': None,
+            'Group': None, #to do
             'Session': self.get_metadata('date'),
             'Session_Type': self.get_session_type(),
             'Path': self.session_folders,
-            'CellRegPath': None,
+            'CellRegPath': None, #to do
             'Metadata': [os.path.join(folder, 'metadata.pkl')
                          for folder in self.session_folders]
         }
@@ -184,9 +185,16 @@ class Metadata_CSV:
 
 
     def get_all_sessions(self):
-        session_folders = [folder for folder in
-                           Path(self.project_folder).rglob('H*_M*_S*')
-                           if os.path.isdir(folder)]
+        session_folders = []
+        expression = '^H?[0-9]+_M?[0-9]+_S?[0-9]+$'
+        for root, dirs, _ in os.walk(self.project_folder):
+            for directory in dirs:
+                if re.match(expression, directory):
+                    session_folders.append(os.path.join(root, directory))
+        #
+        # session_folders = [folder for folder in
+        #                    Path(self.project_folder).rglob('r^[H]?[0-9]{1,2}_[M]?[0-9]{1,2}_[S]?[0-9]{1,2}$')
+        #                    if os.path.isdir(folder)]
 
         return session_folders
 
