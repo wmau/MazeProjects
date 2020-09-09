@@ -360,15 +360,38 @@ class BatchBehaviorAnalyses:
         return learning_trials
 
 
-    def plot_learning_trials(self, ax=None):
+    def plot_learning_trials_across_sessions(self, ax=None):
         if ax is None:
             fig, ax = plt.subplots()
 
         ax.plot(self.session_labels,
-                self.learning_trials['start'].T, 'go-')
-        ax.plot(self.session_labels,
                 self.learning_trials['inflection'].T, 'yo-')
+        ax.set_ylabel('Learning inflection trial #')
 
+
+    def plot_learning_trials_per_mouse(self):
+        for mouse in self.mice:
+            mouse_data = self.all_sessions[mouse]
+            fig, axs = plt.subplots(3,2, sharex='all', figsize=(6.4, 6))
+
+            sessions = [session for session in self.session_types
+                        if 'Shaping' not in session]
+            for ax, session in zip(axs.flatten(),
+                                   sessions):
+                try:
+                    mouse_data[session].plot_learning_curve(ax=ax)
+                except KeyError:
+                    pass
+
+            fig.tight_layout(pad=0.5)
+
+            start_patch = mpatches.Patch(color='g',
+                                         label='Start of learning')
+            inflection_patch = mpatches.Patch(color='y',
+                                              label='Inflection point')
+            axs.flatten()[-1].legend(handles=[start_patch,
+                                              inflection_patch])
+        pass
 
     def count_trials(self):
         """
@@ -659,7 +682,7 @@ if __name__ == '__main__':
                                'M2',
                                'M3',
                                'M4'])
-    B.plot_learning_trials()
+    B.plot_learning_trials_per_mouse()
     B.plot_all_session_licks()
     B.plot_all_sdts(1)
     B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
