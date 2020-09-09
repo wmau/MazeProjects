@@ -24,10 +24,10 @@ def make_pattern_dict():
         Dictionary where fields are
     """
     pattern_dict = {
-        'Arduino': 'H??_M??_S??.???? ????.txt',
+        'Arduino': '^H\d{2}_M\d{2}_S\d{2}.\d{4} \d{4}.txt$',
         'BehaviorVideo': 'Merged.avi',
-        'DLC': '*DLC_resnet*.h5',
-        'BehaviorData': '*_LocationOutput.csv',
+        'DLC': '.*DLC_resnet.*.h5',
+        'BehaviorData': '.*_LocationOutput.csv',
         'settings': 'settings_and_notes.dat',
         'timestamps': 'timestamp.dat',
         'PreprocessedBehavior': 'PreprocessedBehavior.csv',
@@ -221,6 +221,7 @@ class Metadata_CSV:
         return mice
 
 if __name__ == '__main__':
+    grab_paths(r'Z:\Will\Drift\Data\Castor_Scope05\09_06_2020_CircleTrack_Shaping_1\17_11_36')
     Metadata_CSV(r'Z:\Will\Drift\Data', overwrite=True)
 
 
