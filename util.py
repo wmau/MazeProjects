@@ -191,16 +191,16 @@ class Metadata_CSV:
             for directory in dirs:
                 if re.match(expression, directory):
                     session_folders.append(os.path.join(root, directory))
-        #
+
         # session_folders = [folder for folder in
-        #                    Path(self.project_folder).rglob('r^[H]?[0-9]{1,2}_[M]?[0-9]{1,2}_[S]?[0-9]{1,2}$')
+        #                    Path(self.project_folder).rglob('H*_M*_S*')
         #                    if os.path.isdir(folder)]
 
         return session_folders
 
 
     def get_session_type(self):
-        session_types = [folder._parts[self.path_levels['date']].split('_')[-1]
+        session_types = [folder.split(os.sep)[self.path_levels['date']].split('_')[-1]
                          for folder in self.session_folders]
 
         return session_types
@@ -215,7 +215,7 @@ class Metadata_CSV:
         path_level: str
             'mouse', 'date', or 'session'
         """
-        mice = [session._parts[self.path_levels[path_level]]
+        mice = [session.split(os.sep)[self.path_levels[path_level]]
                 for session in self.session_folders]
 
         return mice
