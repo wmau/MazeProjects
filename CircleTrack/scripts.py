@@ -364,8 +364,10 @@ class BatchBehaviorAnalyses:
         if ax is None:
             fig, ax = plt.subplots()
 
-        ax.plot(self.session_labels, self.learning_trials['start'], 'go-')
-        ax.plot(self.session_labels, self.learning_trials['inflection'], 'yo-')
+        ax.plot(self.session_labels,
+                self.learning_trials['start'].T, 'go-')
+        ax.plot(self.session_labels,
+                self.learning_trials['inflection'].T, 'yo-')
 
 
     def count_trials(self):

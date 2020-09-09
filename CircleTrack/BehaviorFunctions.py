@@ -1264,7 +1264,7 @@ class Session:
 
         # If all the ports are rewarded in e.g. a shaping session,
         # it doesn't make sense to find the learning curve.
-        if not all(self.rewarded_ports):
+        if all(self.rewarded_ports):
             print(f'All ports are rewarded for {self.folder}. '
                   f'Learning curve is pointless')
             return correct_responses, smoothed, np.nan, np.nan
@@ -1284,7 +1284,7 @@ class Session:
             learning_duration = np.diff(run)
             if learning_duration > trial_threshold:
                 start_of_learning = run[0]
-                middle_of_learning = np.floor(np.mean(run))
+                middle_of_learning = int(np.floor(np.mean(run)))
 
                 break
 
