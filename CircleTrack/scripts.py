@@ -393,6 +393,7 @@ class BatchBehaviorAnalyses:
                                               inflection_patch])
         pass
 
+
     def count_trials(self):
         """
         Count the number of trials for each mouse and each session type.
