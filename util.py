@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import pickle as pkl
 import tkinter as tk
+import re
 
 from CaImaging.util import get_data_paths
 
@@ -23,10 +24,10 @@ def make_pattern_dict():
         Dictionary where fields are
     """
     pattern_dict = {
-        'Arduino': 'H??_M??_S??.???? ????.txt',
+        'Arduino': '^H\d{2}_M\d{2}_S\d{2}.\d{4} \d{4}.txt$',
         'BehaviorVideo': 'Merged.avi',
-        'DLC': '*DLC_resnet*.h5',
-        'BehaviorData': '*_LocationOutput.csv',
+        'DLC': '.*DLC_resnet.*.h5',
+        'BehaviorData': '.*_LocationOutput.csv',
         'settings': 'settings_and_notes.dat',
         'timestamps': 'timestamp.dat',
         'PreprocessedBehavior': 'PreprocessedBehavior.csv',
@@ -166,11 +167,11 @@ class Metadata_CSV:
 
         master_dict = {
             'Mouse': self.get_metadata('mouse'),
-            'Group': None,
+            'Group': None, #to do
             'Session': self.get_metadata('date'),
             'Session_Type': self.get_session_type(),
             'Path': self.session_folders,
-            'CellRegPath': None,
+            'CellRegPath': None, #to do
             'Metadata': [os.path.join(folder, 'metadata.pkl')
                          for folder in self.session_folders]
         }
@@ -184,15 +185,22 @@ class Metadata_CSV:
 
 
     def get_all_sessions(self):
-        session_folders = [folder for folder in
-                           Path(self.project_folder).rglob('H*_M*_S*')
-                           if os.path.isdir(folder)]
+        session_folders = []
+        expression = '^H?[0-9]+_M?[0-9]+_S?[0-9]+$'
+        for root, dirs, _ in os.walk(self.project_folder):
+            for directory in dirs:
+                if re.match(expression, directory):
+                    session_folders.append(os.path.join(root, directory))
+
+        # session_folders = [folder for folder in
+        #                    Path(self.project_folder).rglob('H*_M*_S*')
+        #                    if os.path.isdir(folder)]
 
         return session_folders
 
 
     def get_session_type(self):
-        session_types = [folder._parts[self.path_levels['date']].split('_')[-1]
+        session_types = [folder.split(os.sep)[self.path_levels['date']].split('_')[-1]
                          for folder in self.session_folders]
 
         return session_types
@@ -207,12 +215,13 @@ class Metadata_CSV:
         path_level: str
             'mouse', 'date', or 'session'
         """
-        mice = [session._parts[self.path_levels[path_level]]
+        mice = [session.split(os.sep)[self.path_levels[path_level]]
                 for session in self.session_folders]
 
         return mice
 
 if __name__ == '__main__':
+    grab_paths(r'Z:\Will\Drift\Data\Castor_Scope05\09_06_2020_CircleTrack_Shaping_1\17_11_36')
     Metadata_CSV(r'Z:\Will\Drift\Data', overwrite=True)
 
 
