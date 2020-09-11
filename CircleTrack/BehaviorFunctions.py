@@ -705,7 +705,8 @@ def blocked_approach_speeds(approaches, blocks=4, plot=True, ax=None,
 
 class Preprocess:
     def __init__(self, folder=None, sync_mode='timestamp',
-                 behav_cam=2, miniscope_cam=6, subtract_offset=False):
+                 behav_cam=2, miniscope_cam=6, subtract_offset=False,
+                 v4=False):
         """
         Preprocesses behavior data by specifying a session folder.
 
@@ -723,7 +724,9 @@ class Preprocess:
         self.paths = Session_Metadata(self.folder).meta_dict
         self.paths['PreprocessedBehavior'] = os.path.join(self.folder,
                                                           'PreprocessedBehavior.csv')
-
+        if len(self.paths['timestamps'] == 2):
+            v4 = True
+            
         # Check if Preprocess has been ran already by attempting
         # to load a pkl file.
         try:
@@ -1374,42 +1377,6 @@ def dlc_to_csv(folder: str):
 
 
 if __name__ == '__main__':
-    #folder = r'D:\Projects\CircleTrack\Mouse4\01_30_2020\H16_M50_S22'
-    # folder = r'D:\Projects\CircleTrack\Mouse4\02_01_2020\H15_M37_S17'
-    # data = Session(folder)
-    #data.save()
-    #data = Session(folder)
-    #data.plot_licks()
-
-    # from CircleTrack.sql import Database
-    # with Database() as db:
-    #     mouse_id = db.conditional_query('mouse', 'id', 'name', 'Mouse4')[0]
-    #     paths = db.conditional_query('session', 'path', 'mouse_id', mouse_id)
-    #
-    # d = []
-    # for path in paths:
-    #     data = Session(path)
-    #     d.extend(data.SDT(plot=False))
-    #
-    # plt.plot(d[16:], '.-')
-    # for x in np.arange(3.5, 11.5, 4):
-    #     plt.axvline(x=x, color='r')
-    # for x in np.arange(11.5, 18.5, 4):
-    #     plt.axvline(x=x, color='magenta')
-    #
-    # plt.text(3.6, -1, 'Context1', rotation=45, color='r')
-    # plt.text(11.6, -1, 'Context2', rotation=45, color='magenta')
-    # plt.ylabel('d prime')
-    # plt.xlabel('Days')
-    # plt.xlim([-0.5, 19.5])
-    # labels = np.arange(1, 6)
-    # positions = np.arange(1.5, 21.5, 4)
-    # plt.xticks(positions, labels)
-
-    # folder = r'D:\Projects\CircleTrack\Mouse5\02_04_2020\H13_M48_S6'
-    # data = Session(folder)
-    # data.plot_licks()
-
-    #A = MultiAnimal(['Betelgeuse_Scope25', 'Alcor_Scope20', 'M1', 'M2', 'M3', 'M4'])
-    S = Session(r'Z:\Will\Drift\Data\Betelgeuse_Scope25\08_01_2020_CircleTrackGoals1\H15_M13_S8')
+    folder = r'Z:\Will\Drift\Data\Castor_Scope05\09_06_2020_CircleTrack_Shaping_1\17_11_36'
+    P = Preprocess(folder)
 

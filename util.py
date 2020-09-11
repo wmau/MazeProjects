@@ -28,8 +28,7 @@ def make_pattern_dict():
         'BehaviorVideo': 'Merged.avi',
         'DLC': '.*DLC_resnet.*.h5',
         'BehaviorData': '.*_LocationOutput.csv',
-        'settings': 'settings_and_notes.dat',
-        'timestamps': 'timestamp.dat',
+        'timestamps': '^time[s,S]tamp',
         'PreprocessedBehavior': 'PreprocessedBehavior.csv',
     }
 
