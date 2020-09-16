@@ -528,7 +528,7 @@ def spiral_plot(behavior_df, markers, marker_legend='Licks'):
     :parameters
     ---
     behavior_df: DataFrame
-        From either Preprocess or Session.
+        From either Preprocess or BehaviorSession.
 
     markers: array
         Something that indexes behavior_df. These locations will be highlighted.
@@ -957,7 +957,7 @@ class Preprocess:
         make_tracking_video(self.folder, start=start, stop=stop)
 
 
-class Session:
+class BehaviorSession:
     def __init__(self, folder=None):
         """
         Contains many useful analyses for single session data.
@@ -1347,7 +1347,7 @@ def MultiSession(mouse, Metadata_CSV, behavior='CircleTrack'):
 
     S = dict()
     for folder, session_type in zip(sessions['Path'], sessions['Session_Type']):
-        S[session_type] = (Session(folder))
+        S[session_type] = (BehaviorSession(folder))
 
     return S
 

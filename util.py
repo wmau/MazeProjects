@@ -30,6 +30,7 @@ def make_pattern_dict():
         'BehaviorData': '.*_LocationOutput.csv',
         'timestamps': '^time[s,S]tamp',
         'PreprocessedBehavior': 'PreprocessedBehavior.csv',
+        'minian': '^minian$'
     }
 
     return pattern_dict
@@ -163,6 +164,8 @@ class Metadata_CSV:
 
     def build(self):
         self.session_folders = self.get_all_sessions()
+        for folder in self.session_folders:
+            Session_Metadata(folder, overwrite=True)
 
         master_dict = {
             'Mouse': self.get_metadata('mouse'),
@@ -220,7 +223,7 @@ class Metadata_CSV:
         return mice
 
 if __name__ == '__main__':
-    grab_paths(r'Z:\Will\Drift\Data\Castor_Scope05\09_06_2020_CircleTrack_Shaping_1\17_11_36')
+    #grab_paths(r'Z:\Will\Drift\Data\Castor_Scope05\09_06_2020_CircleTrack_Shaping_1\17_11_36')
     Metadata_CSV(r'Z:\Will\Drift\Data', overwrite=True)
 
 

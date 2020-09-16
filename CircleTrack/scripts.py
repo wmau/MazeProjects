@@ -19,12 +19,12 @@ def PlotApproaches(folder, accleration=True, window=(-15,15)):
     :param accleration:
     :return:
     """
-    data = Session(folder)
+    data = BehaviorSession(folder)
     data.port_approaches(acceleration=accleration, window=window)
 
 
 def PlotBlockedApproaches(folder, acceleration=True, blocks=4):
-    data = Session(folder)
+    data = BehaviorSession(folder)
     data.blocked_port_approaches()
 
 
@@ -679,6 +679,7 @@ class BatchBehaviorAnalyses:
 if __name__ == '__main__':
     B = BatchBehaviorAnalyses(['Betelgeuse_Scope25',
                                'Alcor_Scope20',
+                               'Castor_Scope05',
                                'M1',
                                'M2',
                                'M3',
