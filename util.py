@@ -223,7 +223,7 @@ class Metadata_CSV:
         return mice
 
 if __name__ == '__main__':
-    #grab_paths(r'Z:\Will\Drift\Data\Castor_Scope05\09_06_2020_CircleTrack_Shaping_1\17_11_36')
-    Metadata_CSV(r'Z:\Will\Drift\Data', overwrite=True)
+    paths = grab_paths(r'Z:\Will\Drift\Data\Castor_Scope05\09_06_2020_CircleTrackShaping1\17_11_36')
+    #Metadata_CSV(r'Z:\Will\Drift\Data', overwrite=True)
 
 
