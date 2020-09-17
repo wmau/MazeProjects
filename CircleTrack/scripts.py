@@ -374,14 +374,18 @@ class BatchBehaviorAnalyses:
     def plot_learning_trials_per_mouse(self):
         for mouse in self.mice:
             mouse_data = self.all_sessions[mouse]
-            fig, axs = plt.subplots(3,2, sharex='all', figsize=(6.4, 6))
+            fig, axs = plt.subplots(3,2, sharex='all',
+                                    sharey='all',
+                                    figsize=(6.4, 6))
 
             sessions = [session for session in self.session_types
                         if 'Shaping' not in session]
-            for ax, session in zip(axs.flatten(),
-                                   sessions):
+            for ax, session, label in zip(axs.flatten(),
+                                           sessions,
+                                           self.session_labels):
                 try:
                     mouse_data[session].plot_learning_curve(ax=ax)
+                    ax.set_title(label)
                 except KeyError:
                     pass
 
