@@ -23,7 +23,7 @@ from scipy.ndimage import gaussian_filter1d
 
 def make_tracking_video(session_folder, preprocessed=True,
                         output_fname='Tracking.avi',
-                        start=0, stop=None, fps=30):
+                        start=0, stop=None, fps=15):
     """
     Makes a video to visualize licking at water ports and position of the animal.
 
@@ -105,7 +105,7 @@ def make_tracking_video(session_folder, preprocessed=True,
             ax.scatter(x, y, marker='+', s=60, c='w')
 
             ax.text(0, 0, 'Frame: ' + str(frame_number) +
-                    '   Time: ' + str(np.round(frame_number/30, 1)) + ' s')
+                    '   Time: ' + str(np.round(frame_number/fps, 1)) + ' s')
 
             # Lick indicator.
             if (Arduino_path is not None) or preprocessed:
@@ -953,8 +953,10 @@ class Preprocess:
         ax.set_aspect('equal')
 
 
-    def track_video(self, start=0, stop=None):
-        make_tracking_video(self.folder, start=start, stop=stop)
+    def track_video(self, start=0, stop=None, fname='Tracking.avi',
+                    fps=15):
+        make_tracking_video(self.folder, start=start, stop=stop,
+                            output_fname=fname, fps=fps)
 
 
 class BehaviorSession:

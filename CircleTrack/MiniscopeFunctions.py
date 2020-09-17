@@ -21,13 +21,13 @@ class Session:
     def plot_spatial_response(self, cell_number=0):
         trace = self.data['imaging']['S'][cell_number]
         std = np.std(trace)
-        fig, ax= spiral_plot(self.data['behavior'],  trace > std,
-                             marker_legend='spike')
+        fig, ax = spiral_plot(self.data['behavior'],  trace > std,
+                              marker_legend='spike')
         ax.set_title(f'Cell # {cell_number}')
 
         pass
 
 if __name__ == '__main__':
-    folder = r'Z:\Will\Drift\Data\Castor_Scope05\09_09_2020_CircleTrackGoals2\16_46_11'
+    folder = r'Z:\Will\Drift\Data\Castor_Scope05\09_10_2020_CircleTrackReversal1\15_49_24'
     S = Session(folder)
     pass
