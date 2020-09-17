@@ -28,6 +28,6 @@ class Session:
         pass
 
 if __name__ == '__main__':
-    folder = r'Z:\Will\Drift\Data\Castor_Scope05\09_10_2020_CircleTrackReversal1\15_49_24'
+    folder = r'Z:\Will\Drift\Data\Castor_Scope05\09_09_2020_CircleTrackGoals2\16_46_11'
     S = Session(folder)
     pass
