@@ -380,9 +380,11 @@ class BatchBehaviorAnalyses:
 
             sessions = [session for session in self.session_types
                         if 'Shaping' not in session]
+            labels = [label for label in self.session_labels
+                      if 'Shaping' not in label]
             for ax, session, label in zip(axs.flatten(),
                                            sessions,
-                                           self.session_labels):
+                                           labels):
                 try:
                     mouse_data[session].plot_learning_curve(ax=ax)
                     ax.set_title(label)
