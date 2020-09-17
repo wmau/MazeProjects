@@ -653,7 +653,7 @@ class BatchBehaviorAnalyses:
             trials = range(mean_across_trials.shape[0])     # x-axis
             errorfill(trials, mean_across_trials,
                       standard_error, color=color, ax=ax)
-            ax.set_xlabel('Trials')
+            ax.set_xlabel('Trial #')
             ax.set_ylabel('Licks')
 
 
