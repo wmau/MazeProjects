@@ -429,8 +429,8 @@ class BatchBehaviorAnalyses:
         ax.plot(self.session_labels, self.trial_counts.T, 'o-')
         ax.set_xlabel('Session type')
         ax.set_ylabel('Number of trials')
-        plt.tight_layout()
         plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+        fig.tight_layout()
 
 
     def resort_data(self):
