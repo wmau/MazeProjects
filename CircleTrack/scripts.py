@@ -121,6 +121,12 @@ class BatchBehaviorAnalyses:
             Splits all trials in that session into n blocks.
 
         """
+        # Build the legend.
+        hit_patch = mpatches.Patch(color='forestgreen',
+                                   label='Hits')
+        cr_patch = mpatches.Patch(color='steelblue',
+                                  label='Correct rejections')
+        dprime_patch = mpatches.Patch(color='k', label="d'")
         # Handle the case where you want the entire session's hit/
         # correct rejection rate/d'. Plots two subplots, one of
         # hit/correct rejection rate, another for d' across all sessions.
@@ -164,11 +170,6 @@ class BatchBehaviorAnalyses:
                 plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
             fig.tight_layout()
 
-            # Build the legend.
-            hit_patch = mpatches.Patch(color='forestgreen',
-                                       label='Hits')
-            cr_patch = mpatches.Patch(color='steelblue',
-                                      label='Correct rejections')
             axs[0].legend(handles=[hit_patch, cr_patch])
 
         # Otherwise, split the sessions into trial blocks and
@@ -200,6 +201,7 @@ class BatchBehaviorAnalyses:
             d_prime_axs[0].autoscale()
             fig.tight_layout(pad=0.5)
 
+            axs.flatten()[-1].legend(handles=[hit_patch, cr_patch, dprime_patch])
         pass
 
 
