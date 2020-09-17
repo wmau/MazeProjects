@@ -1148,6 +1148,7 @@ class BehaviorSession:
             ax.axis('tight')
             ax.set_xlabel('Water port #')
             ax.set_ylabel('Trial')
+            fig.tight_layout()
 
         all_licks = np.asarray(all_licks)
 
