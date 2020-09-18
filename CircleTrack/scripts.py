@@ -528,11 +528,11 @@ class BatchBehaviorAnalyses:
 
         # Build the legend.
         rewarded_patch = mpatches.Patch(color='cornflowerblue',
-                                        label='Rewarded')
+                                        label='Correct licks')
         prev_rewarded_patch = mpatches.Patch(color='lightcoral',
-                                             label='Rewarded last session')
+                                             label='Perseverative licks')
         not_rewarded_patch = mpatches.Patch(color='gray',
-                                            label='Not recently rewarded')
+                                            label='Error licks')
         axs.flatten()[-1].legend(handles=[rewarded_patch,
                                           prev_rewarded_patch,
                                           not_rewarded_patch])
