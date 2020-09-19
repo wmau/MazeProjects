@@ -6,27 +6,12 @@ from scipy.stats import wilcoxon
 from statsmodels.stats.multitest import multipletests
 import matplotlib.patches as mpatches
 
+from CircleTrack.SessionCollation import MultiAnimal
+
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['svg.fonttype'] = 'none'
 plt.rcParams['text.usetex'] = False
 plt.rcParams.update({'font.size': 12})
-
-def PlotApproaches(folder, accleration=True, window=(-15,15)):
-    """
-    Plot approach speeds to each water port.
-
-    :param folder:
-    :param accleration:
-    :return:
-    """
-    data = BehaviorSession(folder)
-    data.port_approaches(acceleration=accleration, window=window)
-
-
-def PlotBlockedApproaches(folder, acceleration=True, blocks=4):
-    data = BehaviorSession(folder)
-    data.blocked_port_approaches()
-
 
 
 class BatchBehaviorAnalyses:

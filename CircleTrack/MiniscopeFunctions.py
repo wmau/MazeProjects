@@ -4,7 +4,7 @@ import numpy as np
 from CaImaging.util import sync_data
 from util import Session_Metadata
 
-class Session:
+class CalciumSession:
     def __init__(self, session_folder):
         self.folder = session_folder
         self.behavior = BehaviorSession(self.folder)
@@ -25,9 +25,9 @@ class Session:
                               marker_legend='spike')
         ax.set_title(f'Cell # {cell_number}')
 
-        pass
+
 
 if __name__ == '__main__':
-    folder = r'Z:\Will\Drift\Data\Castor_Scope05\09_11_2020_CircleTrackReversal2\15_17_24'
-    S = Session(folder)
+    folder = r'Z:\Will\Drift\Data\Castor_Scope05\09_09_2020_CircleTrackGoals2\16_46_11'
+    S = CalciumSession(folder)
     pass
