@@ -18,6 +18,7 @@ class CalciumSession:
                       self.minian_path,
                       timestamp_paths)
 
+
     def plot_spatial_response(self, cell_number=0):
         trace = self.data['imaging']['S'][cell_number]
         std = np.std(trace)

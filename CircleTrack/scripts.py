@@ -1,18 +1,26 @@
-from CircleTrack.BehaviorFunctions import *
+from CircleTrack.BehaviorFunctions import BehaviorSession, nan_array
+from CircleTrack.MiniscopeFunctions import CalciumSession
 import matplotlib.pyplot as plt
 from CaImaging.util import sem, errorfill
 from grid_strategy.strategies import RectangularStrategy
 from scipy.stats import wilcoxon
 from statsmodels.stats.multitest import multipletests
 import matplotlib.patches as mpatches
-
 from CircleTrack.SessionCollation import MultiAnimal
+import numpy as np
 
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['svg.fonttype'] = 'none'
 plt.rcParams['text.usetex'] = False
 plt.rcParams.update({'font.size': 12})
 
+class BatchFullAnalyses:
+    def __init__(self, mice, project_folder=r'Z:\Will\Drift\Data'):
+        self.data = MultiAnimal(mice, project_folder,
+                                behavior='CircleTrack',
+                                SessionFunction=CalciumSession)
+
+        pass
 
 class BatchBehaviorAnalyses:
     def __init__(self, mice, project_folder=r'Z:\Will\Drift\Data'):
@@ -25,7 +33,8 @@ class BatchBehaviorAnalyses:
         """
         # Compile data for all animals.
         self.all_sessions = MultiAnimal(mice, project_folder,
-                                        behavior='CircleTrack')
+                                        behavior='CircleTrack',
+                                        SessionFunction=BehaviorSession)
         self.mice = mice
         self.n_mice = len(mice)
 
