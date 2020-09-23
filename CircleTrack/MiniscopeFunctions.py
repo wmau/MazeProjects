@@ -7,14 +7,14 @@ from util import Session_Metadata
 class CalciumSession:
     def __init__(self, session_folder):
         self.folder = session_folder
-        self.behavior = BehaviorSession(self.folder)
+        self.BehaviorSession = BehaviorSession(self.folder)
 
         self.data = dict()
-        self.minian_path = self.behavior.paths['minian']
-        timestamp_paths = self.behavior.paths['timestamps']
+        self.minian_path = self.BehaviorSession.paths['minian']
+        timestamp_paths = self.BehaviorSession.paths['timestamps']
         self.data['behavior'], \
         self.data['imaging'], _ = \
-            sync_data(self.behavior.behavior_df,
+            sync_data(self.BehaviorSession.behavior_df,
                       self.minian_path,
                       timestamp_paths)
 

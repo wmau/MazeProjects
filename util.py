@@ -167,13 +167,19 @@ class Metadata_CSV:
         for folder in self.session_folders:
             Session_Metadata(folder, overwrite=True)
 
+        mouse_names = self.get_metadata('mouse')
+
         master_dict = {
-            'Mouse': self.get_metadata('mouse'),
+            'Mouse': mouse_names,
             'Group': None, #to do
             'Session': self.get_metadata('date'),
             'Session_Type': self.get_session_type(),
             'Path': self.session_folders,
-            'CellRegPath': None, #to do
+            'CellRegPath': [os.path.join(self.project_folder,
+                                         mouse,
+                                         'SpatialFootprints',
+                                         'CellRegResults')
+                            for mouse in mouse_names], #to do
             'Metadata': [os.path.join(folder, 'metadata.pkl')
                          for folder in self.session_folders]
         }
@@ -223,7 +229,7 @@ class Metadata_CSV:
         return mice
 
 if __name__ == '__main__':
-    paths = grab_paths(r'Z:\Will\Drift\Data\Castor_Scope05\09_06_2020_CircleTrackShaping1\17_11_36')
-    #Metadata_CSV(r'Z:\Will\Drift\Data', overwrite=True)
+    #paths = grab_paths(r'Z:\Will\Drift\Data\Castor_Scope05\09_06_2020_CircleTrackShaping1\17_11_36')
+    Metadata_CSV(r'Z:\Will\Drift\Data', overwrite=True)
 
 

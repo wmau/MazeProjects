@@ -7,6 +7,7 @@ from scipy.stats import wilcoxon
 from statsmodels.stats.multitest import multipletests
 import matplotlib.patches as mpatches
 from CircleTrack.SessionCollation import MultiAnimal
+from CaImaging.CellReg import rearrange_neurons, trim_map
 import numpy as np
 
 plt.rcParams['pdf.fonttype'] = 42
@@ -20,6 +21,23 @@ class BatchFullAnalyses:
                                 behavior='CircleTrack',
                                 SessionFunction=CalciumSession)
 
+        # Define session types here. Watch out for typos.
+        # Order matters. Plots will be in the order presented here.
+        self.session_types = ['CircleTrackShaping1',
+                              'CircleTrackShaping2',
+                              'CircleTrackGoals1',
+                              'CircleTrackGoals2',
+                              'CircleTrackReversal1',
+                              'CircleTrackReversal2',
+                              'CircleTrackRecall']
+
+        for mouse in mice:
+            S_list = [self.data[mouse][session].data['imaging']['S']
+                      for session in self.session_types]
+
+            map = self.data[mouse]['CellReg'].map
+
+            rearrange_neurons(map, S_list)
         pass
 
 class BatchBehaviorAnalyses:
@@ -679,14 +697,17 @@ class BatchBehaviorAnalyses:
 
 
 if __name__ == '__main__':
-    B = BatchBehaviorAnalyses(['Betelgeuse_Scope25',
-                               'Alcor_Scope20',
-                               'Castor_Scope05',
-                               'M1',
-                               'M2',
-                               'M3',
-                               'M4'])
-    B.plot_learning_trials_per_mouse()
-    B.plot_all_session_licks()
-    B.plot_all_sdts(1)
-    B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
+    mice = ['Betelgeuse_Scope25',
+            'Alcor_Scope20',
+            'Castor_Scope05',
+            'M1',
+            'M2',
+            'M3',
+            'M4']
+    # B = BatchBehaviorAnalyses(mice)
+    # B.plot_learning_trials_per_mouse()
+    # B.plot_all_session_licks()
+    # B.plot_all_sdts(1)
+    # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
+
+    BatchFullAnalyses(['Castor_Scope05'])

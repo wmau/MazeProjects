@@ -1,7 +1,8 @@
 from CircleTrack.BehaviorFunctions import BehaviorSession
 from CircleTrack.MiniscopeFunctions import CalciumSession
 from util import Metadata_CSV
-
+import numpy as np
+from CaImaging.CellReg import CellRegObj
 
 def MultiSession(mouse, Metadata_CSV, behavior='CircleTrack',
                  SessionFunction=BehaviorSession):
@@ -19,6 +20,13 @@ def MultiSession(mouse, Metadata_CSV, behavior='CircleTrack',
     S = dict()
     for folder, session_type in zip(sessions['Path'], sessions['Session_Type']):
         S[session_type] = (SessionFunction(folder))
+
+    if SessionFunction==CalciumSession:
+        cellreg_path = np.unique(mouse_entries['CellRegPath'])[0]
+        try:
+            S['CellReg'] = CellRegObj(cellreg_path)
+        except:
+            print(f'CellReg for {mouse} failed to load.')
 
     return S
 
