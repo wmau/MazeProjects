@@ -519,7 +519,7 @@ def get_trials(behavior_df, counterclockwise=False):
     return trials.astype(int)
 
 
-def spiral_plot(behavior_df, markers, marker_legend='Licks'):
+def spiral_plot(t, lin_position, markers, marker_legend='Licks'):
     """
     Plot trajectory of the mouse over time in a circular (polar) axis. Theta
     corresponds to the animal's position while the radius (distance from center)
@@ -536,15 +536,10 @@ def spiral_plot(behavior_df, markers, marker_legend='Licks'):
     marker_legend: str
         Label for whatever you are highlighting
     """
-    position = np.asarray(linearize_trajectory(behavior_df)[0])
-    t = np.asarray(behavior_df.frame)
-    #frame_rate = 30
-    #t_labels = np.linspace(0, max(t), 4) / frame_rate
-
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='polar')
-    ax.plot(position, t)
-    ax.plot(position[markers], t[markers], 'ro', markersize=2)
+    ax.plot(lin_position, t)
+    ax.plot(lin_position[markers], t[markers], 'ro', markersize=2)
     ax.legend(['Trajectory', marker_legend])
 
     # Clean up axes.
@@ -992,7 +987,9 @@ class BehaviorSession:
         Plot the trajectory and licks in a spiral pattern (polar plot).
 
         """
-        fig, ax = spiral_plot(self.behavior_df, self.behavior_df['lick_port'] > -1)
+        lin_position = np.asarray(linearize_trajectory(self.behavior_df)[0])
+        t = np.asarray(self.behavior_df.frame)
+        fig, ax = spiral_plot(t, lin_position, self.behavior_df['lick_port'] > -1)
 
         for port in self.lin_ports:
             ax.axvline(x=port, color='g')
