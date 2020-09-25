@@ -672,54 +672,6 @@ def approach_speed(behavior_df, location, window=(-30, 30), dist_thresh=0.03,
     return approaches
 
 
-def blocked_approach_speeds(approaches, blocks=4, plot=True, ax=None,
-                            cmap='copper'):
-    """
-    NOTE: Not very informative.
-    Splits the session into equal blocks and plots the mean of the velocities
-    or accelerations.
-
-
-    :parameters
-    ---
-    approaches: (trials, frames) array
-        From approach_speeds.
-
-    blocks: int
-        Number of blocks to split into.
-
-    plot: boolean
-        Whether or not to plot.
-
-    ax: Axes object
-        Axis to plot on.
-
-    cmap: str
-        Colormap to plot lines with.
-
-    :return
-    ---
-    split_approaches: list of (trials, frames) arrays
-        Session split into equal blocks.
-
-    """
-
-    split_approaches = np.array_split(approaches, blocks)
-    cmap = plt.get_cmap(cmap)
-
-    if plot:
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        # Follow a defined sequential color map so we know the progression.
-        ax.set_prop_cycle('color', cmap(np.linspace(0, 1, blocks)))
-
-        for approach in split_approaches:
-            ax.plot(np.nanmean(approach, axis=0))
-
-    return split_approaches
-
-
 class Preprocess:
     def __init__(self, folder=None, behav_cam=0, miniscope_cam=1,
                  subtract_offset=False):
@@ -1100,27 +1052,6 @@ class BehaviorSession:
             for ax in fig.axes:
                 for im in ax.get_images():
                     im.set_clim(min_speed, max_speed)
-
-
-    def blocked_port_approaches(self, blocks=4):
-        """
-        NOTE: Not very informative.
-
-        :param blocks:
-        :return:
-        """
-        if not hasattr(self, 'approaches'):
-            self.port_approaches(plot=False)
-        fig = plt.figure(figsize=(6, 8.5), num='blocked_approaches')
-        for i, approach in enumerate(self.approaches):
-            try:
-                ax = fig.add_subplot(4, 2, i + 1, sharey=ax)
-            except:
-                ax = fig.add_subplot(4, 2, i + 1)
-
-            blocked_approach_speeds(approach, blocks=blocks, ax=ax)
-
-        fig.tight_layout()
 
 
     def get_licks(self, plot=True):
