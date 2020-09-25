@@ -527,11 +527,15 @@ def spiral_plot(t, lin_position, markers, marker_legend='Licks'):
 
     :parameters
     ---
-    behavior_df: DataFrame
-        From either Preprocess or BehaviorSession.
+    t: array
+        Time vector, usually np.asarray(behavior_df.frame).
+
+    lin_position: array
+        Vector of polar coordinates (angles) for each time point t.
 
     markers: array
-        Something that indexes behavior_df. These locations will be highlighted.
+        Something that indexes lin_position. These locations will be
+        marked as "events" on the spiral plot.
 
     marker_legend: str
         Label for whatever you are highlighting
