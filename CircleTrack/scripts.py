@@ -1,7 +1,7 @@
-from CircleTrack.BehaviorFunctions import BehaviorSession, nan_array
+from CircleTrack.BehaviorFunctions import BehaviorSession
 from CircleTrack.MiniscopeFunctions import CalciumSession
 import matplotlib.pyplot as plt
-from CaImaging.util import sem, errorfill
+from CaImaging.util import sem, errorfill, nan_array
 from grid_strategy.strategies import RectangularStrategy
 from scipy.stats import wilcoxon
 from statsmodels.stats.multitest import multipletests
@@ -17,6 +17,7 @@ plt.rcParams.update({'font.size': 12})
 
 class BatchFullAnalyses:
     def __init__(self, mice, project_folder=r'Z:\Will\Drift\Data'):
+        # Collect data from all mice and sessions.
         self.data = MultiAnimal(mice, project_folder,
                                 behavior='CircleTrack',
                                 SessionFunction=CalciumSession)
@@ -35,9 +36,9 @@ class BatchFullAnalyses:
             S_list = [self.data[mouse][session].data['imaging']['S']
                       for session in self.session_types]
 
-            map = self.data[mouse]['CellReg'].map
+            cell_map = self.data[mouse]['CellReg'].map
 
-            rearrange_neurons(map, S_list)
+            rearranged = rearrange_neurons(cell_map, S_list)
         pass
 
 class BatchBehaviorAnalyses:
