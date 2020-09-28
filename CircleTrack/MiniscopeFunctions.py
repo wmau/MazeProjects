@@ -69,10 +69,11 @@ class CalciumSession:
 
 
     def linearized_activity(self, bin_size=10):
-        PFs = PlaceFields(np.zeros_like(self.data["behavior"]["lin_position"]),
-                          np.asarray(self.data["behavior"]["lin_position"]),
+        PFs = PlaceFields(np.asarray(self.data["behavior"]["lin_position"]),
+                          np.zeros_like(self.data["behavior"]["lin_position"]),
                           self.data["imaging"]["S"],
-                          bin_size_cm=0.02)
+                          bin_size_cm=0.02,
+                          one_dim=True)
         pass
 
 
