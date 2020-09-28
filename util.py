@@ -24,13 +24,13 @@ def make_pattern_dict():
         Dictionary where fields are
     """
     pattern_dict = {
-        'Arduino': '^H\d{2}_M\d{2}_S\d{2}.\d{4} \d{4}.txt$',
-        'BehaviorVideo': 'Merged.avi',
-        'DLC': '.*DLC_resnet.*.h5',
-        'BehaviorData': '.*_LocationOutput.csv',
-        'timestamps': '^time[s,S]tamp',
-        'PreprocessedBehavior': 'PreprocessedBehavior.csv',
-        'minian': '^minian$'
+        "Arduino": "^H\d{2}_M\d{2}_S\d{2}.\d{4} \d{4}.txt$",
+        "BehaviorVideo": "Merged.avi",
+        "DLC": ".*DLC_resnet.*.h5",
+        "BehaviorData": ".*_LocationOutput.csv",
+        "timestamps": "^time[s,S]tamp",
+        "PreprocessedBehavior": "PreprocessedBehavior.csv",
+        "minian": "^minian$",
     }
 
     return pattern_dict
@@ -80,7 +80,7 @@ class Session_Metadata:
             self.session_folder = session_folder
 
         # Get full file path to the metadata csv.
-        self.full_path = os.path.join(session_folder, 'metadata.pkl')
+        self.full_path = os.path.join(session_folder, "metadata.pkl")
 
         if overwrite:
             self.build()
@@ -94,7 +94,6 @@ class Session_Metadata:
                 self.save()
                 self.meta_dict = self.load()
 
-
     def build(self):
         """
         Gather all the paths.
@@ -102,16 +101,14 @@ class Session_Metadata:
         """
         self.filepaths = grab_paths(self.session_folder)
 
-
     def save(self):
         """
         Pickle the dict to disk. .
 
 
         """
-        with open(self.full_path, 'wb') as file:
+        with open(self.full_path, "wb") as file:
             pkl.dump(self.filepaths, file)
-
 
     def load(self):
         """
@@ -119,16 +116,22 @@ class Session_Metadata:
 
         :return:
         """
-        with open(self.full_path, 'rb') as file:
+        with open(self.full_path, "rb") as file:
             meta_dict = pkl.load(file)
 
         return meta_dict
 
 
-
 class Metadata_CSV:
-    def __init__(self, folder=None, mouse=-3, date=-2, session=-1,
-                 filename='Metadata.csv', overwrite=False):
+    def __init__(
+        self,
+        folder=None,
+        mouse=-3,
+        date=-2,
+        session=-1,
+        filename="Metadata.csv",
+        overwrite=False,
+    ):
         """
         Makes a CSV file containing the metadata of all the sessions
         for a particular project. This includes session folder
@@ -142,10 +145,11 @@ class Metadata_CSV:
         else:
             self.project_folder = folder
         self.filename = filename
-        self.path_levels = {'mouse': mouse,
-                            'date': date,
-                            'session': session,
-                            }
+        self.path_levels = {
+            "mouse": mouse,
+            "date": date,
+            "session": session,
+        }
 
         fname = os.path.join(self.project_folder, filename)
 
@@ -161,40 +165,38 @@ class Metadata_CSV:
                 self.save()
                 self.df = pd.read_csv(fname)
 
-
     def build(self):
         self.session_folders = self.get_all_sessions()
         for folder in self.session_folders:
             Session_Metadata(folder, overwrite=True)
 
-        mouse_names = self.get_metadata('mouse')
+        mouse_names = self.get_metadata("mouse")
 
         master_dict = {
-            'Mouse': mouse_names,
-            'Group': None, #to do
-            'Session': self.get_metadata('date'),
-            'Session_Type': self.get_session_type(),
-            'Path': self.session_folders,
-            'CellRegPath': [os.path.join(self.project_folder,
-                                         mouse,
-                                         'SpatialFootprints',
-                                         'CellRegResults')
-                            for mouse in mouse_names], #to do
-            'Metadata': [os.path.join(folder, 'metadata.pkl')
-                         for folder in self.session_folders]
+            "Mouse": mouse_names,
+            "Group": None,  # to do
+            "Session": self.get_metadata("date"),
+            "Session_Type": self.get_session_type(),
+            "Path": self.session_folders,
+            "CellRegPath": [
+                os.path.join(
+                    self.project_folder, mouse, "SpatialFootprints", "CellRegResults"
+                )
+                for mouse in mouse_names
+            ],  # to do
+            "Metadata": [
+                os.path.join(folder, "metadata.pkl") for folder in self.session_folders
+            ],
         }
 
         self.df = pd.DataFrame(master_dict)
 
-
     def save(self):
-        self.df.to_csv(os.path.join(self.project_folder,
-                                    self.filename), index=False)
-
+        self.df.to_csv(os.path.join(self.project_folder, self.filename), index=False)
 
     def get_all_sessions(self):
         session_folders = []
-        expression = '^H?[0-9]+_M?[0-9]+_S?[0-9]+$'
+        expression = "^H?[0-9]+_M?[0-9]+_S?[0-9]+$"
         for root, dirs, _ in os.walk(self.project_folder):
             for directory in dirs:
                 if re.match(expression, directory):
@@ -206,13 +208,13 @@ class Metadata_CSV:
 
         return session_folders
 
-
     def get_session_type(self):
-        session_types = [folder.split(os.sep)[self.path_levels['date']].split('_')[-1]
-                         for folder in self.session_folders]
+        session_types = [
+            folder.split(os.sep)[self.path_levels["date"]].split("_")[-1]
+            for folder in self.session_folders
+        ]
 
         return session_types
-
 
     def get_metadata(self, path_level):
         """
@@ -223,13 +225,14 @@ class Metadata_CSV:
         path_level: str
             'mouse', 'date', or 'session'
         """
-        mice = [session.split(os.sep)[self.path_levels[path_level]]
-                for session in self.session_folders]
+        mice = [
+            session.split(os.sep)[self.path_levels[path_level]]
+            for session in self.session_folders
+        ]
 
         return mice
 
-if __name__ == '__main__':
-    #paths = grab_paths(r'Z:\Will\Drift\Data\Castor_Scope05\09_06_2020_CircleTrackShaping1\17_11_36')
-    Metadata_CSV(r'Z:\Will\Drift\Data', overwrite=True)
 
-
+if __name__ == "__main__":
+    # paths = grab_paths(r'Z:\Will\Drift\Data\Castor_Scope05\09_06_2020_CircleTrackShaping1\17_11_36')
+    Metadata_CSV(r"Z:\Will\Drift\Data", overwrite=True)

@@ -21,6 +21,8 @@ def MultiSession(mouse, Metadata_CSV, behavior='CircleTrack',
     for folder, session_type in zip(sessions['Path'], sessions['Session_Type']):
         S[session_type] = (SessionFunction(folder))
 
+    # If we're looking at calcium data, also find CellRegResults if
+    # possible.
     if SessionFunction==CalciumSession:
         cellreg_path = np.unique(mouse_entries['CellRegPath'])[0]
         try:

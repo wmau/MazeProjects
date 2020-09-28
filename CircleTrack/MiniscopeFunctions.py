@@ -7,43 +7,70 @@ from CircleTrack.BehaviorFunctions import linearize_trajectory
 from CaImaging.util import ScrollPlot
 from CircleTrack.plotting import plot_spiral
 
+
 class CalciumSession:
     def __init__(self, session_folder):
+        """
+        Single session analyses and plots for miniscope data.
+
+        :parameter
+        session_folder: str
+            Session folder.
+        """
+        # Get the behavioral data.
         self.folder = session_folder
         self.BehaviorSession = BehaviorSession(self.folder)
 
+        # Get paths
+        self.minian_path = self.BehaviorSession.paths["minian"]
+        timestamp_paths = self.BehaviorSession.paths["timestamps"]
+
+        # Combine behavioral and calcium imaging data.
         self.data = dict()
-        self.minian_path = self.BehaviorSession.paths['minian']
-        timestamp_paths = self.BehaviorSession.paths['timestamps']
-        self.data['behavior'], \
-        self.data['imaging'], _ = \
-            sync_data(self.BehaviorSession.behavior_df,
-                      self.minian_path,
-                      timestamp_paths)
+        self.data["behavior"], self.data["imaging"], _ = sync_data(
+            self.BehaviorSession.behavior_df, self.minian_path, timestamp_paths
+        )
 
+    def plot_spiral_spikes(self, first_neuron=0, S_thresh=1):
+        """
+        Plot where on the maze a neuron spikes, starting with
+        first_neuron. Scroll through the rest.
 
-    def plot_spatial_response(self, cell_number=0):
-        spikes = [activity > np.std(activity) for activity in
-                  self.data['imaging']['S']]
-        t = np.asarray(self.data['behavior'].frame)
-        lin_position = np.asarray(linearize_trajectory(self.data['behavior'])[0])
-        cell_number_labels = [f'Cell #{n}' for n, _ in enumerate(spikes)]
-        self.spiral_spatial_plot = ScrollPlot(plot_spiral,
-                                              current_position=cell_number,
-                                              t = t, lin_position=lin_position,
-                                              markers = spikes,
-                                              marker_legend = 'Spikes',
-                                              subplot_kw={'projection': 'polar'},
-                                              titles=cell_number_labels)
+        :parameter
+        first_neuron: int
+            Neuron to start plotting.
+
+        S_thresh: float
+            Number of standard deviations above the mean to consider
+            a spike.
+        """
+        # Get spiking activity and time vector.
+        spikes = [
+            activity > (np.mean(activity) + S_thresh * np.std(activity))
+            for activity in self.data["imaging"]["S"]
+        ]
+        t = np.asarray(self.data["behavior"].frame)
+
+        # Linearize position.
+        lin_position = np.asarray(linearize_trajectory(self.data["behavior"])[0])
+
+        # Do the plot.
+        cell_number_labels = [f"Cell #{n}" for n, _ in enumerate(spikes)]
+        self.spiral_spatial_plot = ScrollPlot(
+            plot_spiral,
+            current_position=first_neuron,
+            t=t,
+            lin_position=lin_position,
+            markers=spikes,
+            marker_legend="Spikes",
+            subplot_kw={"projection": "polar"},
+            titles=cell_number_labels,
+        )
         pass
-        # fig, ax = spiral_plot(self.data['behavior'],  trace > std,
-        #                       marker_legend='spike')
-        # ax.set_title(f'Cell # {cell_number}')
 
 
-
-if __name__ == '__main__':
-    folder = r'Z:\Will\Drift\Data\Castor_Scope05\09_09_2020_CircleTrackGoals2\16_46_11'
+if __name__ == "__main__":
+    folder = r"Z:\Will\Drift\Data\Castor_Scope05\09_09_2020_CircleTrackGoals2\16_46_11"
     S = CalciumSession(folder)
-    S.plot_spatial_response()
+    S.plot_spiral_spikes()
     pass
