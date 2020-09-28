@@ -6,7 +6,7 @@ from util import Session_Metadata
 from CircleTrack.BehaviorFunctions import linearize_trajectory
 from CaImaging.util import ScrollPlot
 from CircleTrack.plotting import plot_spiral
-
+from CaImaging.PlaceFields import PlaceFields
 
 class CalciumSession:
     def __init__(self, session_folder):
@@ -66,11 +66,18 @@ class CalciumSession:
             subplot_kw={"projection": "polar"},
             titles=cell_number_labels,
         )
+
+
+    def linearized_activity(self, bin_size=10):
+        PFs = PlaceFields(np.zeros_like(self.data["behavior"]["lin_position"]),
+                          np.asarray(self.data["behavior"]["lin_position"]),
+                          self.data["imaging"]["S"],
+                          bin_size_cm=0.02)
         pass
 
 
 if __name__ == "__main__":
     folder = r"Z:\Will\Drift\Data\Castor_Scope05\09_09_2020_CircleTrackGoals2\16_46_11"
     S = CalciumSession(folder)
-    S.plot_spiral_spikes()
+    S.linearized_activity()
     pass

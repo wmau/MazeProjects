@@ -717,7 +717,8 @@ def approach_speed(
 
 class Preprocess:
     def __init__(
-        self, folder=None, behav_cam=0, miniscope_cam=1, subtract_offset=False
+        self, folder=None, behav_cam=0, miniscope_cam=1,
+            subtract_offset=False
     ):
         """
         Preprocesses behavior data by specifying a session folder.
@@ -771,7 +772,6 @@ class Preprocess:
             # self.behavior_df = clean_lick_detection(self.behavior_df)
             self.preprocess()
 
-        pass
 
     def preprocess(self):
         """
@@ -952,7 +952,7 @@ class Preprocess:
 
 
 class BehaviorSession:
-    def __init__(self, folder=None):
+    def __init__(self, folder=None, pix_per_cm=6.56):
         """
         Contains many useful analyses for single session data.
 
@@ -989,6 +989,11 @@ class BehaviorSession:
             self.behavior_df = pd.read_csv(self.paths["PreprocessedBehavior"])
         except:
             raise FileNotFoundError("Run Preprocess() first.")
+
+        # Convert x, y, and distance values to cm.
+        self.behavior_df['x'] = self.behavior_df['x']/pix_per_cm
+        self.behavior_df['y'] = self.behavior_df['y']/pix_per_cm
+        self.behavior_df['distance'] = self.behavior_df['distance']/pix_per_cm
 
         # Number of laps run.
         self.ntrials = max(self.behavior_df["trials"] + 1)
@@ -1339,7 +1344,7 @@ def dlc_to_csv(folder: str):
 
 if __name__ == "__main__":
     folder = (
-        r"Z:\Will\Drift\Data\Castor_Scope05\09_06_2020_CircleTrackShaping1\17_11_36"
+        r"Z:\Will\Drift\Data\Castor_Scope05\09_09_2020_CircleTrackGoals2\16_46_11"
+
     )
-    P = Preprocess(folder)
-    P.track_video()
+    #B = BehaviorSession(folder)
