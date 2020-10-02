@@ -9,6 +9,8 @@ from CaImaging.util import ScrollPlot
 from CircleTrack.plotting import plot_spiral
 from CaImaging.PlaceFields import PlaceFields
 from CaImaging.Behavior import spatial_bin
+import holoviews as hv
+hv.extension('bokeh')
 
 class CalciumSession:
     def __init__(self, session_folder):
@@ -128,6 +130,10 @@ class CalciumSession:
 
             occ_map_by_trial.append(occupancy)
         occ_map_by_trial = np.vstack(occ_map_by_trial)
+
+        data = [np.arange(shape) for shape in fields.shape]
+        data.append(fields)
+        ds = hv.Dataset(data, kdims=['neurons', 'trials', 'spatial bins'], vdims='Trial spatial activity')
 
         return fields, occ_map_by_trial
 
