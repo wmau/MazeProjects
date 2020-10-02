@@ -148,8 +148,8 @@ def make_tracking_video(
 
 def sync_Arduino_outputs(
     session_folder,
-    behav_cam=0,
-    miniscope_cam=1,
+    behav_cam=1,
+    miniscope_cam=0,
     sync_mode="timestamp",
     subtract_offset=False,
 ):
@@ -717,7 +717,7 @@ def approach_speed(
 
 class Preprocess:
     def __init__(
-        self, folder=None, behav_cam=0, miniscope_cam=1,
+        self, folder=None, behav_cam=1, miniscope_cam=0,
             subtract_offset=False
     ):
         """
@@ -1347,4 +1347,5 @@ if __name__ == "__main__":
         r"Z:\Will\Drift\Data\Castor_Scope05\09_09_2020_CircleTrackGoals2\16_46_11"
 
     )
-    #B = BehaviorSession(folder)
+    P = Preprocess(folder)
+    P.track_video()
