@@ -11,6 +11,8 @@ from CaImaging.PlaceFields import PlaceFields
 from CaImaging.Behavior import spatial_bin
 import holoviews as hv
 hv.extension('bokeh')
+from bokeh.plotting import show
+
 
 class CalciumSession:
     def __init__(self, session_folder):
@@ -131,11 +133,14 @@ class CalciumSession:
             occ_map_by_trial.append(occupancy)
         occ_map_by_trial = np.vstack(occ_map_by_trial)
 
-        data = [np.arange(shape) for shape in fields.shape]
-        data.append(fields)
-        ds = hv.Dataset(data, kdims=['neurons', 'trials', 'spatial bins'], vdims='Trial spatial activity')
-
         return fields, occ_map_by_trial
+
+
+    def viz_spatial_trial_activity(self, bin_size_radians=0.02, neurons=range(10)):
+        fields = self.spatial_activity_by_trial(bin_size_radians=bin_size_radians)[0]
+        viz_fields = {n: hv.Image(fields[n]).opts(cmap='Reds') for n in neurons}
+
+        return hv.HoloMap(viz_fields)
 
 if __name__ == "__main__":
     folder = r"Z:\Will\Drift\Data\Castor_Scope05\09_09_2020_CircleTrackGoals2\16_46_11"
