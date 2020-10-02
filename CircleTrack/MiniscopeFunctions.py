@@ -82,16 +82,25 @@ class CalciumSession:
 
 
     def spatial_activity_by_trial(self, bin_size_radians=0.02):
+        """
+        Plot activity trial by trial, binned in linearized space.
+
+        :param bin_size_radians:
+        :return:
+        """
+        # Get linearized position. We'll also need a dummy variable
+        # for the binning function because it usually takes 2d.
         behavior_df = self.data["behavior"].behavior_df
         lin_position = np.asarray(behavior_df["lin_position"])
         filler = np.zeros_like(lin_position)
-
         bin_edges = spatial_bin(lin_position, filler,
                                 bin_size_cm=bin_size_radians,
                                 one_dim=True)[1]
 
-        S = threshold_S(self.data["imaging"]["S"])
+        # Threshold S matrix here.
+        S = threshold_S(self.data["imaging"]["S"], std_thresh=1)
 
+        # For each trial, spatial bin position weighted by S.
         occ_map_by_trial = []
         fields = nan_array((self.n_neurons,
                             self.data["behavior"].ntrials,
@@ -100,11 +109,14 @@ class CalciumSession:
             time_bins = behavior_df['trials'] == trial_number
             positions_this_trial = behavior_df.loc[time_bins, 'lin_position']
             filler = np.zeros_like(positions_this_trial)
+
+            # Get occupancy this trial.
             occupancy = spatial_bin(positions_this_trial,
                                     filler,
                                     bins=bin_edges,
                                     one_dim=True)[0]
 
+            # Weight position by activity of each neuron.
             for n, neuron in enumerate(S):
                 spiking = neuron[time_bins]
                 fields[n, trial_number, :] = spatial_bin(positions_this_trial,
