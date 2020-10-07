@@ -39,6 +39,9 @@ class CalciumSession:
         # Get number of neurons.
         self.n_neurons = self.data['imaging']['C'].shape[0]
 
+        self.spatial = dict()
+        self.spatial['fields'], self.spatial['occupancy'] = self.spatial_activity_by_trial()
+
     def plot_spiral_spikes(self, first_neuron=0, S_thresh=1):
         """
         Plot where on the maze a neuron spikes, starting with
@@ -136,11 +139,19 @@ class CalciumSession:
         return fields, occ_map_by_trial
 
 
-    def viz_spatial_trial_activity(self, bin_size_radians=0.02, neurons=range(10)):
+    def viz_spatial_trial_activity(self, bin_size_radians=0.02, neurons=range(10),
+                                   preserve_neuron_idx=True):
         fields = self.spatial_activity_by_trial(bin_size_radians=bin_size_radians)[0]
-        viz_fields = {n: hv.Image(fields[n]).opts(cmap='Reds') for n in neurons}
 
-        return hv.HoloMap(viz_fields)
+        if preserve_neuron_idx:
+            viz_fields = {n: hv.Image(fields[n] > 0).opts(cmap='gray')
+                          for n in neurons}
+        else:
+            viz_fields = {i: hv.Image(fields[n] > 0).opts(cmap='gray')
+                          for i, n in enumerate(neurons)}
+
+        return viz_fields
+
 
 if __name__ == "__main__":
     folder = r"Z:\Will\Drift\Data\Castor_Scope05\09_09_2020_CircleTrackGoals2\16_46_11"

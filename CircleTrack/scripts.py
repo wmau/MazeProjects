@@ -21,7 +21,8 @@ class BatchFullAnalyses:
     def __init__(self, mice, project_folder=r"Z:\Will\Drift\Data"):
         # Collect data from all mice and sessions.
         self.data = MultiAnimal(
-            mice, project_folder, behavior="CircleTrack", SessionFunction=CalciumSession
+            mice, project_folder, behavior="CircleTrack",
+            SessionFunction=CalciumSession
         )
 
         # Define session types here. Watch out for typos.
@@ -45,16 +46,51 @@ class BatchFullAnalyses:
         #     rearranged = rearrange_neurons(cell_map, S_list)
 
     def rearrange_neurons(self, mouse, session_types, data_type):
-        # For readability.
-        mouse_sessions = self.data[mouse]
-        cellreg_map = self.data[mouse]["CellReg"].map
-        cellreg_sessions = self.data[mouse]["CellReg"].sessions
+        sessions = self.data[mouse]
+        trimmed_map = self.get_cellreg_mappings(mouse, session_types,
+                                                detected='everyday')
 
         # Get calcium activity from each session for this mouse.
         activity_list = [
-            mouse_sessions[session].data["imaging"][data_type]
+            sessions[session].data["imaging"][data_type]
             for session in session_types
         ]
+
+        # Rearrange the neurons.
+        rearranged = rearrange_neurons(trimmed_map, activity_list)
+
+        return rearranged
+
+
+    def spatial_activity_by_trial_over_days(self, mouse,
+                                            session_types,
+                                            neurons=None):
+        sessions = self.data[mouse]
+        trimmed_map = self.get_cellreg_mappings(mouse, session_types)
+
+        if neurons is None:
+            global_idx = trimmed_map.index
+        else:
+            in_list = trimmed_map.iloc[:,0].isin(neurons)
+            global_idx = trimmed_map[in_list].index
+
+        viz_fields = []
+        for i, session_type in enumerate(session_types):
+            neurons_to_analyze = trimmed_map.iloc[trimmed_map.index.isin(global_idx), i]
+
+            viz_fields.append(
+                sessions[session_type].viz_spatial_trial_activity(
+                    neurons=neurons_to_analyze,
+                    preserve_neuron_idx=False))
+
+        return viz_fields
+
+
+
+    def get_cellreg_mappings(self, mouse, session_types, detected='everyday'):
+        # For readability.
+        cellreg_map = self.data[mouse]["CellReg"].map
+        cellreg_sessions = self.data[mouse]["CellReg"].sessions
 
         # Get the relevant list of session names that the CellReg map
         # dataframe recognizes.
@@ -64,14 +100,9 @@ class BatchFullAnalyses:
             if any(session_type in session for session_type in session_types)
         ]
 
-        # Trim the map so that it only considers the sessions specified.
-        trimmed_map = trim_map(cellreg_map, session_list, detected="everyday")
+        trimmed_map = trim_map(cellreg_map, session_list, detected=detected)
 
-        # Rearrange the neurons.
-        rearranged = rearrange_neurons(trimmed_map, activity_list)
-
-        return rearranged
-
+        return trimmed_map
 
 class BatchBehaviorAnalyses:
     def __init__(self, mice, project_folder=r"Z:\Will\Drift\Data"):
@@ -722,4 +753,7 @@ if __name__ == "__main__":
     # B.plot_all_sdts(1)
     # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
 
-    BatchFullAnalyses(["Castor_Scope05"])
+    B = BatchFullAnalyses(["Castor_Scope05"])
+    B.spatial_activity_by_trial_over_days('Castor_Scope05',
+                                          ["CircleTrackGoals1",
+                                           "CircleTrackGoals2"])
