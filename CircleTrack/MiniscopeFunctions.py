@@ -42,6 +42,7 @@ class CalciumSession:
         self.spatial = dict()
         self.spatial['fields'], self.spatial['occupancy'] = self.spatial_activity_by_trial()
 
+
     def plot_spiral_spikes(self, first_neuron=0, S_thresh=1):
         """
         Plot where on the maze a neuron spikes, starting with

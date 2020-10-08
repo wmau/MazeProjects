@@ -1,13 +1,15 @@
 from CircleTrack.BehaviorFunctions import BehaviorSession
 from CircleTrack.MiniscopeFunctions import CalciumSession
 import matplotlib.pyplot as plt
-from CaImaging.util import sem, errorfill, nan_array
+from CaImaging.util import sem, errorfill, nan_array, bin_transients
 from grid_strategy.strategies import RectangularStrategy
 from scipy.stats import wilcoxon
 from statsmodels.stats.multitest import multipletests
 import matplotlib.patches as mpatches
 from CircleTrack.SessionCollation import MultiAnimal
 from CaImaging.CellReg import rearrange_neurons, trim_map
+from CaImaging.Miniscope import threshold_S
+from sklearn.naive_bayes import MultinomialNB, BernoulliNB
 from CaImaging.Assemblies import lapsed_activation, plot_assemblies
 import numpy as np
 
@@ -86,6 +88,31 @@ class BatchFullAnalyses:
         return viz_fields
 
 
+    def decode_place(self, mouse, training_session, test_session,
+                     classifier=BernoulliNB(), time_bin_size=1):
+        sessions = [self.data[mouse][session] for session in [training_session, test_session]]
+        S_list = self.rearrange_neurons(mouse, [training_session, test_session],
+                                        data_type='S')
+        S_list = [threshold_S(S) for S in S_list]
+        binned_S = [bin_transients(S, time_bin_size) for S in S_list]
+        data = {train_test_split: bin_transients(S, time_bin_size)
+                for S, train_test_split in zip(S_list, ['train', 'test'])}
+
+        y = sessions[0].data['behavior'].behavior_df['lin_position'].values
+        bins = np.histogram(y, bins=36)[1]
+        y_binned = np.digitize(y, bins)
+        X = S_list[0].T
+        classifier.fit(X,y_binned)
+
+        X_test = S_list[1].T
+        y_predicted = classifier.predict(X_test)
+        y = sessions[1].data['behavior'].behavior_df['lin_position'].values
+        y_real = np.digitize(y, bins)
+
+        plt.plot(y_real, alpha=0.2)
+        plt.plot(y_predicted, alpha=0.2)
+        pass
+
 
     def get_cellreg_mappings(self, mouse, session_types, detected='everyday'):
         # For readability.
@@ -93,12 +120,14 @@ class BatchFullAnalyses:
         cellreg_sessions = self.data[mouse]["CellReg"].sessions
 
         # Get the relevant list of session names that the CellReg map
-        # dataframe recognizes.
-        session_list = [
-            session
-            for session in cellreg_sessions
-            if any(session_type in session for session_type in session_types)
-        ]
+        # dataframe recognizes. This is probably not efficient but the
+        # order of list elements works this way.
+        session_list = []
+        for session_type in session_types:
+            for session in cellreg_sessions:
+                if session_type in session:
+                    session_list.append(session)
+
 
         trimmed_map = trim_map(cellreg_map, session_list, detected=detected)
 
@@ -754,6 +783,4 @@ if __name__ == "__main__":
     # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
 
     B = BatchFullAnalyses(["Castor_Scope05"])
-    B.spatial_activity_by_trial_over_days('Castor_Scope05',
-                                          ["CircleTrackGoals1",
-                                           "CircleTrackGoals2"])
+    B.decode_place('Castor_Scope05', "CircleTrackGoals1", "CircleTrackGoals2")
