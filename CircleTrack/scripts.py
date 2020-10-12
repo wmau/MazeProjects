@@ -24,8 +24,7 @@ class BatchFullAnalyses:
     def __init__(self, mice, project_folder=r"Z:\Will\Drift\Data"):
         # Collect data from all mice and sessions.
         self.data = MultiAnimal(
-            mice, project_folder, behavior="CircleTrack",
-            SessionFunction=CalciumSession
+            mice, project_folder, behavior="CircleTrack", SessionFunction=CalciumSession
         )
 
         # Define session types here. Watch out for typos.
@@ -67,13 +66,13 @@ class BatchFullAnalyses:
             'S' or 'C').
         """
         sessions = self.data[mouse]
-        trimmed_map = self.get_cellreg_mappings(mouse, session_types,
-                                                detected='everyday')
+        trimmed_map = self.get_cellreg_mappings(
+            mouse, session_types, detected="everyday"
+        )
 
         # Get calcium activity from each session for this mouse.
         activity_list = [
-            sessions[session].data["imaging"][data_type]
-            for session in session_types
+            sessions[session].data["imaging"][data_type] for session in session_types
         ]
 
         # Rearrange the neurons.
@@ -81,10 +80,7 @@ class BatchFullAnalyses:
 
         return rearranged
 
-
-    def spatial_activity_by_trial_over_days(self, mouse,
-                                            session_types,
-                                            neurons=None):
+    def spatial_activity_by_trial_over_days(self, mouse, session_types, neurons=None):
         """
         Visualize binned spatial activity by each trial across
         multiple days.
@@ -110,7 +106,7 @@ class BatchFullAnalyses:
         if neurons is None:
             global_idx = trimmed_map.index
         else:
-            in_list = trimmed_map.iloc[:,0].isin(neurons)
+            in_list = trimmed_map.iloc[:, 0].isin(neurons)
             global_idx = trimmed_map[in_list].index
 
         # Gather neurons and build dictionaries for HoloMap.
@@ -120,17 +116,24 @@ class BatchFullAnalyses:
 
             viz_fields.append(
                 sessions[session_type].viz_spatial_trial_activity(
-                    neurons=neurons_to_analyze,
-                    preserve_neuron_idx=False))
+                    neurons=neurons_to_analyze, preserve_neuron_idx=False
+                )
+            )
 
         # List of dictionaries. Do HoloMap(viz_fields) in a
         # jupyter notebook.
         return viz_fields
 
-
-    def decode_place(self, mouse, training_session, test_session,
-                     classifier=BernoulliNB(), time_bin_size=1,
-                     n_spatial_bins=36, show_plot=True):
+    def decode_place(
+        self,
+        mouse,
+        training_session,
+        test_session,
+        classifier=BernoulliNB(),
+        time_bin_size=1,
+        n_spatial_bins=36,
+        show_plot=True,
+    ):
         """
         Use a naive Bayes decoder to classify spatial position.
         Train with data from one session and test with another.
@@ -157,33 +160,39 @@ class BatchFullAnalyses:
             Flag for showing plots.
         """
         # Get sessions and neural activity.
-        sessions = [self.data[mouse][session] for session in [training_session, test_session]]
-        S_list = self.rearrange_neurons(mouse, [training_session, test_session],
-                                        data_type='S')
+        sessions = [
+            self.data[mouse][session] for session in [training_session, test_session]
+        ]
+        S_list = self.rearrange_neurons(
+            mouse, [training_session, test_session], data_type="S"
+        )
         S_list = [threshold_S(S) for S in S_list]
 
         # Separate neural data into training and test.
-        predictor_data = {train_test_label: bin_transients(S, time_bin_size, fps=15).T
-                          for S, train_test_label in zip(S_list, ['train', 'test'])}
+        predictor_data = {
+            train_test_label: bin_transients(S, time_bin_size, fps=15).T
+            for S, train_test_label in zip(S_list, ["train", "test"])
+        }
 
         # Separate spatially binned location into training and test.
         outcome_data = dict()
-        for session, train_test_label in zip(sessions, ['train', 'test']):
-            lin_position = session.data['behavior'].behavior_df['lin_position'].values
-            outcome_data[train_test_label] = \
-                self.format_spatial_location_for_decoder(lin_position,
-                                                         n_spatial_bins=n_spatial_bins,
-                                                         time_bin_size=time_bin_size,
-                                                         fps=15)
+        for session, train_test_label in zip(sessions, ["train", "test"]):
+            lin_position = session.data["behavior"].behavior_df["lin_position"].values
+            outcome_data[train_test_label] = self.format_spatial_location_for_decoder(
+                lin_position,
+                n_spatial_bins=n_spatial_bins,
+                time_bin_size=time_bin_size,
+                fps=15,
+            )
 
         # Fit the classifier and test on test data.
-        classifier.fit(predictor_data['train'], outcome_data['train'])
-        y_predicted = classifier.predict(predictor_data['test'])
+        classifier.fit(predictor_data["train"], outcome_data["train"])
+        y_predicted = classifier.predict(predictor_data["test"])
 
         # Plot real and predicted spatial location.
         if show_plot:
             fig, ax = plt.subplots()
-            ax.plot(outcome_data['test'], alpha=0.5)
+            ax.plot(outcome_data["test"], alpha=0.5)
             ax.plot(y_predicted, alpha=0.5)
 
         return y_predicted, predictor_data, outcome_data, classifier
@@ -197,10 +206,16 @@ class BatchFullAnalyses:
         # plt.plot(y_predicted, alpha=0.2)
         pass
 
-
-    def find_decoding_error(self, mouse, training_session, test_session,
-                            classifier=BernoulliNB(), time_bin_size=1,
-                            n_spatial_bins=36, show_plot=True):
+    def find_decoding_error(
+        self,
+        mouse,
+        training_session,
+        test_session,
+        classifier=BernoulliNB(),
+        time_bin_size=1,
+        n_spatial_bins=36,
+        show_plot=True,
+    ):
         """
         Find decoding error between predicted and real spatially
         binned location.
@@ -209,15 +224,19 @@ class BatchFullAnalyses:
         ---
         See decode_place().
         """
-        y_predicted, predictor_data, outcome_data, classifier = \
-            self.decode_place(mouse, training_session, test_session,
-                              classifier=classifier, time_bin_size=time_bin_size,
-                              n_spatial_bins=n_spatial_bins, show_plot=show_plot)
+        y_predicted, predictor_data, outcome_data, classifier = self.decode_place(
+            mouse,
+            training_session,
+            test_session,
+            classifier=classifier,
+            time_bin_size=time_bin_size,
+            n_spatial_bins=n_spatial_bins,
+            show_plot=show_plot,
+        )
 
-        d = self.get_circular_error(y_predicted, outcome_data['test'],
-                                    n_spatial_bins=n_spatial_bins)
-
-
+        d = self.get_circular_error(
+            y_predicted, outcome_data["test"], n_spatial_bins=n_spatial_bins
+        )
 
     def get_circular_error(self, y_predicted, y_real, n_spatial_bins):
         """
@@ -243,9 +262,9 @@ class BatchFullAnalyses:
 
         return d
 
-    def format_spatial_location_for_decoder(self, lin_position,
-                                            n_spatial_bins=36,
-                                            time_bin_size=1, fps=15):
+    def format_spatial_location_for_decoder(
+        self, lin_position, n_spatial_bins=36, time_bin_size=1, fps=15
+    ):
         """
         Naive Bayes classifiers only take integers as outcomes.
         Bin spatial locations both spatially and temporally.
@@ -270,7 +289,7 @@ class BatchFullAnalyses:
         binned_position = np.digitize(lin_position, bins)
 
         # Do the same for temporal binning.
-        bins = make_bins(binned_position, fps*time_bin_size, axis=0)
+        bins = make_bins(binned_position, fps * time_bin_size, axis=0)
         binned_position = np.split(binned_position, bins, axis=0)
 
         # Get the most occupied spatial bin within each temporal bin.
@@ -278,7 +297,7 @@ class BatchFullAnalyses:
 
         return position
 
-    def get_cellreg_mappings(self, mouse, session_types, detected='everyday'):
+    def get_cellreg_mappings(self, mouse, session_types, detected="everyday"):
         # For readability.
         cellreg_map = self.data[mouse]["CellReg"].map
         cellreg_sessions = self.data[mouse]["CellReg"].sessions
@@ -292,10 +311,10 @@ class BatchFullAnalyses:
                 if session_type in session:
                     session_list.append(session)
 
-
         trimmed_map = trim_map(cellreg_map, session_list, detected=detected)
 
         return trimmed_map
+
 
 class BatchBehaviorAnalyses:
     def __init__(self, mice, project_folder=r"Z:\Will\Drift\Data"):
@@ -947,4 +966,4 @@ if __name__ == "__main__":
     # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
 
     B = BatchFullAnalyses(["Castor_Scope05"])
-    B.decode_place('Castor_Scope05', "CircleTrackGoals2", "CircleTrackReversal1")
+    B.decode_place("Castor_Scope05", "CircleTrackGoals2", "CircleTrackReversal1")
