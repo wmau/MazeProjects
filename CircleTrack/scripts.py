@@ -129,15 +129,44 @@ class BatchFullAnalyses:
 
 
     def decode_place(self, mouse, training_session, test_session,
-                     classifier=BernoulliNB(), time_bin_size=1, n_spatial_bins=36,
-                     show_plot=True):
+                     classifier=BernoulliNB(), time_bin_size=1,
+                     n_spatial_bins=36, show_plot=True):
+        """
+        Use a naive Bayes decoder to classify spatial position.
+        Train with data from one session and test with another.
+
+        :parameters
+        ---
+        mouse: str
+            Mouse name.
+
+        training_session and test_session: strs
+            Training and test sessions.
+
+        classifier: BernoulliNB() or MultinomialNB()
+            Naive Bayes classifier to use.
+
+        time_bin_size: float
+            Size of time bin in seconds.
+
+        n_spatial_bins: int
+            Number of spatial bins to divide circle track into.
+            Default to 36 for each bin to be 10 degrees.
+
+        show_plot: boolean
+            Flag for showing plots.
+        """
+        # Get sessions and neural activity.
         sessions = [self.data[mouse][session] for session in [training_session, test_session]]
         S_list = self.rearrange_neurons(mouse, [training_session, test_session],
                                         data_type='S')
         S_list = [threshold_S(S) for S in S_list]
+
+        # Separate neural data into training and test.
         predictor_data = {train_test_label: bin_transients(S, time_bin_size, fps=15).T
                           for S, train_test_label in zip(S_list, ['train', 'test'])}
 
+        # Separate spatially binned location into training and test.
         outcome_data = dict()
         for session, train_test_label in zip(sessions, ['train', 'test']):
             lin_position = session.data['behavior'].behavior_df['lin_position'].values
@@ -147,10 +176,11 @@ class BatchFullAnalyses:
                                                          time_bin_size=time_bin_size,
                                                          fps=15)
 
-
+        # Fit the classifier and test on test data.
         classifier.fit(predictor_data['train'], outcome_data['train'])
         y_predicted = classifier.predict(predictor_data['test'])
 
+        # Plot real and predicted spatial location.
         if show_plot:
             fig, ax = plt.subplots()
             ax.plot(outcome_data['test'], alpha=0.5)
@@ -171,6 +201,14 @@ class BatchFullAnalyses:
     def find_decoding_error(self, mouse, training_session, test_session,
                             classifier=BernoulliNB(), time_bin_size=1,
                             n_spatial_bins=36, show_plot=True):
+        """
+        Find decoding error between predicted and real spatially
+        binned location.
+
+        :parameters
+        ---
+        See decode_place().
+        """
         y_predicted, predictor_data, outcome_data, classifier = \
             self.decode_place(mouse, training_session, test_session,
                               classifier=classifier, time_bin_size=time_bin_size,
@@ -179,7 +217,25 @@ class BatchFullAnalyses:
         d = self.get_circular_error(y_predicted, outcome_data['test'],
                                     n_spatial_bins=n_spatial_bins)
 
+
+
     def get_circular_error(self, y_predicted, y_real, n_spatial_bins):
+        """
+        Error is not linear here, it's circular because for example,
+        spatial bin 1 is right next to spatial bin 36. Take the
+        circular distance here.
+
+        :parameters
+        ---
+        y_predicted: array-like of ints
+            Predicted spatially binned locations.
+
+        y_real: array-like of ints
+            Real spatially binned locations.
+
+        n_spatial_bins: int
+            Number of spatial bins (needed for modulo function).
+        """
         i = (y_predicted - y_real) % n_spatial_bins
         j = (y_real - y_predicted) % n_spatial_bins
 
@@ -190,12 +246,34 @@ class BatchFullAnalyses:
     def format_spatial_location_for_decoder(self, lin_position,
                                             n_spatial_bins=36,
                                             time_bin_size=1, fps=15):
+        """
+        Naive Bayes classifiers only take integers as outcomes.
+        Bin spatial locations both spatially and temporally.
+
+        :parameters
+        ---
+        lin_position: array-like of floats
+            Linearized position (in radians, from behavioral DataFrame).
+
+        n_spatial_bins: int
+            Number of spatial bins.
+
+        time_bin_size: float
+            Size of temporal bin in seconds.
+
+        fps: int
+            Frames per second of the acquired data.
+        """
+        # Find the appropriate bin edges given number of spatial bins.
+        # Then do spatial bin.
         bins = np.histogram(lin_position, bins=n_spatial_bins)[1]
         binned_position = np.digitize(lin_position, bins)
 
+        # Do the same for temporal binning.
         bins = make_bins(binned_position, fps*time_bin_size, axis=0)
         binned_position = np.split(binned_position, bins, axis=0)
 
+        # Get the most occupied spatial bin within each temporal bin.
         position = np.array([mode(time_bin)[0][0] for time_bin in binned_position])
 
         return position
