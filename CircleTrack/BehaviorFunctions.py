@@ -1344,8 +1344,8 @@ def dlc_to_csv(folder: str):
 
 if __name__ == "__main__":
     folder = (
-        r"Z:\Will\Drift\Data\Castor_Scope05\09_09_2020_CircleTrackGoals2\16_46_11"
+        r"Z:\Veronica\SEFLCT01\2020_09_24_CircleTrackGoals1\15_19_38"
 
     )
     P = Preprocess(folder)
-    P.track_video()
+    P.find_outliers()

@@ -1,7 +1,7 @@
 from CircleTrack.BehaviorFunctions import BehaviorSession
 from CircleTrack.MiniscopeFunctions import CalciumSession
 import matplotlib.pyplot as plt
-from CaImaging.util import sem, errorfill, nan_array, bin_transients
+from CaImaging.util import sem, errorfill, nan_array, bin_transients, make_bins
 from grid_strategy.strategies import RectangularStrategy
 from scipy.stats import wilcoxon
 from statsmodels.stats.multitest import multipletests
@@ -12,6 +12,7 @@ from CaImaging.Miniscope import threshold_S
 from sklearn.naive_bayes import MultinomialNB, BernoulliNB
 from CaImaging.Assemblies import lapsed_activation, plot_assemblies
 import numpy as np
+from scipy.stats import mode
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -89,30 +90,76 @@ class BatchFullAnalyses:
 
 
     def decode_place(self, mouse, training_session, test_session,
-                     classifier=BernoulliNB(), time_bin_size=1):
+                     classifier=BernoulliNB(), time_bin_size=1, n_spatial_bins=36,
+                     show_plot=True):
         sessions = [self.data[mouse][session] for session in [training_session, test_session]]
         S_list = self.rearrange_neurons(mouse, [training_session, test_session],
                                         data_type='S')
         S_list = [threshold_S(S) for S in S_list]
-        binned_S = [bin_transients(S, time_bin_size) for S in S_list]
-        data = {train_test_split: bin_transients(S, time_bin_size)
-                for S, train_test_split in zip(S_list, ['train', 'test'])}
+        predictor_data = {train_test_label: bin_transients(S, time_bin_size, fps=15).T
+                          for S, train_test_label in zip(S_list, ['train', 'test'])}
 
-        y = sessions[0].data['behavior'].behavior_df['lin_position'].values
-        bins = np.histogram(y, bins=36)[1]
-        y_binned = np.digitize(y, bins)
-        X = S_list[0].T
-        classifier.fit(X,y_binned)
+        outcome_data = dict()
+        for session, train_test_label in zip(sessions, ['train', 'test']):
+            lin_position = session.data['behavior'].behavior_df['lin_position'].values
+            outcome_data[train_test_label] = \
+                self.format_spatial_location_for_decoder(lin_position,
+                                                         n_spatial_bins=n_spatial_bins,
+                                                         time_bin_size=time_bin_size,
+                                                         fps=15)
 
-        X_test = S_list[1].T
-        y_predicted = classifier.predict(X_test)
-        y = sessions[1].data['behavior'].behavior_df['lin_position'].values
-        y_real = np.digitize(y, bins)
 
-        plt.plot(y_real, alpha=0.2)
-        plt.plot(y_predicted, alpha=0.2)
+        classifier.fit(predictor_data['train'], outcome_data['train'])
+        y_predicted = classifier.predict(predictor_data['test'])
+
+        if show_plot:
+            fig, ax = plt.subplots()
+            ax.plot(outcome_data['test'], alpha=0.5)
+            ax.plot(y_predicted, alpha=0.5)
+
+        return y_predicted, predictor_data, outcome_data, classifier
+
+        # X_test = S_list[1].T
+        # y_predicted = classifier.predict(X_test)
+        # y = sessions[1].data['behavior'].behavior_df['lin_position'].values
+        # y_real = np.digitize(y, bins)
+
+        # plt.plot(y_real, alpha=0.2)
+        # plt.plot(y_predicted, alpha=0.2)
         pass
 
+
+    def find_decoding_error(self, mouse, training_session, test_session,
+                            classifier=BernoulliNB(), time_bin_size=1,
+                            n_spatial_bins=36, show_plot=True):
+        y_predicted, predictor_data, outcome_data, classifier = \
+            self.decode_place(mouse, training_session, test_session,
+                              classifier=classifier, time_bin_size=time_bin_size,
+                              n_spatial_bins=n_spatial_bins, show_plot=show_plot)
+
+        d = self.get_circular_error(y_predicted, outcome_data['test'],
+                                    n_spatial_bins=n_spatial_bins)
+
+    def get_circular_error(self, y_predicted, y_real, n_spatial_bins):
+        i = (y_predicted - y_real) % n_spatial_bins
+        j = (y_real - y_predicted) % n_spatial_bins
+
+        d = np.min(np.vstack((i, j)), axis=0)
+
+        return d
+
+    def format_spatial_location_for_decoder(self, lin_position,
+                                            n_spatial_bins=36,
+                                            time_bin_size=1, fps=15):
+        bins = np.histogram(lin_position, bins=n_spatial_bins)[1]
+        binned_position = np.digitize(lin_position, bins)
+
+        bins = make_bins(binned_position, fps*time_bin_size, axis=0)
+        binned_position = np.split(binned_position, bins, axis=0)
+
+        position = np.array([mode(time_bin)[0][0] for time_bin in binned_position])
+
+        return position
 
     def get_cellreg_mappings(self, mouse, session_types, detected='everyday'):
         # For readability.
@@ -783,4 +830,4 @@ if __name__ == "__main__":
     # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
 
     B = BatchFullAnalyses(["Castor_Scope05"])
-    B.decode_place('Castor_Scope05', "CircleTrackGoals1", "CircleTrackGoals2")
+    B.decode_place('Castor_Scope05', "CircleTrackGoals2", "CircleTrackReversal1")
