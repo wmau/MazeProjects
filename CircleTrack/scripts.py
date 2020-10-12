@@ -49,6 +49,23 @@ class BatchFullAnalyses:
         #     rearranged = rearrange_neurons(cell_map, S_list)
 
     def rearrange_neurons(self, mouse, session_types, data_type):
+        """
+        Rearrange neural activity matrix to have the same neuron in
+        each row.
+
+        :parameters
+        ---
+        mouse: str
+            Mouse name.
+
+        session_types: array-like of strs
+            Must correspond to at least two of the sessions in the
+            session_types class attribute (e.g. 'CircleTrackGoals2'.
+
+        data_type: str
+            Neural activity data type that you want to align. (e.g.
+            'S' or 'C').
+        """
         sessions = self.data[mouse]
         trimmed_map = self.get_cellreg_mappings(mouse, session_types,
                                                 detected='everyday')
@@ -68,6 +85,25 @@ class BatchFullAnalyses:
     def spatial_activity_by_trial_over_days(self, mouse,
                                             session_types,
                                             neurons=None):
+        """
+        Visualize binned spatial activity by each trial across
+        multiple days.
+
+        :parameters
+        ---
+        mouse: str
+            Mouse name.
+
+        session_types: array-like of strs
+            Must correspond to at least two of the sessions in the
+            session_types class attribute (e.g. 'CircleTrackGoals2'.
+
+        neurons: array-like of scalars
+            Neuron indices to include from the first session in
+            session_types.
+
+        """
+        # Get neuron mappings.
         sessions = self.data[mouse]
         trimmed_map = self.get_cellreg_mappings(mouse, session_types)
 
@@ -77,6 +113,7 @@ class BatchFullAnalyses:
             in_list = trimmed_map.iloc[:,0].isin(neurons)
             global_idx = trimmed_map[in_list].index
 
+        # Gather neurons and build dictionaries for HoloMap.
         viz_fields = []
         for i, session_type in enumerate(session_types):
             neurons_to_analyze = trimmed_map.iloc[trimmed_map.index.isin(global_idx), i]
@@ -86,6 +123,8 @@ class BatchFullAnalyses:
                     neurons=neurons_to_analyze,
                     preserve_neuron_idx=False))
 
+        # List of dictionaries. Do HoloMap(viz_fields) in a
+        # jupyter notebook.
         return viz_fields
 
 
