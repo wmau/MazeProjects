@@ -10,7 +10,9 @@ from CircleTrack.SessionCollation import MultiAnimal
 from CaImaging.CellReg import rearrange_neurons, trim_map
 from CaImaging.Miniscope import threshold_S
 from sklearn.naive_bayes import MultinomialNB, BernoulliNB
+from sklearn.linear_model import LinearRegression
 from CaImaging.Assemblies import lapsed_activation, plot_assemblies
+from scipy.stats import circmean
 import numpy as np
 from scipy.stats import mode
 
@@ -149,7 +151,7 @@ class BatchFullAnalyses:
         classifier: BernoulliNB() or MultinomialNB()
             Naive Bayes classifier to use.
 
-        time_bin_size: float
+        decoder_time_bin_size: float
             Size of time bin in seconds.
 
         n_spatial_bins: int
@@ -183,6 +185,7 @@ class BatchFullAnalyses:
                 n_spatial_bins=n_spatial_bins,
                 time_bin_size=time_bin_size,
                 fps=15,
+                classifier=classifier,
             )
 
         # Fit the classifier and test on test data.
@@ -212,9 +215,10 @@ class BatchFullAnalyses:
         training_session,
         test_session,
         classifier=BernoulliNB(),
-        time_bin_size=1,
+        decoder_time_bin_size=1,
         n_spatial_bins=36,
         show_plot=True,
+        error_time_bin_size=300,
     ):
         """
         Find decoding error between predicted and real spatially
@@ -229,14 +233,29 @@ class BatchFullAnalyses:
             training_session,
             test_session,
             classifier=classifier,
-            time_bin_size=time_bin_size,
+            time_bin_size=decoder_time_bin_size,
             n_spatial_bins=n_spatial_bins,
-            show_plot=show_plot,
+            show_plot=False,
         )
 
         d = self.get_circular_error(
             y_predicted, outcome_data["test"], n_spatial_bins=n_spatial_bins
         )
+
+        bins = make_bins(d, error_time_bin_size, axis=0)
+        binned_d = np.split(d, bins)
+
+        if show_plot:
+            fig, ax = plt.subplots()
+            time_bins = range(len(binned_d))
+            mean_errors = [np.mean(dist) for dist in binned_d]
+            sem_errors = [np.std(dist) / np.sqrt(dist.shape[0]) for
+                              dist in binned_d]
+            ax.errorbar(time_bins,
+                        mean_errors,
+                        yerr=sem_errors)
+
+        pass
 
     def get_circular_error(self, y_predicted, y_real, n_spatial_bins):
         """
@@ -263,7 +282,8 @@ class BatchFullAnalyses:
         return d
 
     def format_spatial_location_for_decoder(
-        self, lin_position, n_spatial_bins=36, time_bin_size=1, fps=15
+        self, lin_position, n_spatial_bins=36, time_bin_size=1, fps=15,
+            classifier=BernoulliNB(),
     ):
         """
         Naive Bayes classifiers only take integers as outcomes.
@@ -277,7 +297,7 @@ class BatchFullAnalyses:
         n_spatial_bins: int
             Number of spatial bins.
 
-        time_bin_size: float
+        decoder_time_bin_size: float
             Size of temporal bin in seconds.
 
         fps: int
@@ -285,15 +305,22 @@ class BatchFullAnalyses:
         """
         # Find the appropriate bin edges given number of spatial bins.
         # Then do spatial bin.
-        bins = np.histogram(lin_position, bins=n_spatial_bins)[1]
-        binned_position = np.digitize(lin_position, bins)
+        dont_bin_space = True if isinstance(classifier, (LinearRegression)) else False
+        if dont_bin_space:
+            binned_position = np.cos(lin_position)
+        else:
+            bins = np.histogram(lin_position, bins=n_spatial_bins)[1]
+            binned_position = np.digitize(lin_position, bins)
 
         # Do the same for temporal binning.
         bins = make_bins(binned_position, fps * time_bin_size, axis=0)
         binned_position = np.split(binned_position, bins, axis=0)
 
         # Get the most occupied spatial bin within each temporal bin.
-        position = np.array([mode(time_bin)[0][0] for time_bin in binned_position])
+        if dont_bin_space:
+            position = np.array([circmean(time_bin) for time_bin in binned_position])
+        else:
+            position = np.array([mode(time_bin)[0][0] for time_bin in binned_position])
 
         return position
 
@@ -966,4 +993,8 @@ if __name__ == "__main__":
     # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
 
     B = BatchFullAnalyses(["Castor_Scope05"])
-    B.decode_place("Castor_Scope05", "CircleTrackGoals2", "CircleTrackReversal1")
+    B.find_decoding_error("Castor_Scope05",
+                          "CircleTrackGoals1",
+                          "CircleTrackGoals2",
+                          classifier=LinearRegression(),
+                          n_spatial_bins=2*np.pi)

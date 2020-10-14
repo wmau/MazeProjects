@@ -764,6 +764,7 @@ class Preprocess:
                 miniscope_cam=miniscope_cam,
                 subtract_offset=subtract_offset,
             )[0]
+            self.behavior_df = clean_lick_detection(self.behavior_df)
 
             # Find timestamps where the mouse seemingly teleports to a new location.
             # This is likely from mistracking. Interpolate those data points.
