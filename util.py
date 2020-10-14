@@ -53,6 +53,26 @@ def grab_paths(session_folder=None):
     return paths
 
 
+def search_for_folders(folder, expression):
+    folders = []
+    for root, dirs, _ in os.walk(folder):
+        for directory in dirs:
+            if re.match(expression, directory):
+                folders.append(os.path.join(root, directory))
+
+    return folders
+
+
+def search_for_files(folder, expression):
+    matched_files = []
+    for root, dirs, files in os.walk(folder):
+        for file in files:
+            if re.match(expression, file):
+                matched_files.append(os.path.join(root, file))
+
+    return matched_files
+
+
 class Session_Metadata:
     def __init__(self, session_folder=None, overwrite=False):
         """
@@ -166,7 +186,9 @@ class Metadata_CSV:
                 self.df = pd.read_csv(fname)
 
     def build(self):
-        self.session_folders = self.get_all_sessions()
+        self.session_folders = search_for_folders(
+            self.project_folder, "^H?[0-9]+_M?[0-9]+_S?[0-9]+$"
+        )
         for folder in self.session_folders:
             Session_Metadata(folder, overwrite=True)
 
@@ -193,20 +215,6 @@ class Metadata_CSV:
 
     def save(self):
         self.df.to_csv(os.path.join(self.project_folder, self.filename), index=False)
-
-    def get_all_sessions(self):
-        session_folders = []
-        expression = "^H?[0-9]+_M?[0-9]+_S?[0-9]+$"
-        for root, dirs, _ in os.walk(self.project_folder):
-            for directory in dirs:
-                if re.match(expression, directory):
-                    session_folders.append(os.path.join(root, directory))
-
-        # session_folders = [folder for folder in
-        #                    Path(self.project_folder).rglob('H*_M*_S*')
-        #                    if os.path.isdir(folder)]
-
-        return session_folders
 
     def get_session_type(self):
         session_types = [
