@@ -764,15 +764,15 @@ class SessionStitcherV4:
         for key, reg_exp in zip(keys, reg_exps):
             self.paths[key] = search_for_folders(self.paths["date_folder"], reg_exp)
 
-        self.paths['lick_files'] = search_for_files(self.paths["date_folder"],
-                                                    "^H\d{2}_M\d{2}_S\d{2}.\d{4} \d{4}.txt$")
+        self.paths["lick_files"] = search_for_files(
+            self.paths["date_folder"], "^H\d{2}_M\d{2}_S\d{2}.\d{4} \d{4}.txt$"
+        )
 
-        print('Copying video files.')
+        print("Copying video files.")
         self.copy_videos()
 
-        print('Combining timestamps and lick files.')
+        print("Combining timestamps and lick files.")
         self.combine_files()
-
 
     def copy_videos(
         self,
@@ -821,68 +821,78 @@ class SessionStitcherV4:
 
     def combine_files(self):
         lick_files_concatenated = False
-        for data_stream in ['miniscope', 'behavior']:
+        for data_stream in ["miniscope", "behavior"]:
             # Get the base timestamp file, where we'll be appending to.
-            original_fname = os.path.join(self.paths[data_stream][0],
-                                          'timeStamps.csv')
+            original_fname = os.path.join(self.paths[data_stream][0], "timeStamps.csv")
 
-            original_lick_file = self.paths['lick_files'][0]
+            original_lick_file = self.paths["lick_files"][0]
 
-            for folder, lick_file in zip(self.paths[data_stream][1:],
-                                         self.paths['lick_files'][1:]):
+            for folder, lick_file in zip(
+                self.paths[data_stream][1:], self.paths["lick_files"][1:]
+            ):
                 # Get the last values from the base file.
                 original_df = pd.read_csv(original_fname)
-                last_frame = original_df['Frame Number'].iloc[-1]
-                last_timestamp = original_df['Time Stamp (ms)'].iloc[-1]
+                last_frame = original_df["Frame Number"].iloc[-1]
+                last_timestamp = original_df["Time Stamp (ms)"].iloc[-1]
 
                 if not lick_files_concatenated:
                     # Read original lick file.
                     original_lick_df = pd.read_csv(original_lick_file, header=None)
-                    original_lick_df.columns = ['Port',
-                                       'Frame Number',
-                                       'Time Stamp (ms)'
-                                       ]
+                    original_lick_df.columns = [
+                        "Port",
+                        "Frame Number",
+                        "Time Stamp (ms)",
+                    ]
 
                     # Read lick file to append.
                     lick_df_to_append = pd.read_csv(lick_file, header=None)
-                    lick_df_to_append.columns = ['Port',
-                                       'Frame Number',
-                                       'Time Stamp (ms)'
-                                       ]
+                    lick_df_to_append.columns = [
+                        "Port",
+                        "Frame Number",
+                        "Time Stamp (ms)",
+                    ]
 
                     # Add values to frame and timestamps.
-                    lick_df_to_append['Frame Number'] += (last_frame+1)
-                    lick_df_to_append['Time Stamp (ms)'] += (last_timestamp+33)
+                    lick_df_to_append["Frame Number"] += last_frame + 1
+                    lick_df_to_append["Time Stamp (ms)"] += last_timestamp + 33
 
                     # Concatenate.
                     lick_df = pd.concat((original_lick_df, lick_df_to_append))
-                    lick_df = lick_df.astype({'Port': int,
-                                              'Frame Number': int,
-                                              'Time Stamp (ms)': int,
-                                              })
+                    lick_df = lick_df.astype(
+                        {
+                            "Port": int,
+                            "Frame Number": int,
+                            "Time Stamp (ms)": int,
+                        }
+                    )
 
                     # Save and replace.
                     lick_df.to_csv(original_lick_file, header=False, index=False)
-                    print(f'{lick_file} successfully combined with {original_lick_file}')
+                    print(
+                        f"{lick_file} successfully combined with {original_lick_file}"
+                    )
 
                 # Get the file to append to.
-                append_fname = os.path.join(folder, 'timeStamps.csv')
+                append_fname = os.path.join(folder, "timeStamps.csv")
                 df_to_append = pd.read_csv(append_fname)
 
                 # Modify the values to add onto the base file.
-                df_to_append['Time Stamp (ms)'].iloc[0] = 0
-                df_to_append['Time Stamp (ms)'] += (last_timestamp+33)
-                df_to_append['Frame Number'] += (last_frame+1)
+                df_to_append["Time Stamp (ms)"].iloc[0] = 0
+                df_to_append["Time Stamp (ms)"] += last_timestamp + 33
+                df_to_append["Frame Number"] += last_frame + 1
 
                 # Concatenate.
                 new_df = pd.concat((original_df, df_to_append))
-                new_df = new_df.astype({'Frame Number': int,
-                                        'Time Stamp (ms)': int,
-                                        })
+                new_df = new_df.astype(
+                    {
+                        "Frame Number": int,
+                        "Time Stamp (ms)": int,
+                    }
+                )
 
                 # Save the new timestamp file.
                 new_df.to_csv(original_fname, index=False)
-                print(f'{append_fname} successfully combined with {original_fname}.')
+                print(f"{append_fname} successfully combined with {original_fname}.")
 
             lick_files_concatenated = True
 
