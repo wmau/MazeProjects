@@ -898,5 +898,5 @@ class SessionStitcherV4:
 
 
 if __name__ == "__main__":
-    folder = r"Z:\Will\Drift\Data\Draco_Scope02\10_14_2020_CircleTrackReversal1"
+    folder = r"Z:\Will\Drift\Data\Encedalus_Scope14\10_16_2020_CircleTrackRecall"
     SessionStitcherV4(folder)

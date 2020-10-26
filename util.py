@@ -56,6 +56,7 @@ def grab_paths(session_folder=None):
 def search_for_folders(folder, expression):
     folders = []
     for root, dirs, _ in os.walk(folder):
+        dirs[:] = [d for d in dirs if not re.match("^.*\.zarr$", d)]
         for directory in dirs:
             if re.match(expression, directory):
                 folders.append(os.path.join(root, directory))
