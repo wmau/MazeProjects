@@ -178,23 +178,33 @@ class CalciumSession:
         return viz_fields
 
 
-    def correlate_spatial_PVs_by_trial(self):
+    def correlate_spatial_PVs_by_trial(self, show_plot=True):
         """
-        
-        :return:
+        Correlate trial pairs of spatial ratemaps.
+
+        :return
+        corr_matrix: (trial, trial) np.array
+            Correlation matrix.
         """
+        # Change the axes of the fields from (cell, trial, spatial bin)
+        # to (trial, cell, spatial bin).
         #fields = np.asarray([field / self.spatial['occupancy'] for field in self.spatial['fields']])
         fields = self.spatial['fields']
         fields_by_trial = np.rollaxis(fields, 1)
+
+        # Compute spearman correlation coefficient.
         corr_matrix = np.zeros((fields_by_trial.shape[0], fields_by_trial.shape[0]))
         for i, (a, b) in enumerate(product(fields_by_trial, repeat=2)):
             idx = np.unravel_index(i, corr_matrix.shape)
             corr_matrix[idx] = spearmanr(a.flatten(), b.flatten(), nan_policy='omit')[0]
 
+        # Fill diagonal with 0s.
         np.fill_diagonal(corr_matrix, 0)
         #offset = colors.DivergingNorm(vcenter=0)
-        fig, ax = plt.subplots()
-        ax.imshow(corr_matrix, cmap='bwr', vmin=-1, vmax=1)
+        
+        if show_plot:
+            fig, ax = plt.subplots()
+            ax.imshow(corr_matrix, cmap='bwr', vmin=-1, vmax=1)
 
         return corr_matrix
 
