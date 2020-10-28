@@ -981,6 +981,8 @@ if __name__ == "__main__":
         "Betelgeuse_Scope25",
         "Alcor_Scope20",
         "Castor_Scope05",
+        "Draco_Scope02",
+        "Encedalus_Scope14",
         "M1",
         "M2",
         "M3",
@@ -992,9 +994,10 @@ if __name__ == "__main__":
     # B.plot_all_sdts(1)
     # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
 
-    B = BatchFullAnalyses(["Castor_Scope05"])
-    B.find_decoding_error("Castor_Scope05",
-                          "CircleTrackGoals1",
-                          "CircleTrackGoals2",
-                          classifier=LinearRegression(),
-                          n_spatial_bins=2*np.pi)
+    B = BatchFullAnalyses(mice[2:5])
+    corr_matrices = []
+    for mouse in mice[2:5]:
+        for session in B.session_types[2:]:
+            corr_matrices.append(B.data[mouse][session].correlate_spatial_PVs_by_trial())
+    pass
+    #B.decode_place('Encedalus_Scope14','CircleTrackGoals2','CircleTrackReversal1', classifier=MultinomialNB())

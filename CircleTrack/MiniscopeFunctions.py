@@ -12,7 +12,9 @@ from CaImaging.Behavior import spatial_bin
 import holoviews as hv
 hv.extension('bokeh')
 from bokeh.plotting import show
-
+from itertools import product
+from scipy.stats import spearmanr
+from matplotlib import colors
 
 class CalciumSession:
     def __init__(self, session_folder):
@@ -89,7 +91,7 @@ class CalciumSession:
         pass
 
 
-    def spatial_activity_by_trial(self, bin_size_radians=0.02):
+    def spatial_activity_by_trial(self, bin_size_radians=0.05):
         """
         Plot activity trial by trial, binned in linearized space.
 
@@ -176,8 +178,29 @@ class CalciumSession:
         return viz_fields
 
 
+    def correlate_spatial_PVs_by_trial(self):
+        """
+        
+        :return:
+        """
+        #fields = np.asarray([field / self.spatial['occupancy'] for field in self.spatial['fields']])
+        fields = self.spatial['fields']
+        fields_by_trial = np.rollaxis(fields, 1)
+        corr_matrix = np.zeros((fields_by_trial.shape[0], fields_by_trial.shape[0]))
+        for i, (a, b) in enumerate(product(fields_by_trial, repeat=2)):
+            idx = np.unravel_index(i, corr_matrix.shape)
+            corr_matrix[idx] = spearmanr(a.flatten(), b.flatten(), nan_policy='omit')[0]
+
+        np.fill_diagonal(corr_matrix, 0)
+        #offset = colors.DivergingNorm(vcenter=0)
+        fig, ax = plt.subplots()
+        ax.imshow(corr_matrix, cmap='bwr', vmin=-1, vmax=1)
+
+        return corr_matrix
+
 if __name__ == "__main__":
-    folder = r"Z:\Will\Drift\Data\Castor_Scope05\09_09_2020_CircleTrackGoals2\16_46_11"
+    folder = r"Z:\Will\Drift\Data\Castor_Scope05\09_11_2020_CircleTrackReversal2\15_17_24"
     S = CalciumSession(folder)
-    S.spatial_activity_by_trial(0.1)
+    #S.spatial_activity_by_trial(0.1)
+    S.correlate_spatial_PVs_by_trial()
     pass
