@@ -17,7 +17,7 @@ from scipy.stats import spearmanr
 from matplotlib import colors
 
 class CalciumSession:
-    def __init__(self, session_folder):
+    def __init__(self, session_folder, spatial_bin_size_radians=0.05):
         """
         Single session analyses and plots for miniscope data.
 
@@ -28,6 +28,7 @@ class CalciumSession:
         # Get the behavioral data.
         self.folder = session_folder
         self.data = {"behavior": BehaviorSession(self.folder)}
+        self.spatial_bin_size = spatial_bin_size_radians
 
         # Get paths
         self.minian_path = self.data["behavior"].paths["minian"]
@@ -43,7 +44,7 @@ class CalciumSession:
 
         self.spatial = dict()
         self.spatial['fields'], self.spatial['occupancy'] = self.spatial_activity_by_trial()
-
+        self.spatial['tuning_curves'] = self.linearized_activity()
 
     def plot_spiral_spikes(self, first_neuron=0, S_thresh=1):
         """
@@ -82,16 +83,17 @@ class CalciumSession:
         )
 
 
-    def linearized_activity(self, bin_size=0.02):
-        PFs = PlaceFields(np.asarray(self.data["behavior"]["lin_position"]),
-                          np.zeros_like(self.data["behavior"]["lin_position"]),
+    def linearized_activity(self):
+        PFs = PlaceFields(np.asarray(self.data["behavior"].behavior_df['lin_position']),
+                          np.zeros_like(self.data["behavior"].behavior_df['lin_position']),
                           self.data["imaging"]["S"],
-                          bin_size_cm=bin_size,
+                          bin_size=self.spatial_bin_size,
                           one_dim=True)
-        pass
+
+        return PFs
 
 
-    def spatial_activity_by_trial(self, bin_size_radians=0.05):
+    def spatial_activity_by_trial(self):
         """
         Plot activity trial by trial, binned in linearized space.
 
@@ -107,7 +109,7 @@ class CalciumSession:
         lin_position = np.asarray(behavior_df["lin_position"])
         filler = np.zeros_like(lin_position)
         bin_edges = spatial_bin(lin_position, filler,
-                                bin_size_cm=bin_size_radians,
+                                bin_size_cm=self.spatial_bin_size,
                                 one_dim=True)[1]
 
         # Threshold S matrix here.
@@ -145,7 +147,7 @@ class CalciumSession:
         return fields, occ_map_by_trial
 
 
-    def viz_spatial_trial_activity(self, bin_size_radians=0.02, neurons=range(10),
+    def viz_spatial_trial_activity(self, neurons=range(10),
                                    preserve_neuron_idx=True):
         """
         Visualize single cell activity binned in spatial and separated
@@ -166,7 +168,7 @@ class CalciumSession:
             registered across days and serves as a global index for
             Holomap to access.
         """
-        fields = self.spatial_activity_by_trial(bin_size_radians=bin_size_radians)[0]
+        fields = self.spatial_activity_by_trial()[0]
 
         if preserve_neuron_idx:
             viz_fields = {n: hv.Image(fields[n] > 0).opts(cmap='gray')
@@ -201,16 +203,18 @@ class CalciumSession:
         # Fill diagonal with 0s.
         np.fill_diagonal(corr_matrix, 0)
         #offset = colors.DivergingNorm(vcenter=0)
-        
+
         if show_plot:
             fig, ax = plt.subplots()
             ax.imshow(corr_matrix, cmap='bwr', vmin=-1, vmax=1)
 
         return corr_matrix
 
+
+
 if __name__ == "__main__":
     folder = r"Z:\Will\Drift\Data\Castor_Scope05\09_11_2020_CircleTrackReversal2\15_17_24"
     S = CalciumSession(folder)
     #S.spatial_activity_by_trial(0.1)
-    S.correlate_spatial_PVs_by_trial()
+    #S.correlate_spatial_PVs_by_trial()
     pass
