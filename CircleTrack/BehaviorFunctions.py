@@ -620,8 +620,8 @@ def approach_speed(
     ax: Axes object
         Axis to plot on.
 
-    plot: boolean
-        Whether to plot results or just return data.
+    show_plot: boolean
+        Whether to show_plot results or just return data.
 
     acceleration: boolean
         Whether to look at acceleration rather than velocity.
@@ -1077,8 +1077,8 @@ class BehaviorSession:
         acceleration: bool
             Whether to compute acceleration (when True) or speed (when False).
 
-        plot: bool
-            Whether or not to plot.
+        show_plot: bool
+            Whether or not to show_plot.
 
         """
         self.approaches = []
@@ -1120,8 +1120,8 @@ class BehaviorSession:
 
         :parameter
         ---
-        plot: boolean
-            Whether or not to plot.
+        show_plot: boolean
+            Whether or not to show_plot.
         """
         ports = range(8)
         all_licks = []
