@@ -17,7 +17,8 @@ from scipy.stats import spearmanr
 from matplotlib import colors
 
 class CalciumSession:
-    def __init__(self, session_folder, spatial_bin_size_radians=0.05):
+    def __init__(self, session_folder, spatial_bin_size_radians=0.05,
+                 S_std_thresh=1):
         """
         Single session analyses and plots for miniscope data.
 
@@ -29,6 +30,7 @@ class CalciumSession:
         self.folder = session_folder
         self.data = {"behavior": BehaviorSession(self.folder)}
         self.spatial_bin_size = spatial_bin_size_radians
+        self.S_std_thresh = S_std_thresh
 
         # Get paths
         self.minian_path = self.data["behavior"].paths["minian"]
@@ -38,6 +40,10 @@ class CalciumSession:
         self.data["behavior"].behavior_df, self.data["imaging"], _ = sync_data(
             self.data["behavior"].behavior_df, self.minian_path, timestamp_paths
         )
+        self.data["imaging"]["S_binary"] = np.asarray([
+            (activity > (np.mean(activity) + S_std_thresh * np.std(activity))).astype(int)
+            for activity in self.data["imaging"]["S"]
+        ])
 
         # Get number of neurons.
         self.n_neurons = self.data['imaging']['C'].shape[0]
@@ -46,7 +52,7 @@ class CalciumSession:
         self.spatial['fields'], self.spatial['occupancy'] = self.spatial_activity_by_trial()
         self.spatial['tuning_curves'] = self.linearized_activity()
 
-    def plot_spiral_spikes(self, first_neuron=0, S_thresh=1):
+    def plot_spiral_spikes(self, first_neuron=0):
         """
         Plot where on the maze a neuron spikes, starting with
         first_neuron. Scroll through the rest.
@@ -60,16 +66,13 @@ class CalciumSession:
             a spike.
         """
         # Get spiking activity and time vector.
-        spikes = [
-            activity > (np.mean(activity) + S_thresh * np.std(activity))
-            for activity in self.data["imaging"]["S"]
-        ]
+        spikes = self.data["imaging"]["S_binary"]
         t = np.asarray(self.data["behavior"].behavior_df['frame'])
 
         # Linearize position.
         lin_position = np.asarray(linearize_trajectory(self.data["behavior"].behavior_df)[0])
 
-        # Do the plot.
+        # Do the show_plot.
         cell_number_labels = [f"Cell #{n}" for n, _ in enumerate(spikes)]
         self.spiral_spatial_plot = ScrollPlot(
             plot_spiral,
@@ -84,13 +87,15 @@ class CalciumSession:
 
 
     def linearized_activity(self):
-        PFs = PlaceFields(np.asarray(self.data["behavior"].behavior_df['lin_position']),
+        PF_obj = PlaceFields(np.asarray(self.data["behavior"].behavior_df['lin_position']),
                           np.zeros_like(self.data["behavior"].behavior_df['lin_position']),
                           self.data["imaging"]["S"],
                           bin_size=self.spatial_bin_size,
                           one_dim=True)
 
-        return PFs
+        PF_obj.assess_stat_sig()
+
+        return PF_obj.pfs
 
 
     def spatial_activity_by_trial(self):
