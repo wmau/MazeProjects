@@ -985,11 +985,21 @@ class BehaviorSession:
             self.folder, "PreprocessedBehavior.csv"
         )
 
+        # Determine if this was a recording with the new QT system.
+        v4 = True if type(self.paths['timestamps']) is list else False
+
         # Try loading a presaved csv.
         try:
             self.behavior_df = pd.read_csv(self.paths["PreprocessedBehavior"])
         except:
             raise FileNotFoundError("Run Preprocess() first.")
+
+        # Get timing information.
+        if v4:
+            self.behavior_timestamps = pd.read_csv(find_timestamp_file(self.paths['timestamps'],
+                                                           'BehavCam'))
+
+        self.fps = self.get_fps()
 
         # Convert x, y, and distance values to cm.
         self.behavior_df['x'] = self.behavior_df['x']/pix_per_cm
@@ -1020,6 +1030,26 @@ class BehaviorSession:
             self.learning["start"],
             self.learning["inflection"],
         ) = self.get_learning_curve(5)
+
+
+    def get_fps(self):
+        """
+        Get sampling frequency of behavior video. We don't trust the
+        cv2 method for extracting fps from video files. Instead,
+        count time intervals in between video frames in timeStamp.csv.
+
+        :return:
+        """
+        # Take difference.
+        interframe_intervals = np.diff(
+            self.behavior_timestamps['Time Stamp (ms)'].iloc[1:])
+
+        # Inter-frame interval in milliseconds.
+        mean_interval = np.mean(interframe_intervals)
+        fps = round(1 / (mean_interval / 1000))
+
+        return fps
+
 
     def count_drinks(self):
         """

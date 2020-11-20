@@ -74,6 +74,34 @@ def search_for_files(folder, expression):
     return matched_files
 
 
+def find_timestamp_file(timestamp_paths, camera_type):
+    """
+    Looks for the miniscope timestamp file or the behavior camera's
+    timestamp file.
+
+    :parameters
+    ---
+    timestamp_paths: list of strs (usually 2)
+        Paths to csvs, usually one each for behavior or miniscope.
+
+    camera_type: 'Miniscope' or 'BehavCam'
+        Camera type whose timestamp you want.
+
+
+    """
+    n_paths = len(timestamp_paths)
+    assert n_paths == 2, f'Unusual number of paths entered: {n_paths}'
+    assert camera_type in ['BehavCam', 'Miniscope'], 'Unusual camera type entered'
+
+    files = [path for path in timestamp_paths if
+             camera_type in path]
+
+    n_files_found = len(files)
+    assert n_files_found==1, f'Unusual number of paths found: {n_files_found}'
+
+    return files[0]
+
+
 class Session_Metadata:
     def __init__(self, session_folder=None, overwrite=False):
         """
