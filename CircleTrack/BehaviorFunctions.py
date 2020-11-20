@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 import cv2
 
 from CircleTrack.utils import circle_sizes, cart2pol
-from util import grab_paths, Session_Metadata
+from util import grab_paths, Session_Metadata, find_timestamp_file
 import tkinter as tk
 
 tkroot = tk.Tk()
@@ -181,16 +181,8 @@ def sync_Arduino_outputs(
     # Get timestamping information from DAQ output.
     try:
         if v4:
-            miniscope_file = [
-                folder
-                for folder in timestamp_fpath
-                if "Miniscope" in os.path.split(folder)[0]
-            ][0]
-            behavior_file = [
-                folder
-                for folder in timestamp_fpath
-                if "BehavCam" in os.path.split(folder)[0]
-            ][0]
+            miniscope_file = find_timestamp_file(timestamp_fpath, 'Miniscope')
+            behavior_file = find_timestamp_file(timestamp_fpath, 'BehavCam')
             sync_map, DAQ_data = sync_cameras_v4(miniscope_file, behavior_file)
         else:
             sync_map, DAQ_data = sync_cameras(
@@ -1020,6 +1012,7 @@ class BehaviorSession:
         self.rewarded_ports = np.zeros(8, dtype=bool)
         self.rewarded_ports[rewarded_ports] = True
         self.n_rewarded_ports = np.sum(self.rewarded_ports)
+
         self.all_licks = self.get_licks(plot=False)
         self.n_drinks = self.count_drinks()
 
