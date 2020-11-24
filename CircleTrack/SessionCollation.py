@@ -15,7 +15,7 @@ def MultiSession(mouse, Metadata_CSV, behavior='CircleTrack',
     """
     # Find the folders corresponding to the correct mouse and behavior.
     mouse_entries = Metadata_CSV.df.loc[Metadata_CSV.df['Mouse'] == mouse]
-    sessions = mouse_entries.loc[mouse_entries['Session'].str.find(behavior) > 0]
+    sessions = mouse_entries.loc[mouse_entries['Session'].str.find(behavior) > -1]
 
     S = dict()
     for folder, session_type in zip(sessions['Path'], sessions['Session_Type']):
