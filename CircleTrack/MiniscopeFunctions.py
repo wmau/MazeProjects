@@ -14,7 +14,7 @@ import holoviews as hv
 hv.extension("bokeh")
 from bokeh.plotting import show
 from itertools import product
-from scipy.stats import spearmanr
+from scipy.stats import spearmanr, zscore
 from matplotlib import colors
 
 
@@ -43,6 +43,7 @@ class CalciumSession:
         )
         self.data["imaging"]["S_binary"] = threshold_S(self.data['imaging']['S'],
                                                        S_std_thresh)
+        self.data["imaging"]["S"] = zscore(self.data["imaging"]["S"], axis=1)
 
         # Get number of neurons.
         self.n_neurons = self.data["imaging"]["C"].shape[0]
@@ -56,11 +57,13 @@ class CalciumSession:
 
         # Get place fields.
         self.spatial["placefield_class"] = PlaceFields(
+            np.asarray(self.data["behavior"].behavior_df["t"]),
             np.asarray(self.data["behavior"].behavior_df["lin_position"]),
             np.zeros_like(self.data["behavior"].behavior_df["lin_position"]),
             self.data["imaging"]["S"],
             bin_size=self.spatial_bin_size,
-            one_dim=True,
+            circular=True,
+            fps =self.data["behavior"].fps
         )
 
     def plot_spiral_spikes(self, first_neuron=0):
