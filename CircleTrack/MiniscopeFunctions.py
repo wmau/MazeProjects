@@ -19,7 +19,8 @@ from matplotlib import colors
 
 
 class CalciumSession:
-    def __init__(self, session_folder, spatial_bin_size_radians=0.05, S_std_thresh=1):
+    def __init__(self, session_folder, spatial_bin_size_radians=0.05, S_std_thresh=1,
+                 circle_radius=38.1):
         """
         Single session analyses and plots for miniscope data.
 
@@ -43,7 +44,7 @@ class CalciumSession:
         )
         self.data["imaging"]["S_binary"] = threshold_S(self.data['imaging']['S'],
                                                        S_std_thresh)
-        self.data["imaging"]["S"] = zscore(self.data["imaging"]["S"], axis=1)
+        #self.data["imaging"]["S"] = zscore(self.data["imaging"]["S"], axis=1)
 
         # Get number of neurons.
         self.n_neurons = self.data["imaging"]["C"].shape[0]
@@ -63,7 +64,9 @@ class CalciumSession:
             self.data["imaging"]["S"],
             bin_size=self.spatial_bin_size,
             circular=True,
-            fps =self.data["behavior"].fps
+            fps =self.data["behavior"].fps,
+            circle_radius=circle_radius,
+            shuffle_test=True
         )
 
     def plot_spiral_spikes(self, first_neuron=0):
