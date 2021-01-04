@@ -15,6 +15,7 @@ from CaImaging.Assemblies import lapsed_activation, plot_assemblies
 from scipy.stats import circmean
 import numpy as np
 from scipy.stats import mode
+import os
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -82,7 +83,8 @@ class BatchFullAnalyses:
 
         return rearranged
 
-    def spatial_activity_by_trial_over_days(self, mouse, session_types, neurons=None):
+    def spatial_activity_by_trial_over_days(self, mouse, session_types, neurons=None,
+                                            mode='png'):
         """
         Visualize binned spatial activity by each trial across
         multiple days.
@@ -116,11 +118,27 @@ class BatchFullAnalyses:
         for i, session_type in enumerate(session_types):
             neurons_to_analyze = trimmed_map.iloc[trimmed_map.index.isin(global_idx), i]
 
-            viz_fields.append(
-                sessions[session_type].viz_spatial_trial_activity(
-                    neurons=neurons_to_analyze, preserve_neuron_idx=False
-                )
-            )
+            if mode == 'holoviews':
+                fields =  sessions[session_type].viz_spatial_trial_activity(neurons=neurons_to_analyze, preserve_neuron_idx=False)
+            elif mode == 'png':
+                fields = sessions[session_type].spatial['trial_fields'][neurons_to_analyze] > 0
+            else:
+                raise ValueError('mode must be holoviews or png')
+            viz_fields.append(fields)
+
+        if mode == 'png':
+            for neuron in range(viz_fields[0].shape[0]):
+                fig, axs = plt.subplots(1, len(viz_fields))
+                for s, ax in enumerate(axs):
+                    ax.imshow(viz_fields[s][neuron], cmap='gray')
+
+                fname = os.path.join(
+                    r'Z:\Will\Drift\Data', mouse, r'Analysis\Place fields',
+                    f'Neuron {neuron}.png')
+                manager = plt.get_current_fig_manager()
+                manager.frame.Maximize(True)
+                fig.savefig(fname, bbox_inches='tight')
+                plt.close(fig)
 
         # List of dictionaries. Do HoloMap(viz_fields) in a
         # jupyter notebook.
@@ -978,15 +996,18 @@ class BatchBehaviorAnalyses:
 
 if __name__ == "__main__":
     mice = [
-        "Betelgeuse_Scope25",
-        "Alcor_Scope20",
+        #"Betelgeuse_Scope25",
+        #"Alcor_Scope20",
         "Castor_Scope05",
-        "Draco_Scope02",
-        "Encedalus_Scope14",
-        "M1",
-        "M2",
-        "M3",
-        "M4",
+        #"Draco_Scope02",
+        #"Encedalus_Scope14",
+        "Fornax",
+        "Hydra",
+        "Io",
+        #"M1",
+        #"M2",
+        #"M3",
+        #"M4",
     ]
     # B = BatchBehaviorAnalyses(mice)
     # B.plot_learning_trials_per_mouse()
@@ -994,10 +1015,11 @@ if __name__ == "__main__":
     # B.plot_all_sdts(1)
     # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
 
-    B = BatchFullAnalyses(mice[2:5])
-    corr_matrices = []
-    for mouse in mice[2:5]:
-        for session in B.session_types[2:]:
-            corr_matrices.append(B.data[mouse][session].correlate_spatial_PVs_by_trial())
-    pass
-    #B.decode_place('Encedalus_Scope14','CircleTrackGoals2','CircleTrackReversal1', classifier=MultinomialNB())
+    B = BatchFullAnalyses([mice[-1]])
+    B.spatial_activity_by_trial_over_days('Io', ["CircleTrackGoals1", "CircleTrackGoals2", "CircleTrackReversal1", "CircleTrackReversal2"])
+    # corr_matrices = []
+    # for mouse in mice[2:5]:
+    #     for session in B.session_types[2:]:
+    #         corr_matrices.append(B.data[mouse][session].correlate_spatial_PVs_by_trial())
+    # pass
+    B.decode_place('Io','CircleTrackGoals2','CircleTrackReversal1', classifier=MultinomialNB())
