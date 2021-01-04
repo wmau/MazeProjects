@@ -44,6 +44,10 @@ class CalciumSession:
         )
         self.data["imaging"]["S_binary"] = threshold_S(self.data['imaging']['S'],
                                                        S_std_thresh)
+
+        # Redo trial counting to account in case some frames got cut
+        # from behavior (e.g. because a miniscope video got truncated).
+        self.data["behavior"].ntrials =  max(self.data["behavior"].behavior_df["trials"] + 1)
         #self.data["imaging"]["S"] = zscore(self.data["imaging"]["S"], axis=1)
 
         # Get number of neurons.
@@ -57,17 +61,17 @@ class CalciumSession:
         ) = self.spatial_activity_by_trial()
 
         # Get place fields.
-        self.spatial["placefield_class"] = PlaceFields(
-            np.asarray(self.data["behavior"].behavior_df["t"]),
-            np.asarray(self.data["behavior"].behavior_df["lin_position"]),
-            np.zeros_like(self.data["behavior"].behavior_df["lin_position"]),
-            self.data["imaging"]["S"],
-            bin_size=self.spatial_bin_size,
-            circular=True,
-            fps =self.data["behavior"].fps,
-            circle_radius=circle_radius,
-            shuffle_test=True
-        )
+        # self.spatial["placefield_class"] = PlaceFields(
+        #     np.asarray(self.data["behavior"].behavior_df["t"]),
+        #     np.asarray(self.data["behavior"].behavior_df["lin_position"]),
+        #     np.zeros_like(self.data["behavior"].behavior_df["lin_position"]),
+        #     self.data["imaging"]["S"],
+        #     bin_size=self.spatial_bin_size,
+        #     circular=True,
+        #     fps =self.data["behavior"].fps,
+        #     circle_radius=circle_radius,
+        #     shuffle_test=False
+        # )
 
     def plot_spiral_spikes(self, first_neuron=0):
         """

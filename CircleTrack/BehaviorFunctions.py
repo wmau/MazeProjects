@@ -725,14 +725,18 @@ class Preprocess:
         else:
             self.folder = folder
 
-        self.camera_numbers = {'behav_cam': behav_cam,
-                               'miniscope_cam': miniscope_cam}
-
         # Get the paths to relevant files.
         self.paths = Session_Metadata(self.folder).meta_dict
         self.paths["PreprocessedBehavior"] = os.path.join(
             self.folder, "PreprocessedBehavior.csv"
         )
+
+        if type(self.paths['timestamps']) is str:
+            self.camera_numbers = {'behav_cam': behav_cam,
+                                   'miniscope_cam': miniscope_cam}
+            self.v4 = False
+        else:
+            self.v4 = True
 
         # Check if Preprocess has been ran already by attempting
         # to load a pkl file.
@@ -765,7 +769,7 @@ class Preprocess:
             # This is likely from mistracking. Interpolate those data points.
             self.interp_mistracks()
 
-            # self.behavior_df = clean_lick_detection(self.behavior_df)
+            #self.behavior_df = clean_lick_detection(self.behavior_df)
             self.preprocess()
 
 
@@ -803,12 +807,23 @@ class Preprocess:
         self.behavior_df.to_csv(fpath, index=False)
 
 
+    def auto_find_outliers(self, velocity_threshold=40):
+        jump_frames = np.where((self.behavior_df['distance'] > velocity_threshold))[0]
+        for frame in jump_frames:
+            self.correct_position(frame)
+
     def get_timestamps(self):
-        timestamps = pd.read_csv(self.paths['timestamps'], sep='\t')
-        timestamps = timestamps.loc[
-            timestamps['camNum'] == self.camera_numbers['behav_cam']]
-        timestamps.reset_index(inplace=True, drop=True)
-        t = timestamps['sysClock']
+        if not self.v4:
+            timestamps = pd.read_csv(self.paths['timestamps'], sep='\t')
+            timestamps = timestamps.loc[
+                timestamps['camNum'] == self.camera_numbers['behav_cam']]
+            t = timestamps['sysClock']
+        else:
+            timestamp_file = find_timestamp_file(self.paths['timestamps'], 'BehavCam')
+            timestamps = pd.read_csv(timestamp_file)
+            t = timestamps['Time Stamp (ms)']
+
+        t.reset_index(inplace=True, drop=True)
         t.iloc[0] = 0
 
         return t
@@ -1390,8 +1405,8 @@ def dlc_to_csv(folder: str):
 
 if __name__ == "__main__":
     folder = (
-        r"Z:\Veronica\SEFLCT01\2020_09_24_CircleTrackGoals1\15_19_38"
+        r"Z:\Will\Drift\Data\Fornax\12_06_2020_CircleTrackReversal2\15_53_56"
 
     )
     P = Preprocess(folder)
-    P.find_outliers()
+    #P.find_outliers()
