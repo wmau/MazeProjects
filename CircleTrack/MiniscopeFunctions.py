@@ -10,6 +10,8 @@ from CircleTrack.plotting import plot_spiral
 from CaImaging.PlaceFields import PlaceFields
 from CaImaging.Behavior import spatial_bin
 import holoviews as hv
+import os
+import pickle as pkl
 
 hv.extension("bokeh")
 from bokeh.plotting import show
@@ -19,8 +21,19 @@ from matplotlib import colors
 
 
 class CalciumSession:
-    def __init__(self, session_folder, spatial_bin_size_radians=0.05, S_std_thresh=1,
-                 circle_radius=38.1):
+    def __init__(
+        self,
+        session_folder,
+        spatial_bin_size_radians=0.05,
+        S_std_thresh=1,
+        circle_radius=38.1,
+        data_fname="SyncedData.pkl",
+        placefield_fname="Placefields.pkl",
+        placefield_trials_fname="PlacefieldTrials.pkl",
+        overwrite_synced_data=False,
+        overwrite_placefields=False,
+        overwrite_placefield_trials=False,
+    ):
         """
         Single session analyses and plots for miniscope data.
 
@@ -30,50 +43,103 @@ class CalciumSession:
         """
         # Get the behavioral data.
         self.folder = session_folder
-        self.data = {"behavior": BehaviorSession(self.folder)}
         self.spatial_bin_size = spatial_bin_size_radians
         self.S_std_thresh = S_std_thresh
 
-        # Get paths
-        self.minian_path = self.data["behavior"].paths["minian"]
-        timestamp_paths = self.data["behavior"].paths["timestamps"]
+        fpath = os.path.join(self.folder, data_fname)
+        try:
+            if overwrite_synced_data:
+                print(f"Overwriting {fpath}.")
+                raise Exception
+            with open(fpath, "rb") as file:
+                self.data = pkl.load(file)
 
-        # Combine behavioral and calcium imaging data.
-        self.data["behavior"].behavior_df, self.data["imaging"], _ = sync_data(
-            self.data["behavior"].behavior_df, self.minian_path, timestamp_paths
+            self.minian_path = self.data["behavior"].paths["minian"]
+        except:
+            self.data = {"behavior": BehaviorSession(self.folder)}
+
+            # Get paths
+            self.minian_path = self.data["behavior"].paths["minian"]
+            timestamp_paths = self.data["behavior"].paths["timestamps"]
+
+            # Combine behavioral and calcium imaging data.
+            self.data["behavior"].behavior_df, self.data["imaging"], _ = sync_data(
+                self.data["behavior"].behavior_df, self.minian_path, timestamp_paths
+            )
+
+            # Redo trial counting to account in case some frames got cut
+            # from behavior (e.g. because a miniscope video got truncated).
+            self.data["behavior"].ntrials = max(
+                self.data["behavior"].behavior_df["trials"] + 1
+            )
+
+            with open(fpath, "wb") as file:
+                pkl.dump(self.data, file)
+
+        self.data["imaging"]["S_binary"] = threshold_S(
+            self.data["imaging"]["S"], S_std_thresh
         )
-        self.data["imaging"]["S_binary"] = threshold_S(self.data['imaging']['S'],
-                                                       S_std_thresh)
-
-        # Redo trial counting to account in case some frames got cut
-        # from behavior (e.g. because a miniscope video got truncated).
-        self.data["behavior"].ntrials =  max(self.data["behavior"].behavior_df["trials"] + 1)
-        #self.data["imaging"]["S"] = zscore(self.data["imaging"]["S"], axis=1)
 
         # Get number of neurons.
         self.n_neurons = self.data["imaging"]["C"].shape[0]
 
-        # Get spatial activity by trial.
+        # Get place fields.
+        fpath = os.path.join(self.folder, placefield_fname)
         self.spatial = dict()
-        (
-            self.spatial["trial_fields"],
-            self.spatial["occupancy"],
-        ) = self.spatial_activity_by_trial()
+        try:
+            if overwrite_synced_data:
+                print(f"Overwriting {fpath}.")
+                raise Exception
 
-        #Get place fields.
-        self.spatial["placefield_class"] = PlaceFields(
-            np.asarray(self.data["behavior"].behavior_df["t"]),
-            np.asarray(self.data["behavior"].behavior_df["lin_position"]),
-            np.zeros_like(self.data["behavior"].behavior_df["lin_position"]),
-            self.data["imaging"]["S"],
-            bin_size=self.spatial_bin_size,
-            circular=True,
-            fps =self.data["behavior"].fps,
-            circle_radius=circle_radius,
-            shuffle_test=False
-        )
+            with open(fpath, "rb") as file:
+                self.spatial["placefield_class"] = pkl.load(file)
 
-        pass
+            parameters_match = [
+                self.spatial["placefield_class"].bin_size == spatial_bin_size_radians,
+                self.spatial["placefield_class"].circle_radius == circle_radius,
+            ]
+
+            if not all(parameters_match):
+                print("A placefield parameter does not match saved data, rerunning.")
+                raise Exception
+
+        except:
+            self.spatial["placefield_class"] = PlaceFields(
+                np.asarray(self.data["behavior"].behavior_df["t"]),
+                np.asarray(self.data["behavior"].behavior_df["lin_position"]),
+                np.zeros_like(self.data["behavior"].behavior_df["lin_position"]),
+                self.data["imaging"]["S"],
+                bin_size=self.spatial_bin_size,
+                circular=True,
+                fps=self.data["behavior"].fps,
+                circle_radius=circle_radius,
+                shuffle_test=False,
+            )
+
+            with open(fpath, "wb") as file:
+                pkl.dump(self.spatial["placefield_class"], file)
+
+        # Get spatial activity by trial.
+        fpath = os.path.join(session_folder, placefield_trials_fname)
+        try:
+            if overwrite_placefield_trials:
+                print(f"Overwriting {fpath}")
+                raise Exception
+
+            with open(fpath, "rb") as file:
+                (self.spatial["trial_fields"], self.spatial["occupancy"]) = pkl.load(
+                    file
+                )
+        except:
+            (
+                self.spatial["trial_fields"],
+                self.spatial["occupancy"],
+            ) = self.spatial_activity_by_trial()
+
+            with open(fpath, "wb") as file:
+                pkl.dump(
+                    (self.spatial["trial_fields"], self.spatial["occupancy"]), file
+                )
 
     def plot_spiral_spikes(self, first_neuron=0):
         """
