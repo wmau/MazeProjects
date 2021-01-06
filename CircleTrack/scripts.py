@@ -3,7 +3,7 @@ from CircleTrack.MiniscopeFunctions import CalciumSession
 import matplotlib.pyplot as plt
 from CaImaging.util import sem, errorfill, nan_array, bin_transients, make_bins
 from grid_strategy.strategies import RectangularStrategy
-from scipy.stats import wilcoxon
+from scipy.stats import wilcoxon, spearmanr
 from statsmodels.stats.multitest import multipletests
 import matplotlib.patches as mpatches
 from CircleTrack.SessionCollation import MultiAnimal
@@ -83,7 +83,43 @@ class BatchFullAnalyses:
 
         return rearranged
 
-    def spatial_activity_by_trial_over_days(self, mouse, session_types, neurons=None,
+
+    def correlate_fields(self, mouse, session1, session2, neurons_from_session1=None,
+                         show_histogram=True):
+        # Get neurons and cell registration mappings.
+        trimmed_map = self.get_cellreg_mappings(mouse, [session1, session2])
+
+        if neurons_from_session1 is None:
+            global_idx = trimmed_map.index
+        else:
+            in_list = trimmed_map.iloc[:, 0].isin(neurons_from_session1)
+            global_idx = trimmed_map[in_list].index
+
+        # Get fields.
+        fields = {session_type: self.data[mouse][session_type].spatial['placefield_class'].pfs
+                  for session_type in [session1, session2]}
+
+        # Prune fields to only take the neurons that were mapped.
+        fields_mapped = []
+        for i, session_type in enumerate([session1, session2]):
+            mapped_neurons = trimmed_map.iloc[trimmed_map.index.isin(global_idx), i]
+            fields_mapped.append(fields[session_type][mapped_neurons])
+
+        # Do correlation for each neuron and store r and p value.
+        corrs = {'r': [],
+                 'p': []}
+        for field1, field2 in zip(*fields_mapped):
+            r, p = spearmanr(field1, field2, nan_policy='omit')
+            corrs['r'].append(r)
+            corrs['p'].append(p)
+
+        if show_histogram:
+            plt.hist(corrs['r'])
+
+        return corrs
+
+
+    def spatial_activity_by_trial_over_days(self, mouse, session_types, neurons_from_session1=None,
                                             mode='png'):
         """
         Visualize binned spatial activity by each trial across
@@ -98,7 +134,7 @@ class BatchFullAnalyses:
             Must correspond to at least two of the sessions in the
             session_types class attribute (e.g. 'CircleTrackGoals2'.
 
-        neurons: array-like of scalars
+        neurons_from_session1: array-like of scalars
             Neuron indices to include from the first session in
             session_types.
 
@@ -107,10 +143,10 @@ class BatchFullAnalyses:
         sessions = self.data[mouse]
         trimmed_map = self.get_cellreg_mappings(mouse, session_types)
 
-        if neurons is None:
+        if neurons_from_session1 is None:
             global_idx = trimmed_map.index
         else:
-            in_list = trimmed_map.iloc[:, 0].isin(neurons)
+            in_list = trimmed_map.iloc[:, 0].isin(neurons_from_session1)
             global_idx = trimmed_map[in_list].index
 
         # Gather neurons and build dictionaries for HoloMap.

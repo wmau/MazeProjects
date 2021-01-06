@@ -60,18 +60,20 @@ class CalciumSession:
             self.spatial["occupancy"],
         ) = self.spatial_activity_by_trial()
 
-        # Get place fields.
-        # self.spatial["placefield_class"] = PlaceFields(
-        #     np.asarray(self.data["behavior"].behavior_df["t"]),
-        #     np.asarray(self.data["behavior"].behavior_df["lin_position"]),
-        #     np.zeros_like(self.data["behavior"].behavior_df["lin_position"]),
-        #     self.data["imaging"]["S"],
-        #     bin_size=self.spatial_bin_size,
-        #     circular=True,
-        #     fps =self.data["behavior"].fps,
-        #     circle_radius=circle_radius,
-        #     shuffle_test=False
-        # )
+        #Get place fields.
+        self.spatial["placefield_class"] = PlaceFields(
+            np.asarray(self.data["behavior"].behavior_df["t"]),
+            np.asarray(self.data["behavior"].behavior_df["lin_position"]),
+            np.zeros_like(self.data["behavior"].behavior_df["lin_position"]),
+            self.data["imaging"]["S"],
+            bin_size=self.spatial_bin_size,
+            circular=True,
+            fps =self.data["behavior"].fps,
+            circle_radius=circle_radius,
+            shuffle_test=False
+        )
+
+        pass
 
     def plot_spiral_spikes(self, first_neuron=0):
         """
