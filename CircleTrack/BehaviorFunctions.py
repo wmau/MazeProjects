@@ -1054,8 +1054,8 @@ class BehaviorSession:
             self.learning["curve"],
             self.learning["start"],
             self.learning["inflection"],
-        ) = self.get_learning_curve(5)
-
+            self.learning["criterion"]
+        ) = self.get_learning_curve(trial_threshold=5, criterion=7)
 
     def get_fps(self):
         """
@@ -1079,7 +1079,6 @@ class BehaviorSession:
         fps = round(1 / (mean_interval / 1000))
 
         return fps
-
 
     def count_drinks(self):
         """
@@ -1299,14 +1298,18 @@ class BehaviorSession:
         self.sdt["d_prime"] = d_prime
         return self.sdt["d_prime"]
 
-    def get_learning_curve(self, trial_threshold=5):
+    def get_learning_curve(self, trial_threshold=5, criterion=7):
         """
         Get the smoothed number of correct responses over trials.
         Also get the trial number corresponding to when the mouse
         first starts exhibiting learning and the middle of that
         epoch as well. This epoch is determined by number of
         consecutive trials of improvement, which the user provides
-        in trial_threshold.
+        in trial_threshold. Also get the trial number corresponding to
+        when the mouse reaches criterion, defined as the number of
+        consecutive trials (trial_threshold) at or above criterion
+        (the number of correct responses, including rejecting
+        unrewarded sites and licking at rewarded ones).
 
         :parameter
         ---
@@ -1316,6 +1319,9 @@ class BehaviorSession:
             moues first demonstrates learning and also the
             inflection point of performance.
 
+        criterion: int
+            Number of correct responses to be considered at criterion.
+
         """
         # Get licks, rewarded ports, and categorize responses.
         licks = self.all_licks
@@ -1323,6 +1329,9 @@ class BehaviorSession:
         rejections = licks[:, ~rewarded_ports] == 0
         hits = licks[:, rewarded_ports] > 1
         correct_responses = np.sum(np.hstack((rejections, hits)), axis=1)
+        start_of_learning = np.nan
+        middle_of_learning = np.nan
+        criterion_trial = np.nan
 
         # Smooth the correct response time series.
         smoothed = savgol_filter(
@@ -1336,7 +1345,7 @@ class BehaviorSession:
                 f"All ports are rewarded for {self.folder}. "
                 f"Learning curve is pointless"
             )
-            return correct_responses, smoothed, np.nan, np.nan
+            return correct_responses, smoothed, start_of_learning, middle_of_learning, criterion_trial
 
         # Learning rate is the first derivative wrt to trials.
         # Continuous improvement is the stretch of the learning rate
@@ -1347,8 +1356,6 @@ class BehaviorSession:
         # For each stretch of consecutive improvement, check how many
         # trials it spans. If it's greater than the threshold, this means
         # the mouse is learning.
-        start_of_learning = np.nan
-        middle_of_learning = np.nan
         for run in consecutive_improvements:
             learning_duration = np.diff(run)
             if learning_duration > trial_threshold:
@@ -1357,7 +1364,16 @@ class BehaviorSession:
 
                 break
 
-        return correct_responses, smoothed, start_of_learning, middle_of_learning
+        # Find criterion trial.
+        consecutive_correct_responses = contiguous_regions(smoothed >= criterion)
+        for correct_run in consecutive_correct_responses:
+            duration_of_good_performance = np.diff(correct_run)
+            if duration_of_good_performance > trial_threshold:
+                criterion_trial = correct_run[0]
+
+                break
+
+        return correct_responses, smoothed, start_of_learning, middle_of_learning, criterion_trial
 
     def plot_learning_curve(self, ax=None):
         """
@@ -1378,6 +1394,7 @@ class BehaviorSession:
 
             ax.axvline(self.learning["start"], color="g")
             ax.axvline(self.learning["inflection"], color="y")
+            ax.axvline(self.learning["criterion"], color="b")
         except KeyError:
             print("Learning data not found.")
 
