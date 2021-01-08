@@ -24,3 +24,21 @@ def plot_spiral(ScrollObj):
     ax.set_theta_direction(-1)
 
     ScrollObj.last_position = len(ScrollObj.markers)
+
+
+def plot_raster(ScrollObj):
+    attrs = ['rasters', 'tuning_curves', 'binary']
+    check_attrs(ScrollObj, attrs)
+
+    axs = ScrollObj.ax
+    rasters = ScrollObj.rasters
+    tuning_curve = ScrollObj.tuning_curves
+    if ScrollObj.binary:
+        cmap = 'gray'
+    else:
+        cmap = 'binary'
+    axs[0].set_title(ScrollObj.titles[ScrollObj.current_position])
+    axs[0].imshow(rasters[ScrollObj.current_position], cmap=cmap)
+    axs[1].plot(tuning_curve[ScrollObj.current_position])
+
+    ScrollObj.last_position = len(ScrollObj.rasters)

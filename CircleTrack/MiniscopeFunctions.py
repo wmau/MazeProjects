@@ -6,7 +6,7 @@ from CaImaging.Miniscope import threshold_S
 from util import Session_Metadata
 from CircleTrack.BehaviorFunctions import linearize_trajectory
 from CaImaging.util import ScrollPlot
-from CircleTrack.plotting import plot_spiral
+from CircleTrack.plotting import plot_spiral, plot_raster
 from CaImaging.PlaceFields import PlaceFields
 from CaImaging.Behavior import spatial_bin
 import holoviews as hv
@@ -30,7 +30,7 @@ class CalciumSession:
         data_fname="SyncedData.pkl",
         placefield_fname="Placefields.pkl",
         placefield_trials_fname="PlacefieldTrials.pkl",
-        overwrite_synced_data=False,
+        overwrite_synced_data=True,
         overwrite_placefields=False,
         overwrite_placefield_trials=False,
     ):
@@ -87,7 +87,7 @@ class CalciumSession:
         fpath = os.path.join(self.folder, placefield_fname)
         self.spatial = dict()
         try:
-            if overwrite_synced_data:
+            if overwrite_placefields:
                 print(f"Overwriting {fpath}.")
                 raise Exception
 
@@ -113,7 +113,7 @@ class CalciumSession:
                 circular=True,
                 fps=self.data["behavior"].fps,
                 circle_radius=circle_radius,
-                shuffle_test=False,
+                shuffle_test=True
             )
 
             with open(fpath, "wb") as file:
@@ -175,6 +175,29 @@ class CalciumSession:
             subplot_kw={"projection": "polar"},
             titles=cell_number_labels,
         )
+
+    def scrollplot_fields_by_trial(self, neurons=None, binary=True):
+        if neurons is None:
+            neurons = range(self.n_neurons)
+
+        rasters = self.spatial['trial_fields'][neurons]
+        if binary:
+            rasters = rasters > 0
+
+        tuning_curves = self.spatial['placefield_class'].pfs[neurons]
+
+        cell_number_labels = [f"Cell #{n}" for n in neurons]
+        self.raster_plot = ScrollPlot(plot_raster,
+                                      current_position=neurons[0],
+                                      nrows=2,
+                                      rasters=rasters,
+                                      tuning_curves=tuning_curves,
+                                      binary=binary,
+                                      titles=cell_number_labels,
+                                      figsize=(3,6.5))
+
+        pass
+
 
     def spatial_activity_by_trial(self):
         """
@@ -297,6 +320,9 @@ if __name__ == "__main__":
         r"Z:\Will\Drift\Data\Castor_Scope05\09_10_2020_CircleTrackReversal1\15_49_24"
     )
     S = CalciumSession(folder)
+    pvals = S.spatial['placefield_class'].pvals
+    S.scrollplot_fields_by_trial(neurons=np.where(np.asarray(pvals) < 0.01)[0],
+                                 binary=True)
     # S.spatial_activity_by_trial(0.1)
     # S.correlate_spatial_PVs_by_trial()
     pass

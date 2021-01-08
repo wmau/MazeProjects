@@ -1036,7 +1036,7 @@ if __name__ == "__main__":
         #"Alcor_Scope20",
         "Castor_Scope05",
         #"Draco_Scope02",
-        #"Encedalus_Scope14",
+        "Encedalus_Scope14",
         "Fornax",
         "Hydra",
         "Io",
@@ -1051,7 +1051,7 @@ if __name__ == "__main__":
     # B.plot_all_sdts(1)
     # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
 
-    B = BatchFullAnalyses([mice[-1]])
+    B = BatchFullAnalyses(mice)
     B.spatial_activity_by_trial_over_days('Io', ["CircleTrackGoals1", "CircleTrackGoals2", "CircleTrackReversal1", "CircleTrackReversal2"])
     # corr_matrices = []
     # for mouse in mice[2:5]:
