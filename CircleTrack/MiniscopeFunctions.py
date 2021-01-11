@@ -69,7 +69,7 @@ class CalciumSession:
 
             # Redo trial counting to account in case some frames got cut
             # from behavior (e.g. because a miniscope video got truncated).
-            self.data["behavior"].meta['ntrials'] = max(
+            self.data["behavior"].data['ntrials'] = max(
                 self.data["behavior"].data['df']["trials"] + 1
             )
 
@@ -219,14 +219,14 @@ class CalciumSession:
         )[1]
 
         # Threshold S matrix here.
-        S = threshold_S(self.data["imaging"]["S"], std_thresh=1)
+        S = self.data["imaging"]["S_binary"]
 
         # For each trial, spatial bin position weighted by S.
         occ_map_by_trial = []
         fields = nan_array(
             (self.n_neurons, self.data["behavior"].meta['ntrials'], len(bin_edges) - 1)
         )
-        for trial_number in range(self.data["behavior"].meta['ntrials']):
+        for trial_number in range(self.data["behavior"].data['ntrials']):
             time_bins = behavior_df["trials"] == trial_number
             positions_this_trial = behavior_df.loc[time_bins, "lin_position"]
             filler = np.zeros_like(positions_this_trial)

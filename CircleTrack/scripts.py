@@ -135,7 +135,7 @@ class BatchFullAnalyses:
             )
             median_r.append(np.nanmedian(corrs["r"]))
             behavior = self.data[mouse][criterion_session].data["behavior"]
-            criterion.append(behavior.data['learning']["criterion"] / behavior.ntrials)
+            criterion.append(behavior.data['learning']["criterion"] / behavior.data['ntrials'])
 
         fig, ax = plt.subplots()
         ax.scatter(median_r, criterion)

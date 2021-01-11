@@ -1033,7 +1033,7 @@ class BehaviorSession:
         self.data['df']['distance'] = self.data['df']['distance']/pix_per_cm
 
         # Number of laps run.
-        self.meta['ntrials'] = max(self.data['df']["trials"] + 1)
+        self.data['ntrials'] = max(self.data['df']["trials"] + 1)
 
         # Amount of time spent per trial (in frames).
         self.data['frames_per_trial'] = np.bincount(self.data['df']["trials"])
@@ -1045,7 +1045,7 @@ class BehaviorSession:
         rewarded_ports = find_rewarded_ports(self.data['df'])
         self.data['rewarded_ports'] = np.zeros(8, dtype=bool)
         self.data['rewarded_ports'][rewarded_ports] = True
-        self.data['n_ewarded_ports'] = np.sum(self.data['rewarded_ports'])
+        self.data['n_rewarded_ports'] = np.sum(self.data['rewarded_ports'])
 
         self.data['all_licks'] = self.get_licks(plot=False)
         self.data['n_drinks'] = self.count_drinks()
@@ -1089,7 +1089,7 @@ class BehaviorSession:
         :return:
         """
         n_rewards = []
-        for trial in range(self.meta['ntrials']):
+        for trial in range(self.data['ntrials']):
             water_deliveries = np.sum(
                 self.data['df'].loc[self.data['df']["trials"] == trial]["water"]
             )
@@ -1186,7 +1186,7 @@ class BehaviorSession:
         """
         ports = range(8)
         all_licks = []
-        for trial in range(self.meta['ntrials']):
+        for trial in range(self.data['ntrials']):
             this_trial = self.data['df']["trials"] == trial
             licks = list(self.data['df'].loc[this_trial, "lick_port"])
 
@@ -1337,7 +1337,7 @@ class BehaviorSession:
 
         # Smooth the correct response time series.
         smoothed = savgol_filter(
-            correct_responses, round_up_to_odd(self.meta['ntrials'] / 3), 2
+            correct_responses, round_up_to_odd(self.data['ntrials'] / 3), 2
         )
 
         # If all the ports are rewarded in e.g. a shaping session,
