@@ -118,7 +118,7 @@ class BatchFullAnalyses:
 
         return corrs
 
-    def correlate_stability_to_criterion(self, corr_sessions=('CircleTrackGoals1', 'CircleTrackGoals2'),
+    def correlate_stability_to_reversal(self, corr_sessions=('CircleTrackGoals1', 'CircleTrackGoals2'),
                                          criterion_session='CircleTrackReversal1'):
         median_r = []
         criterion = []
