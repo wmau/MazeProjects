@@ -118,6 +118,25 @@ class BatchFullAnalyses:
 
         return corrs
 
+    def correlate_stability_to_criterion(self, corr_sessions=('CircleTrackGoals1', 'CircleTrackGoals2'),
+                                         criterion_session='CircleTrackReversal1'):
+        median_r = []
+        criterion = []
+        for mouse in mice:
+            corrs = B.correlate_fields(mouse, corr_sessions[0],
+                                       corr_sessions[1],
+                                       show_histogram=False)
+            median_r.append(np.nanmedian(corrs['r']))
+            behavior = B.data[mouse][criterion_session].data[
+                'behavior']
+            criterion.append(
+                behavior.learning['criterion'] / behavior.ntrials)
+
+        fig, ax = plt.subplots()
+        ax.scatter(median_r, criterion)
+
+        return median_r, criterion
+
 
     def spatial_activity_by_trial_over_days(self, mouse, session_types, neurons_from_session1=None,
                                             mode='png'):
