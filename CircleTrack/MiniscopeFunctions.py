@@ -27,12 +27,13 @@ class CalciumSession:
         spatial_bin_size_radians=0.05,
         S_std_thresh=1,
         circle_radius=38.1,
+        velocity_threshold=10,
         data_fname="SyncedData.pkl",
         placefield_fname="Placefields.pkl",
         placefield_trials_fname="PlacefieldTrials.pkl",
-        overwrite_synced_data=True,
+        overwrite_synced_data=False,
         overwrite_placefields=False,
-        overwrite_placefield_trials=False,
+        overwrite_placefield_trials=True,
     ):
         """
         Single session analyses and plots for miniscope data.
@@ -42,61 +43,63 @@ class CalciumSession:
             Session folder.
         """
         # Get the behavioral data.
-        self.folder = session_folder
-        self.spatial_bin_size = spatial_bin_size_radians
-        self.S_std_thresh = S_std_thresh
+        self.meta =  {'folder': session_folder,
+                      'spatial_bin_size': spatial_bin_size_radians,
+                      'S_std_thresh': S_std_thresh,
+                      'velocity_threshold': velocity_threshold}
 
-        fpath = os.path.join(self.folder, data_fname)
+
+        fpath = os.path.join(self.meta['folder'], data_fname)
         try:
             if overwrite_synced_data:
                 print(f"Overwriting {fpath}.")
                 raise Exception
             with open(fpath, "rb") as file:
-                self.data = pkl.load(file)
+                (self.behavior, self.imaging) = pkl.load(file)
 
-            self.minian_path = self.data["behavior"].meta['paths']["minian"]
+            self.meta['minian_path'] = self.behavior.meta['paths']["minian"]
         except:
-            self.data = {"behavior": BehaviorSession(self.folder)}
+            self.behavior = BehaviorSession(self.meta['folder'])
 
             # Get paths
-            self.minian_path = self.data["behavior"].meta['paths']["minian"]
-            timestamp_paths = self.data["behavior"].meta['paths']["timestamps"]
+            self.meta['minian_path'] = self.behavior.meta['paths']["minian"]
+            timestamp_paths = self.behavior.meta['paths']["timestamps"]
 
             # Combine behavioral and calcium imaging data.
-            self.data["behavior"].data['df'], self.data["imaging"], _ = sync_data(
-                self.data["behavior"].data['df'], self.minian_path, timestamp_paths
+            self.behavior.data['df'], self.imaging, _ = sync_data(
+                self.behavior.data['df'], self.meta['minian_path'], timestamp_paths
             )
 
             # Redo trial counting to account in case some frames got cut
             # from behavior (e.g. because a miniscope video got truncated).
-            self.data["behavior"].data['ntrials'] = max(
-                self.data["behavior"].data['df']["trials"] + 1
+            self.behavior.data['ntrials'] = max(
+                self.behavior.data['df']["trials"] + 1
             )
 
             with open(fpath, "wb") as file:
-                pkl.dump(self.data, file)
+                pkl.dump((self.behavior, self.imaging), file)
 
-        self.data["imaging"]["S_binary"] = threshold_S(
-            self.data["imaging"]["S"], S_std_thresh
+        self.imaging["S_binary"] = threshold_S(
+            self.imaging["S"], S_std_thresh
         )
 
         # Get number of neurons.
-        self.n_neurons = self.data["imaging"]["C"].shape[0]
+        self.imaging['n_neurons'] = self.imaging["C"].shape[0]
 
         # Get place fields.
-        fpath = os.path.join(self.folder, placefield_fname)
-        self.spatial = dict()
+        fpath = os.path.join(self.meta['folder'], placefield_fname)
         try:
             if overwrite_placefields:
                 print(f"Overwriting {fpath}.")
                 raise Exception
 
             with open(fpath, "rb") as file:
-                self.spatial["placefield_class"] = pkl.load(file)
+                self.spatial = pkl.load(file)
 
             parameters_match = [
-                self.spatial["placefield_class"].bin_size == spatial_bin_size_radians,
-                self.spatial["placefield_class"].circle_radius == circle_radius,
+                self.spatial.meta['bin_size'] == spatial_bin_size_radians,
+                self.spatial.meta['circle_radius'] == circle_radius,
+                self.spatial.meta['velocity_threshold'] == velocity_threshold
             ]
 
             if not all(parameters_match):
@@ -104,20 +107,21 @@ class CalciumSession:
                 raise Exception
 
         except:
-            self.spatial["placefield_class"] = PlaceFields(
-                np.asarray(self.data["behavior"].data['df']["t"]),
-                np.asarray(self.data["behavior"].data['df']["lin_position"]),
-                np.zeros_like(self.data["behavior"].data['df']["lin_position"]),
-                self.data["imaging"]["S"],
-                bin_size=self.spatial_bin_size,
+            self.spatial = PlaceFields(
+                np.asarray(self.behavior.data['df']["t"]),
+                np.asarray(self.behavior.data['df']["lin_position"]),
+                np.zeros_like(self.behavior.data['df']["lin_position"]),
+                self.imaging["S"],
+                bin_size=self.meta['spatial_bin_size'],
                 circular=True,
-                fps=self.data["behavior"].meta['fps'],
+                fps=self.behavior.meta['fps'],
                 circle_radius=circle_radius,
-                shuffle_test=True
+                shuffle_test=True,
+                velocity_threshold=velocity_threshold
             )
 
             with open(fpath, "wb") as file:
-                pkl.dump(self.spatial["placefield_class"], file)
+                pkl.dump(self.spatial, file)
 
         # Get spatial activity by trial.
         fpath = os.path.join(session_folder, placefield_trials_fname)
@@ -127,18 +131,18 @@ class CalciumSession:
                 raise Exception
 
             with open(fpath, "rb") as file:
-                (self.spatial["trial_fields"], self.spatial["occupancy"]) = pkl.load(
+                (self.spatial.data["rasters"], self.spatial.data["trial_occupancy"]) = pkl.load(
                     file
                 )
         except:
             (
-                self.spatial["trial_fields"],
-                self.spatial["occupancy"],
+                self.spatial.data["rasters"],
+                self.spatial.data["trial_occupancy"],
             ) = self.spatial_activity_by_trial()
 
             with open(fpath, "wb") as file:
                 pkl.dump(
-                    (self.spatial["trial_fields"], self.spatial["occupancy"]), file
+                    (self.spatial.data["rasters"], self.spatial.data["trial_occupancy"]), file
                 )
 
     def plot_spiral_spikes(self, first_neuron=0):
@@ -155,12 +159,12 @@ class CalciumSession:
             a spike.
         """
         # Get spiking activity and time vector.
-        spikes = self.data["imaging"]["S_binary"]
-        t = np.asarray(self.data["behavior"].data['df']["frame"])
+        spikes = self.imaging["S_binary"]
+        t = np.asarray(self.behavior.data['df']["frame"])
 
         # Linearize position.
         lin_position = np.asarray(
-            linearize_trajectory(self.data["behavior"].data['df'])[0]
+            linearize_trajectory(self.behavior.data['df'])[0]
         )
 
         # Do the show_plot.
@@ -178,13 +182,13 @@ class CalciumSession:
 
     def scrollplot_rasters(self, neurons=None, binary=True):
         if neurons is None:
-            neurons = range(self.n_neurons)
+            neurons = range(self.imaging['n_neurons'])
 
-        rasters = self.spatial['trial_fields'][neurons]
+        rasters = self.spatial.data['rasters'][neurons]
         if binary:
             rasters = rasters > 0
 
-        tuning_curves = self.spatial['placefield_class'].pfs[neurons]
+        tuning_curves = self.spatial.data['placefields'][neurons]
 
         cell_number_labels = [f"Cell #{n}" for n in neurons]
         self.raster_plot = ScrollPlot(plot_raster,
@@ -196,7 +200,7 @@ class CalciumSession:
                                       titles=cell_number_labels,
                                       figsize=(3,6.5))
 
-        pass
+        return self.raster_plot
 
 
     def spatial_activity_by_trial(self):
@@ -211,25 +215,27 @@ class CalciumSession:
         """
         # Get linearized position. We'll also need a dummy variable
         # for the binning function because it usually takes 2d.
-        behavior_df = self.data["behavior"].data['df']
+        behavior_df = self.behavior.data['df']
         lin_position = np.asarray(behavior_df["lin_position"])
+        running = self.spatial.data['running']
         filler = np.zeros_like(lin_position)
         bin_edges = spatial_bin(
-            lin_position, filler, bin_size_cm=self.spatial_bin_size, one_dim=True
+            lin_position, filler, bin_size_cm=self.meta['spatial_bin_size'], one_dim=True
         )[1]
 
         # Threshold S matrix here.
-        S = self.data["imaging"]["S_binary"]
+        S = self.imaging["S_binary"]
 
         # For each trial, spatial bin position weighted by S.
         occ_map_by_trial = []
         fields = nan_array(
-            (self.n_neurons, self.data["behavior"].meta['ntrials'], len(bin_edges) - 1)
+            (self.imaging['n_neurons'], self.behavior.data['ntrials'], len(bin_edges) - 1)
         )
-        for trial_number in range(self.data["behavior"].data['ntrials']):
+        for trial_number in range(self.behavior.data['ntrials']):
             time_bins = behavior_df["trials"] == trial_number
             positions_this_trial = behavior_df.loc[time_bins, "lin_position"]
             filler = np.zeros_like(positions_this_trial)
+            running_this_trial = running[time_bins]
 
             # Get occupancy this trial.
             occupancy = spatial_bin(
@@ -238,7 +244,7 @@ class CalciumSession:
 
             # Weight position by activity of each neuron.
             for n, neuron in enumerate(S):
-                spiking = neuron[time_bins]
+                spiking = neuron[time_bins] * running_this_trial
                 fields[n, trial_number, :] = spatial_bin(
                     positions_this_trial,
                     filler,
@@ -295,7 +301,7 @@ class CalciumSession:
         # Change the axes of the fields from (cell, trial, spatial bin)
         # to (trial, cell, spatial bin).
         # fields = np.asarray([field / self.spatial['occupancy'] for field in self.spatial['fields']])
-        fields = self.spatial["trial_fields"]
+        fields = self.spatial.data["rasters"]
         fields_by_trial = np.rollaxis(fields, 1)
 
         # Compute spearman correlation coefficient.
@@ -317,10 +323,10 @@ class CalciumSession:
 
 if __name__ == "__main__":
     folder = (
-        r"Z:\Will\Drift\Data\Castor_Scope05\09_10_2020_CircleTrackReversal1\15_49_24"
+        r"Z:\Will\Drift\Data\Io\12_07_2020_CircleTrackRecall\14_27_06"
     )
     S = CalciumSession(folder)
-    pvals = S.spatial['placefield_class'].pvals
+    pvals = S.spatial['placefield_class'].data['spatial_info_pvals']
     S.scrollplot_rasters(neurons=np.where(np.asarray(pvals) < 0.01)[0],
                          binary=True)
     # S.spatial_activity_by_trial(0.1)

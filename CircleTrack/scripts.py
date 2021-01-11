@@ -78,7 +78,7 @@ class BatchFullAnalyses:
 
         # Get calcium activity from each session for this mouse.
         activity_list = [
-            sessions[session].data["imaging"][data_type] for session in session_types
+            sessions[session].imaging[data_type] for session in session_types
         ]
 
         # Rearrange the neurons.
@@ -100,7 +100,7 @@ class BatchFullAnalyses:
 
         # Get fields.
         fields = {
-            session_type: self.data[mouse][session_type].spatial["placefield_class"].pfs
+            session_type: self.data[mouse][session_type].spatial.data['placefields']
             for session_type in [session1, session2]
         }
 
@@ -134,7 +134,7 @@ class BatchFullAnalyses:
                 mouse, corr_sessions[0], corr_sessions[1], show_histogram=False
             )
             median_r.append(np.nanmedian(corrs["r"]))
-            behavior = self.data[mouse][criterion_session].data["behavior"]
+            behavior = self.data[mouse][criterion_session].behavior
             criterion.append(behavior.data['learning']["criterion"] / behavior.data['ntrials'])
 
         fig, ax = plt.subplots()
@@ -184,7 +184,7 @@ class BatchFullAnalyses:
                 )
             elif mode == "png":
                 fields = (
-                    sessions[session_type].spatial["trial_fields"][neurons_to_analyze]
+                    sessions[session_type].spatial.data["rasters"][neurons_to_analyze]
                     > 0
                 )
             else:
@@ -252,25 +252,25 @@ class BatchFullAnalyses:
             self.data[mouse][session] for session in [training_session, test_session]
         ]
         S_list = self.rearrange_neurons(
-            mouse, [training_session, test_session], data_type="S"
+            mouse, [training_session, test_session], data_type="S_binary"
         )
-        S_list = [threshold_S(S) for S in S_list]
+        fps = 15
 
         # Separate neural data into training and test.
         predictor_data = {
-            train_test_label: bin_transients(S, time_bin_size, fps=15).T
+            train_test_label: bin_transients(S, time_bin_size, fps=fps).T
             for S, train_test_label in zip(S_list, ["train", "test"])
         }
 
         # Separate spatially binned location into training and test.
         outcome_data = dict()
         for session, train_test_label in zip(sessions, ["train", "test"]):
-            lin_position = session.data["behavior"].behavior_df["lin_position"].values
+            lin_position = session.behavior['df']["lin_position"].values
             outcome_data[train_test_label] = self.format_spatial_location_for_decoder(
                 lin_position,
                 n_spatial_bins=n_spatial_bins,
                 time_bin_size=time_bin_size,
-                fps=15,
+                fps=fps,
                 classifier=classifier,
             )
 
