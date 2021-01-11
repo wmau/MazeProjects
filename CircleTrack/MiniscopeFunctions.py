@@ -176,7 +176,7 @@ class CalciumSession:
             titles=cell_number_labels,
         )
 
-    def scrollplot_fields_by_trial(self, neurons=None, binary=True):
+    def scrollplot_rasters(self, neurons=None, binary=True):
         if neurons is None:
             neurons = range(self.n_neurons)
 
@@ -321,8 +321,8 @@ if __name__ == "__main__":
     )
     S = CalciumSession(folder)
     pvals = S.spatial['placefield_class'].pvals
-    S.scrollplot_fields_by_trial(neurons=np.where(np.asarray(pvals) < 0.01)[0],
-                                 binary=True)
+    S.scrollplot_rasters(neurons=np.where(np.asarray(pvals) < 0.01)[0],
+                         binary=True)
     # S.spatial_activity_by_trial(0.1)
     # S.correlate_spatial_PVs_by_trial()
     pass
