@@ -130,12 +130,12 @@ class BatchFullAnalyses:
         median_r = []
         criterion = []
         for mouse in self.meta['mice']:
-            corrs = B.correlate_fields(
+            corrs = self.correlate_fields(
                 mouse, corr_sessions[0], corr_sessions[1], show_histogram=False
             )
             median_r.append(np.nanmedian(corrs["r"]))
-            behavior = B.data[mouse][criterion_session].data["behavior"]
-            criterion.append(behavior.learning["criterion"] / behavior.ntrials)
+            behavior = self.data[mouse][criterion_session].data["behavior"]
+            criterion.append(behavior.data['learning']["criterion"] / behavior.ntrials)
 
         fig, ax = plt.subplots()
         ax.scatter(median_r, criterion)
@@ -747,12 +747,12 @@ class BatchBehaviorAnalyses:
             for m, mouse in enumerate(self.mice):
                 mouse_data = self.all_sessions[mouse]
                 try:
-                    learning_trials["start"][m, s] = mouse_data[session_type].learning[
+                    learning_trials["start"][m, s] = mouse_data[session_type].data['learning'][
                         "start"
                     ]
                     learning_trials["inflection"][m, s] = mouse_data[
                         session_type
-                    ].learning["inflection"]
+                    ].data['learning']["inflection"]
                 except KeyError:
                     pass
 

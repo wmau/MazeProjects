@@ -30,7 +30,7 @@ class CalciumSession:
         data_fname="SyncedData.pkl",
         placefield_fname="Placefields.pkl",
         placefield_trials_fname="PlacefieldTrials.pkl",
-        overwrite_synced_data=False,
+        overwrite_synced_data=True,
         overwrite_placefields=False,
         overwrite_placefield_trials=False,
     ):
@@ -54,23 +54,23 @@ class CalciumSession:
             with open(fpath, "rb") as file:
                 self.data = pkl.load(file)
 
-            self.minian_path = self.data["behavior"].paths["minian"]
+            self.minian_path = self.data["behavior"].meta['paths']["minian"]
         except:
             self.data = {"behavior": BehaviorSession(self.folder)}
 
             # Get paths
-            self.minian_path = self.data["behavior"].paths["minian"]
-            timestamp_paths = self.data["behavior"].paths["timestamps"]
+            self.minian_path = self.data["behavior"].meta['paths']["minian"]
+            timestamp_paths = self.data["behavior"].meta['paths']["timestamps"]
 
             # Combine behavioral and calcium imaging data.
-            self.data["behavior"].behavior_df, self.data["imaging"], _ = sync_data(
-                self.data["behavior"].behavior_df, self.minian_path, timestamp_paths
+            self.data["behavior"].data['df'], self.data["imaging"], _ = sync_data(
+                self.data["behavior"].data['df'], self.minian_path, timestamp_paths
             )
 
             # Redo trial counting to account in case some frames got cut
             # from behavior (e.g. because a miniscope video got truncated).
-            self.data["behavior"].ntrials = max(
-                self.data["behavior"].behavior_df["trials"] + 1
+            self.data["behavior"].meta['ntrials'] = max(
+                self.data["behavior"].data['df']["trials"] + 1
             )
 
             with open(fpath, "wb") as file:
@@ -105,13 +105,13 @@ class CalciumSession:
 
         except:
             self.spatial["placefield_class"] = PlaceFields(
-                np.asarray(self.data["behavior"].behavior_df["t"]),
-                np.asarray(self.data["behavior"].behavior_df["lin_position"]),
-                np.zeros_like(self.data["behavior"].behavior_df["lin_position"]),
+                np.asarray(self.data["behavior"].data['df']["t"]),
+                np.asarray(self.data["behavior"].data['df']["lin_position"]),
+                np.zeros_like(self.data["behavior"].data['df']["lin_position"]),
                 self.data["imaging"]["S"],
                 bin_size=self.spatial_bin_size,
                 circular=True,
-                fps=self.data["behavior"].fps,
+                fps=self.data["behavior"].meta['fps'],
                 circle_radius=circle_radius,
                 shuffle_test=True
             )
@@ -156,11 +156,11 @@ class CalciumSession:
         """
         # Get spiking activity and time vector.
         spikes = self.data["imaging"]["S_binary"]
-        t = np.asarray(self.data["behavior"].behavior_df["frame"])
+        t = np.asarray(self.data["behavior"].data['df']["frame"])
 
         # Linearize position.
         lin_position = np.asarray(
-            linearize_trajectory(self.data["behavior"].behavior_df)[0]
+            linearize_trajectory(self.data["behavior"].data['df'])[0]
         )
 
         # Do the show_plot.
@@ -211,7 +211,7 @@ class CalciumSession:
         """
         # Get linearized position. We'll also need a dummy variable
         # for the binning function because it usually takes 2d.
-        behavior_df = self.data["behavior"].behavior_df
+        behavior_df = self.data["behavior"].data['df']
         lin_position = np.asarray(behavior_df["lin_position"])
         filler = np.zeros_like(lin_position)
         bin_edges = spatial_bin(
@@ -224,9 +224,9 @@ class CalciumSession:
         # For each trial, spatial bin position weighted by S.
         occ_map_by_trial = []
         fields = nan_array(
-            (self.n_neurons, self.data["behavior"].ntrials, len(bin_edges) - 1)
+            (self.n_neurons, self.data["behavior"].meta['ntrials'], len(bin_edges) - 1)
         )
-        for trial_number in range(self.data["behavior"].ntrials):
+        for trial_number in range(self.data["behavior"].meta['ntrials']):
             time_bins = behavior_df["trials"] == trial_number
             positions_this_trial = behavior_df.loc[time_bins, "lin_position"]
             filler = np.zeros_like(positions_this_trial)
