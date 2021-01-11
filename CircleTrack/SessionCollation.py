@@ -47,6 +47,7 @@ def MultiAnimal(mice, project_folder=r'Z:\Will\Drift\Data',
 
     sessions_by_mouse = dict()
     for mouse in mice:
+        print(f'Loading data from {mouse}')
         sessions_by_mouse[mouse] =\
             MultiSession(mouse, M, behavior=behavior,
                          SessionFunction=SessionFunction)

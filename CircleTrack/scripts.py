@@ -32,15 +32,18 @@ class BatchFullAnalyses:
 
         # Define session types here. Watch out for typos.
         # Order matters. Plots will be in the order presented here.
-        self.session_types = [
-            "CircleTrackShaping1",
-            "CircleTrackShaping2",
-            "CircleTrackGoals1",
-            "CircleTrackGoals2",
-            "CircleTrackReversal1",
-            "CircleTrackReversal2",
-            "CircleTrackRecall",
-        ]
+        self.meta = {
+            "session_types": [
+                "CircleTrackShaping1",
+                "CircleTrackShaping2",
+                "CircleTrackGoals1",
+                "CircleTrackGoals2",
+                "CircleTrackReversal1",
+                "CircleTrackReversal2",
+                "CircleTrackRecall",
+            ],
+            "mice": mice,
+        }
 
         # for mouse in mice:
         #     S_list = [self.data[mouse][session].data['imaging']['S']
@@ -83,9 +86,9 @@ class BatchFullAnalyses:
 
         return rearranged
 
-
-    def correlate_fields(self, mouse, session1, session2, neurons_from_session1=None,
-                         show_histogram=True):
+    def correlate_fields(
+        self, mouse, session1, session2, neurons_from_session1=None, show_histogram=True
+    ):
         # Get neurons and cell registration mappings.
         trimmed_map = self.get_cellreg_mappings(mouse, [session1, session2])
 
@@ -96,8 +99,10 @@ class BatchFullAnalyses:
             global_idx = trimmed_map[in_list].index
 
         # Get fields.
-        fields = {session_type: self.data[mouse][session_type].spatial['placefield_class'].pfs
-                  for session_type in [session1, session2]}
+        fields = {
+            session_type: self.data[mouse][session_type].spatial["placefield_class"].pfs
+            for session_type in [session1, session2]
+        }
 
         # Prune fields to only take the neurons that were mapped.
         fields_mapped = []
@@ -106,40 +111,40 @@ class BatchFullAnalyses:
             fields_mapped.append(fields[session_type][mapped_neurons])
 
         # Do correlation for each neuron and store r and p value.
-        corrs = {'r': [],
-                 'p': []}
+        corrs = {"r": [], "p": []}
         for field1, field2 in zip(*fields_mapped):
-            r, p = spearmanr(field1, field2, nan_policy='omit')
-            corrs['r'].append(r)
-            corrs['p'].append(p)
+            r, p = spearmanr(field1, field2, nan_policy="omit")
+            corrs["r"].append(r)
+            corrs["p"].append(p)
 
         if show_histogram:
-            plt.hist(corrs['r'])
+            plt.hist(corrs["r"])
 
         return corrs
 
-    def correlate_stability_to_reversal(self, corr_sessions=('CircleTrackGoals1', 'CircleTrackGoals2'),
-                                         criterion_session='CircleTrackReversal1'):
+    def correlate_stability_to_reversal(
+        self,
+        corr_sessions=("CircleTrackGoals1", "CircleTrackGoals2"),
+        criterion_session="CircleTrackReversal1",
+    ):
         median_r = []
         criterion = []
-        for mouse in mice:
-            corrs = B.correlate_fields(mouse, corr_sessions[0],
-                                       corr_sessions[1],
-                                       show_histogram=False)
-            median_r.append(np.nanmedian(corrs['r']))
-            behavior = B.data[mouse][criterion_session].data[
-                'behavior']
-            criterion.append(
-                behavior.learning['criterion'] / behavior.ntrials)
+        for mouse in self.meta['mice']:
+            corrs = B.correlate_fields(
+                mouse, corr_sessions[0], corr_sessions[1], show_histogram=False
+            )
+            median_r.append(np.nanmedian(corrs["r"]))
+            behavior = B.data[mouse][criterion_session].data["behavior"]
+            criterion.append(behavior.learning["criterion"] / behavior.ntrials)
 
         fig, ax = plt.subplots()
         ax.scatter(median_r, criterion)
 
         return median_r, criterion
 
-
-    def spatial_activity_by_trial_over_days(self, mouse, session_types, neurons_from_session1=None,
-                                            mode='png'):
+    def spatial_activity_by_trial_over_days(
+        self, mouse, session_types, neurons_from_session1=None, mode="png"
+    ):
         """
         Visualize binned spatial activity by each trial across
         multiple days.
@@ -173,26 +178,34 @@ class BatchFullAnalyses:
         for i, session_type in enumerate(session_types):
             neurons_to_analyze = trimmed_map.iloc[trimmed_map.index.isin(global_idx), i]
 
-            if mode == 'holoviews':
-                fields =  sessions[session_type].viz_spatial_trial_activity(neurons=neurons_to_analyze, preserve_neuron_idx=False)
-            elif mode == 'png':
-                fields = sessions[session_type].spatial['trial_fields'][neurons_to_analyze] > 0
+            if mode == "holoviews":
+                fields = sessions[session_type].viz_spatial_trial_activity(
+                    neurons=neurons_to_analyze, preserve_neuron_idx=False
+                )
+            elif mode == "png":
+                fields = (
+                    sessions[session_type].spatial["trial_fields"][neurons_to_analyze]
+                    > 0
+                )
             else:
-                raise ValueError('mode must be holoviews or png')
+                raise ValueError("mode must be holoviews or png")
             viz_fields.append(fields)
 
-        if mode == 'png':
+        if mode == "png":
             for neuron in range(viz_fields[0].shape[0]):
                 fig, axs = plt.subplots(1, len(viz_fields))
                 for s, ax in enumerate(axs):
-                    ax.imshow(viz_fields[s][neuron], cmap='gray')
+                    ax.imshow(viz_fields[s][neuron], cmap="gray")
 
                 fname = os.path.join(
-                    r'Z:\Will\Drift\Data', mouse, r'Analysis\Place fields',
-                    f'Neuron {neuron}.png')
+                    r"Z:\Will\Drift\Data",
+                    mouse,
+                    r"Analysis\Place fields",
+                    f"Neuron {neuron}.png",
+                )
                 manager = plt.get_current_fig_manager()
                 manager.frame.Maximize(True)
-                fig.savefig(fname, bbox_inches='tight')
+                fig.savefig(fname, bbox_inches="tight")
                 plt.close(fig)
 
         # List of dictionaries. Do HoloMap(viz_fields) in a
@@ -322,11 +335,8 @@ class BatchFullAnalyses:
             fig, ax = plt.subplots()
             time_bins = range(len(binned_d))
             mean_errors = [np.mean(dist) for dist in binned_d]
-            sem_errors = [np.std(dist) / np.sqrt(dist.shape[0]) for
-                              dist in binned_d]
-            ax.errorbar(time_bins,
-                        mean_errors,
-                        yerr=sem_errors)
+            sem_errors = [np.std(dist) / np.sqrt(dist.shape[0]) for dist in binned_d]
+            ax.errorbar(time_bins, mean_errors, yerr=sem_errors)
 
         pass
 
@@ -355,8 +365,12 @@ class BatchFullAnalyses:
         return d
 
     def format_spatial_location_for_decoder(
-        self, lin_position, n_spatial_bins=36, time_bin_size=1, fps=15,
-            classifier=BernoulliNB(),
+        self,
+        lin_position,
+        n_spatial_bins=36,
+        time_bin_size=1,
+        fps=15,
+        classifier=BernoulliNB(),
     ):
         """
         Naive Bayes classifiers only take integers as outcomes.
@@ -1051,18 +1065,18 @@ class BatchBehaviorAnalyses:
 
 if __name__ == "__main__":
     mice = [
-        #"Betelgeuse_Scope25",
-        #"Alcor_Scope20",
+        # "Betelgeuse_Scope25",
+        # "Alcor_Scope20",
         "Castor_Scope05",
-        #"Draco_Scope02",
+        # "Draco_Scope02",
         "Encedalus_Scope14",
         "Fornax",
         "Hydra",
         "Io",
-        #"M1",
-        #"M2",
-        #"M3",
-        #"M4",
+        # "M1",
+        # "M2",
+        # "M3",
+        # "M4",
     ]
     # B = BatchBehaviorAnalyses(mice)
     # B.plot_learning_trials_per_mouse()
@@ -1071,10 +1085,20 @@ if __name__ == "__main__":
     # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
 
     B = BatchFullAnalyses(mice)
-    B.spatial_activity_by_trial_over_days('Io', ["CircleTrackGoals1", "CircleTrackGoals2", "CircleTrackReversal1", "CircleTrackReversal2"])
+    B.spatial_activity_by_trial_over_days(
+        "Io",
+        [
+            "CircleTrackGoals1",
+            "CircleTrackGoals2",
+            "CircleTrackReversal1",
+            "CircleTrackReversal2",
+        ],
+    )
     # corr_matrices = []
     # for mouse in mice[2:5]:
     #     for session in B.session_types[2:]:
     #         corr_matrices.append(B.data[mouse][session].correlate_spatial_PVs_by_trial())
     # pass
-    B.decode_place('Io','CircleTrackGoals2','CircleTrackReversal1', classifier=MultinomialNB())
+    B.decode_place(
+        "Io", "CircleTrackGoals2", "CircleTrackReversal1", classifier=MultinomialNB()
+    )
