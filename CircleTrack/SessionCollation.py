@@ -4,8 +4,10 @@ from util import Metadata_CSV
 import numpy as np
 from CaImaging.CellReg import CellRegObj
 
-def MultiSession(mouse, Metadata_CSV, behavior='CircleTrack',
-                 SessionFunction=BehaviorSession):
+
+def MultiSession(
+    mouse, Metadata_CSV, behavior="CircleTrack", SessionFunction=BehaviorSession
+):
     """
     Gathers session data for one mouse.
 
@@ -14,28 +16,31 @@ def MultiSession(mouse, Metadata_CSV, behavior='CircleTrack',
     :return:
     """
     # Find the folders corresponding to the correct mouse and behavior.
-    mouse_entries = Metadata_CSV.df.loc[Metadata_CSV.df['Mouse'] == mouse]
-    sessions = mouse_entries.loc[mouse_entries['Session'].str.find(behavior) > -1]
+    mouse_entries = Metadata_CSV.df.loc[Metadata_CSV.df["Mouse"] == mouse]
+    sessions = mouse_entries.loc[mouse_entries["Session"].str.find(behavior) > -1]
 
     S = dict()
-    for folder, session_type in zip(sessions['Path'], sessions['Session_Type']):
-        S[session_type] = (SessionFunction(folder))
+    for folder, session_type in zip(sessions["Path"], sessions["Session_Type"]):
+        S[session_type] = SessionFunction(folder)
 
     # If we're looking at calcium data, also find CellRegResults if
     # possible.
-    if SessionFunction==CalciumSession:
-        cellreg_path = np.unique(mouse_entries['CellRegPath'])[0]
+    if SessionFunction == CalciumSession:
+        cellreg_path = np.unique(mouse_entries["CellRegPath"])[0]
         try:
-            S['CellReg'] = CellRegObj(cellreg_path)
+            S["CellReg"] = CellRegObj(cellreg_path)
         except:
-            print(f'CellReg for {mouse} failed to load.')
+            print(f"CellReg for {mouse} failed to load.")
 
     return S
 
 
-def MultiAnimal(mice, project_folder=r'Z:\Will\Drift\Data',
-                behavior='CircleTrack',
-                SessionFunction=BehaviorSession):
+def MultiAnimal(
+    mice,
+    project_folder=r"Z:\Will\Drift\Data",
+    behavior="CircleTrack",
+    SessionFunction=BehaviorSession,
+):
     """
     Gathers all sessions for all specified mice.
 
@@ -47,9 +52,9 @@ def MultiAnimal(mice, project_folder=r'Z:\Will\Drift\Data',
 
     sessions_by_mouse = dict()
     for mouse in mice:
-        print(f'Loading data from {mouse}')
-        sessions_by_mouse[mouse] =\
-            MultiSession(mouse, M, behavior=behavior,
-                         SessionFunction=SessionFunction)
+        print(f"Loading data from {mouse}")
+        sessions_by_mouse[mouse] = MultiSession(
+            mouse, M, behavior=behavior, SessionFunction=SessionFunction
+        )
 
     return sessions_by_mouse

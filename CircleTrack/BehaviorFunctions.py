@@ -181,8 +181,8 @@ def sync_Arduino_outputs(
     # Get timestamping information from DAQ output.
     try:
         if v4:
-            miniscope_file = find_timestamp_file(timestamp_fpath, 'Miniscope')
-            behavior_file = find_timestamp_file(timestamp_fpath, 'BehavCam')
+            miniscope_file = find_timestamp_file(timestamp_fpath, "Miniscope")
+            behavior_file = find_timestamp_file(timestamp_fpath, "BehavCam")
             sync_map, DAQ_data = sync_cameras_v4(miniscope_file, behavior_file)
         else:
             sync_map, DAQ_data = sync_cameras(
@@ -709,8 +709,7 @@ def approach_speed(
 
 class Preprocess:
     def __init__(
-        self, folder=None, behav_cam=1, miniscope_cam=0,
-            subtract_offset=False
+        self, folder=None, behav_cam=1, miniscope_cam=0, subtract_offset=False
     ):
         """
         Preprocesses behavior data by specifying a session folder.
@@ -731,9 +730,11 @@ class Preprocess:
             self.folder, "PreprocessedBehavior.csv"
         )
 
-        if type(self.paths['timestamps']) is str:
-            self.camera_numbers = {'behav_cam': behav_cam,
-                                   'miniscope_cam': miniscope_cam}
+        if type(self.paths["timestamps"]) is str:
+            self.camera_numbers = {
+                "behav_cam": behav_cam,
+                "miniscope_cam": miniscope_cam,
+            }
             self.v4 = False
         else:
             self.v4 = True
@@ -769,9 +770,8 @@ class Preprocess:
             # This is likely from mistracking. Interpolate those data points.
             self.interp_mistracks()
 
-            #self.behavior_df = clean_lick_detection(self.behavior_df)
+            # self.behavior_df = clean_lick_detection(self.behavior_df)
             self.preprocess()
-
 
     def preprocess(self):
         """
@@ -786,7 +786,7 @@ class Preprocess:
         self.behavior_df["distance"] = consecutive_dist(
             np.asarray((self.behavior_df.x, self.behavior_df.y)).T, zero_pad=True
         )
-        self.behavior_df['t'] = self.get_timestamps()
+        self.behavior_df["t"] = self.get_timestamps()
 
     def save(self, path=None, fname="PreprocessedBehavior.csv"):
         """
@@ -806,22 +806,22 @@ class Preprocess:
 
         self.behavior_df.to_csv(fpath, index=False)
 
-
     def auto_find_outliers(self, velocity_threshold=40):
-        jump_frames = np.where((self.behavior_df['distance'] > velocity_threshold))[0]
+        jump_frames = np.where((self.behavior_df["distance"] > velocity_threshold))[0]
         for frame in jump_frames:
             self.correct_position(frame)
 
     def get_timestamps(self):
         if not self.v4:
-            timestamps = pd.read_csv(self.paths['timestamps'], sep='\t')
+            timestamps = pd.read_csv(self.paths["timestamps"], sep="\t")
             timestamps = timestamps.loc[
-                timestamps['camNum'] == self.camera_numbers['behav_cam']]
-            t = timestamps['sysClock']
+                timestamps["camNum"] == self.camera_numbers["behav_cam"]
+            ]
+            t = timestamps["sysClock"]
         else:
-            timestamp_file = find_timestamp_file(self.paths['timestamps'], 'BehavCam')
+            timestamp_file = find_timestamp_file(self.paths["timestamps"], "BehavCam")
             timestamps = pd.read_csv(timestamp_file)
-            t = timestamps['Time Stamp (ms)']
+            t = timestamps["Time Stamp (ms)"]
 
         t.reset_index(inplace=True, drop=True)
         t.iloc[0] = 0
@@ -998,65 +998,70 @@ class BehaviorSession:
         # If folder is not specified, open a dialog box.
         self.meta = dict()
         if folder is None:
-            self.meta['folder'] = filedialog.askdirectory()
+            self.meta["folder"] = filedialog.askdirectory()
         else:
-            self.meta['folder'] = folder
+            self.meta["folder"] = folder
 
         # Find paths.
-        self.meta['paths'] = Session_Metadata(self.meta['folder']).meta_dict
-        self.meta['paths']["PreprocessedBehavior"] = os.path.join(
-            self.meta['folder'], "PreprocessedBehavior.csv"
+        self.meta["paths"] = Session_Metadata(self.meta["folder"]).meta_dict
+        self.meta["paths"]["PreprocessedBehavior"] = os.path.join(
+            self.meta["folder"], "PreprocessedBehavior.csv"
         )
 
         # Determine if this was a recording with the new QT system.
-        self.meta['v4'] = True if type(self.meta['paths']['timestamps']) is list else False
+        self.meta["v4"] = (
+            True if type(self.meta["paths"]["timestamps"]) is list else False
+        )
 
         # Try loading a presaved csv.
         self.data = dict()
         try:
-            self.data['df'] = pd.read_csv(self.meta['paths']["PreprocessedBehavior"])
+            self.data["df"] = pd.read_csv(self.meta["paths"]["PreprocessedBehavior"])
         except:
             raise FileNotFoundError("Run Preprocess() first.")
 
         # Get timing information.
-        if self.meta['v4']:
-            self.meta['behavior_timestamps'] = pd.read_csv(find_timestamp_file(self.meta['paths']['timestamps'],
-                                                           'BehavCam'))
+        if self.meta["v4"]:
+            self.meta["behavior_timestamps"] = pd.read_csv(
+                find_timestamp_file(self.meta["paths"]["timestamps"], "BehavCam")
+            )
         else:
-            self.meta['behavior_timestamps'] = pd.read_csv(self.meta['paths']['timestamps'], sep='\t')
+            self.meta["behavior_timestamps"] = pd.read_csv(
+                self.meta["paths"]["timestamps"], sep="\t"
+            )
 
-        self.meta['fps'] = self.get_fps()
+        self.meta["fps"] = self.get_fps()
 
         # Convert x, y, and distance values to cm.
-        self.data['df']['x'] = self.data['df']['x']/pix_per_cm
-        self.data['df']['y'] = self.data['df']['y']/pix_per_cm
-        self.data['df']['distance'] = self.data['df']['distance']/pix_per_cm
+        self.data["df"]["x"] = self.data["df"]["x"] / pix_per_cm
+        self.data["df"]["y"] = self.data["df"]["y"] / pix_per_cm
+        self.data["df"]["distance"] = self.data["df"]["distance"] / pix_per_cm
 
         # Number of laps run.
-        self.data['ntrials'] = max(self.data['df']["trials"] + 1)
+        self.data["ntrials"] = max(self.data["df"]["trials"] + 1)
 
         # Amount of time spent per trial (in frames).
-        self.data['frames_per_trial'] = np.bincount(self.data['df']["trials"])
+        self.data["frames_per_trial"] = np.bincount(self.data["df"]["trials"])
 
         # Find water ports.
-        self.data['ports'], self.data['lin_ports'] = find_water_ports(self.data['df'])
+        self.data["ports"], self.data["lin_ports"] = find_water_ports(self.data["df"])
 
         # Find rewarded ports
-        rewarded_ports = find_rewarded_ports(self.data['df'])
-        self.data['rewarded_ports'] = np.zeros(8, dtype=bool)
-        self.data['rewarded_ports'][rewarded_ports] = True
-        self.data['n_rewarded_ports'] = np.sum(self.data['rewarded_ports'])
+        rewarded_ports = find_rewarded_ports(self.data["df"])
+        self.data["rewarded_ports"] = np.zeros(8, dtype=bool)
+        self.data["rewarded_ports"][rewarded_ports] = True
+        self.data["n_rewarded_ports"] = np.sum(self.data["rewarded_ports"])
 
-        self.data['all_licks'] = self.get_licks(plot=False)
-        self.data['n_drinks'] = self.count_drinks()
+        self.data["all_licks"] = self.get_licks(plot=False)
+        self.data["n_drinks"] = self.count_drinks()
 
-        self.data['learning'] = dict()
+        self.data["learning"] = dict()
         (
-            self.data['learning']["correct_responses"],
-            self.data['learning']["curve"],
-            self.data['learning']["start"],
-            self.data['learning']["inflection"],
-            self.data['learning']["criterion"]
+            self.data["learning"]["correct_responses"],
+            self.data["learning"]["curve"],
+            self.data["learning"]["start"],
+            self.data["learning"]["inflection"],
+            self.data["learning"]["criterion"],
         ) = self.get_learning_curve(trial_threshold=5, criterion=7)
 
     def get_fps(self):
@@ -1068,13 +1073,12 @@ class BehaviorSession:
         :return:
         """
         # Take difference.
-        if self.meta['v4']:
-            key = 'Time Stamp (ms)'
+        if self.meta["v4"]:
+            key = "Time Stamp (ms)"
         else:
-            key = 'sysClock'
+            key = "sysClock"
 
-        interframe_intervals = np.diff(
-            self.meta['behavior_timestamps'][key].iloc[1:])
+        interframe_intervals = np.diff(self.meta["behavior_timestamps"][key].iloc[1:])
 
         # Inter-frame interval in milliseconds.
         mean_interval = np.mean(interframe_intervals)
@@ -1089,9 +1093,9 @@ class BehaviorSession:
         :return:
         """
         n_rewards = []
-        for trial in range(self.data['ntrials']):
+        for trial in range(self.data["ntrials"]):
             water_deliveries = np.sum(
-                self.data['df'].loc[self.data['df']["trials"] == trial]["water"]
+                self.data["df"].loc[self.data["df"]["trials"] == trial]["water"]
             )
             n_rewards.append(water_deliveries)
 
@@ -1102,11 +1106,11 @@ class BehaviorSession:
         Plot the trajectory and licks in a spiral pattern (polar plot).
 
         """
-        lin_position = np.asarray(linearize_trajectory(self.data['df'])[0])
-        t = np.asarray(self.data['df'].frame)
-        fig, ax = spiral_plot(t, lin_position, self.data['df']["lick_port"] > -1)
+        lin_position = np.asarray(linearize_trajectory(self.data["df"])[0])
+        t = np.asarray(self.data["df"].frame)
+        fig, ax = spiral_plot(t, lin_position, self.data["df"]["lick_port"] > -1)
 
-        for port in self.data['lin_ports']:
+        for port in self.data["lin_ports"]:
             ax.axvline(x=port, color="g")
 
         ax.legend(["Trajectory", "Licks", "Ports"])
@@ -1150,13 +1154,13 @@ class BehaviorSession:
         else:
             fig = None
 
-        for i, port in enumerate(self.data['lin_ports']):
+        for i, port in enumerate(self.data["lin_ports"]):
             if plot:
                 ax = fig.add_subplot(4, 2, i + 1)
             else:
                 ax = None
             approaches = approach_speed(
-                self.data['df'],
+                self.data["df"],
                 port,
                 window=window,
                 dist_thresh=dist_thresh,
@@ -1186,9 +1190,9 @@ class BehaviorSession:
         """
         ports = range(8)
         all_licks = []
-        for trial in range(self.data['ntrials']):
-            this_trial = self.data['df']["trials"] == trial
-            licks = list(self.data['df'].loc[this_trial, "lick_port"])
+        for trial in range(self.data["ntrials"]):
+            this_trial = self.data["df"]["trials"] == trial
+            licks = list(self.data["df"].loc[this_trial, "lick_port"])
 
             licks_per_port = [licks.count(port) for port in ports]
 
@@ -1213,17 +1217,21 @@ class BehaviorSession:
         :return:
         """
         fig, ax = plt.subplots()
-        ax.plot(self.data['all_licks'][:, self.data['rewarded_ports']], "cornflowerblue")
-        ax.plot(self.data['all_licks'][:, ~self.data['rewarded_ports']], "gray", alpha=0.6)
+        ax.plot(
+            self.data["all_licks"][:, self.data["rewarded_ports"]], "cornflowerblue"
+        )
+        ax.plot(
+            self.data["all_licks"][:, ~self.data["rewarded_ports"]], "gray", alpha=0.6
+        )
         ax.set_xlabel("Trials")
         ax.set_ylabel("Licks")
 
     def sdt_trials(self, n_trial_blocks=None, plot=True):
         # Split the session into N blocks.
         if n_trial_blocks is not None:
-            licks = np.array_split(self.data['all_licks'], n_trial_blocks)
+            licks = np.array_split(self.data["all_licks"], n_trial_blocks)
         else:
-            licks = [self.data['all_licks']]
+            licks = [self.data["all_licks"]]
 
         # Preallocate dict.
         sdt = {key: [] for key in ["hits", "misses", "FAs", "CRs"]}
@@ -1231,14 +1239,14 @@ class BehaviorSession:
         for trial_block in licks:
             # Get number of passes through ports that should or should not be licked.
             ntrials = len(trial_block)
-            go_trials = ntrials * self.data['n_rewarded_ports']
-            nogo_trials = ntrials * (8 - self.data['n_rewarded_ports'])
+            go_trials = ntrials * self.data["n_rewarded_ports"]
+            nogo_trials = ntrials * (8 - self.data["n_rewarded_ports"])
 
             # Binarized the lick array so that at least one lick will mark it as
             # correct.
             binarized = trial_block > 0
-            correct_licks = np.sum(binarized[:, self.data['rewarded_ports']])
-            incorrect_licks = np.sum(binarized[:, ~self.data['rewarded_ports']])
+            correct_licks = np.sum(binarized[:, self.data["rewarded_ports"]])
+            incorrect_licks = np.sum(binarized[:, ~self.data["rewarded_ports"]])
 
             # Get rates for hits, misses, false alarms, and correct rejections.
             hit_rate = correct_licks / go_trials
@@ -1275,7 +1283,9 @@ class BehaviorSession:
             # half_fa = 0.5 / (fas + crs)
 
             # Another way.
-            n_trials = np.array_split(self.data['all_licks'], n_trial_blocks)[0].shape[0]
+            n_trials = np.array_split(self.data["all_licks"], n_trial_blocks)[0].shape[
+                0
+            ]
             correction = 1 / (2 * n_trials)
 
             # Calculate hit_rate and avoid d' infinity
@@ -1326,8 +1336,8 @@ class BehaviorSession:
 
         """
         # Get licks, rewarded ports, and categorize responses.
-        licks = self.data['all_licks']
-        rewarded_ports = self.data['rewarded_ports']
+        licks = self.data["all_licks"]
+        rewarded_ports = self.data["rewarded_ports"]
         rejections = licks[:, ~rewarded_ports] == 0
         hits = licks[:, rewarded_ports] > 1
         correct_responses = np.sum(np.hstack((rejections, hits)), axis=1)
@@ -1337,7 +1347,7 @@ class BehaviorSession:
 
         # Smooth the correct response time series.
         smoothed = savgol_filter(
-            correct_responses, round_up_to_odd(self.data['ntrials'] / 3), 2
+            correct_responses, round_up_to_odd(self.data["ntrials"] / 3), 2
         )
 
         # If all the ports are rewarded in e.g. a shaping session,
@@ -1347,7 +1357,13 @@ class BehaviorSession:
                 f"All ports are rewarded for {self.meta['folder']}. "
                 f"Learning curve is pointless"
             )
-            return correct_responses, smoothed, start_of_learning, middle_of_learning, criterion_trial
+            return (
+                correct_responses,
+                smoothed,
+                start_of_learning,
+                middle_of_learning,
+                criterion_trial,
+            )
 
         # Learning rate is the first derivative wrt to trials.
         # Continuous improvement is the stretch of the learning rate
@@ -1375,7 +1391,13 @@ class BehaviorSession:
 
                 break
 
-        return correct_responses, smoothed, start_of_learning, middle_of_learning, criterion_trial
+        return (
+            correct_responses,
+            smoothed,
+            start_of_learning,
+            middle_of_learning,
+            criterion_trial,
+        )
 
     def plot_learning_curve(self, ax=None):
         """
@@ -1387,16 +1409,16 @@ class BehaviorSession:
             fig, ax = plt.subplots()
 
         try:
-            ax.plot(self.data['learning']["correct_responses"], "k.")
-            ax.plot(self.data['learning']["curve"], "r")
+            ax.plot(self.data["learning"]["correct_responses"], "k.")
+            ax.plot(self.data["learning"]["curve"], "r")
             ax.set_xlabel("Trials")
             ax.set_ylabel("Correct responses")
             ax.set_ylim([0, 8])
             # ax.set_title(os.path.split(os.path.split(self.folder)[0])[-1])
 
-            ax.axvline(self.data['learning']["start"], color="g")
-            ax.axvline(self.data['learning']["inflection"], color="y")
-            ax.axvline(self.data['learning']["criterion"], color="b")
+            ax.axvline(self.data["learning"]["start"], color="g")
+            ax.axvline(self.data["learning"]["inflection"], color="y")
+            ax.axvline(self.data["learning"]["criterion"], color="b")
         except KeyError:
             print("Learning data not found.")
 
@@ -1423,9 +1445,6 @@ def dlc_to_csv(folder: str):
 
 
 if __name__ == "__main__":
-    folder = (
-        r"Z:\Will\Drift\Data\Fornax\12_06_2020_CircleTrackReversal2\15_53_56"
-
-    )
+    folder = r"Z:\Will\Drift\Data\Fornax\12_06_2020_CircleTrackReversal2\15_53_56"
     P = Preprocess(folder)
-    #P.find_outliers()
+    # P.find_outliers()
