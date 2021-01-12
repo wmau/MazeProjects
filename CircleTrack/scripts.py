@@ -1,14 +1,13 @@
 from CircleTrack.BehaviorFunctions import BehaviorSession
 from CircleTrack.MiniscopeFunctions import CalciumSession
 import matplotlib.pyplot as plt
-from CaImaging.util import sem, errorfill, nan_array, bin_transients, make_bins
+from CaImaging.util import sem, errorfill, nan_array, bin_transients, make_bins, ScrollPlot
 from grid_strategy.strategies import RectangularStrategy
 from scipy.stats import wilcoxon, spearmanr
 from statsmodels.stats.multitest import multipletests
 import matplotlib.patches as mpatches
 from CircleTrack.SessionCollation import MultiAnimal
-from CaImaging.CellReg import rearrange_neurons, trim_map
-from CaImaging.Miniscope import threshold_S
+from CaImaging.CellReg import rearrange_neurons, trim_map, scrollplot_footprints
 from sklearn.naive_bayes import MultinomialNB, BernoulliNB
 from sklearn.linear_model import LinearRegression
 from CaImaging.Assemblies import lapsed_activation, plot_assemblies
@@ -16,6 +15,7 @@ from scipy.stats import circmean
 import numpy as np
 from scipy.stats import mode
 import os
+from CircleTrack.plotting import plot_daily_rasters
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -73,8 +73,8 @@ class BatchFullAnalyses:
         """
         sessions = self.data[mouse]
         trimmed_map = self.get_cellreg_mappings(
-            mouse, session_types, detected="everyday"
-        )
+            mouse, session_types, detected="everyday", neurons_from_session1=None
+        )[0]
 
         # Get calcium activity from each session for this mouse.
         activity_list = [
@@ -86,29 +86,40 @@ class BatchFullAnalyses:
 
         return rearranged
 
-    def correlate_fields(
-        self, mouse, session1, session2, neurons_from_session1=None, show_histogram=True
-    ):
-        # Get neurons and cell registration mappings.
-        trimmed_map = self.get_cellreg_mappings(mouse, [session1, session2])
+    def plot_registered_cells(self, mouse, session_types, neurons_from_session1=None):
+        session_list = self.get_cellreg_mappings(
+            mouse, session_types, neurons_from_session1=neurons_from_session1
+        )[-1]
 
-        if neurons_from_session1 is None:
-            global_idx = trimmed_map.index
-        else:
-            in_list = trimmed_map.iloc[:, 0].isin(neurons_from_session1)
-            global_idx = trimmed_map[in_list].index
+        scrollplot_footprints(self.data[mouse]['CellReg'].path, session_list, neurons_from_session1)
+
+
+
+    def map_placefields(self, mouse, session_types, neurons_from_session1=None):
+        # Get neurons and cell registration mappings.
+        trimmed_map, global_idx = self.get_cellreg_mappings(
+            mouse, session_types, neurons_from_session1=neurons_from_session1
+        )[:-1]
 
         # Get fields.
         fields = {
-            session_type: self.data[mouse][session_type].spatial.data['placefields']
-            for session_type in [session1, session2]
+            session_type: self.data[mouse][session_type].spatial.data[
+                "placefields"]
+            for session_type in session_types
         }
 
         # Prune fields to only take the neurons that were mapped.
         fields_mapped = []
-        for i, session_type in enumerate([session1, session2]):
+        for i, session_type in enumerate(session_types):
             mapped_neurons = trimmed_map.iloc[trimmed_map.index.isin(global_idx), i]
             fields_mapped.append(fields[session_type][mapped_neurons])
+
+        return fields_mapped
+
+    def correlate_fields(
+        self, mouse, session_types, neurons_from_session1=None, show_histogram=True
+    ):
+        fields_mapped = self.map_placefields(mouse, session_types, neurons_from_session1=neurons_from_session1)
 
         # Do correlation for each neuron and store r and p value.
         corrs = {"r": [], "p": []}
@@ -129,21 +140,23 @@ class BatchFullAnalyses:
     ):
         median_r = []
         criterion = []
-        for mouse in self.meta['mice']:
+        for mouse in self.meta["mice"]:
             corrs = self.correlate_fields(
-                mouse, corr_sessions[0], corr_sessions[1], show_histogram=False
+                mouse, corr_sessions, show_histogram=False
             )
             median_r.append(np.nanmedian(corrs["r"]))
             behavior = self.data[mouse][criterion_session].behavior
-            criterion.append(behavior.data['learning']["criterion"] / behavior.data['ntrials'])
+            criterion.append(
+                behavior.data["learning"]["criterion"] / behavior.data["ntrials"]
+            )
 
         fig, ax = plt.subplots()
         ax.scatter(median_r, criterion)
 
         return median_r, criterion
 
-    def spatial_activity_by_trial_over_days(
-        self, mouse, session_types, neurons_from_session1=None, mode="png"
+    def plot_rasters_by_day(
+        self, mouse, session_types, neurons_from_session1=None, mode="scroll"
     ):
         """
         Visualize binned spatial activity by each trial across
@@ -165,13 +178,9 @@ class BatchFullAnalyses:
         """
         # Get neuron mappings.
         sessions = self.data[mouse]
-        trimmed_map = self.get_cellreg_mappings(mouse, session_types)
-
-        if neurons_from_session1 is None:
-            global_idx = trimmed_map.index
-        else:
-            in_list = trimmed_map.iloc[:, 0].isin(neurons_from_session1)
-            global_idx = trimmed_map[in_list].index
+        trimmed_map, global_idx = self.get_cellreg_mappings(
+            mouse, session_types, neurons_from_session1=neurons_from_session1
+        )[:-1]
 
         # Gather neurons and build dictionaries for HoloMap.
         viz_fields = []
@@ -182,13 +191,13 @@ class BatchFullAnalyses:
                 fields = sessions[session_type].viz_spatial_trial_activity(
                     neurons=neurons_to_analyze, preserve_neuron_idx=False
                 )
-            elif mode == "png":
+            elif mode in ["png", "scroll"]:
                 fields = (
                     sessions[session_type].spatial.data["rasters"][neurons_to_analyze]
                     > 0
                 )
             else:
-                raise ValueError("mode must be holoviews or png")
+                raise ValueError("mode must be holoviews, png, or scroll")
             viz_fields.append(fields)
 
         if mode == "png":
@@ -203,10 +212,14 @@ class BatchFullAnalyses:
                     r"Analysis\Place fields",
                     f"Neuron {neuron}.png",
                 )
-                manager = plt.get_current_fig_manager()
-                manager.frame.Maximize(True)
                 fig.savefig(fname, bbox_inches="tight")
                 plt.close(fig)
+        elif mode == 'scroll':
+            ScrollPlot(plot_daily_rasters,
+                       current_position=0,
+                       nrows=len(session_types),
+                       ncols=2,
+                       rasters=viz_fields)
 
         # List of dictionaries. Do HoloMap(viz_fields) in a
         # jupyter notebook.
@@ -265,7 +278,7 @@ class BatchFullAnalyses:
         # Separate spatially binned location into training and test.
         outcome_data = dict()
         for session, train_test_label in zip(sessions, ["train", "test"]):
-            lin_position = session.behavior['df']["lin_position"].values
+            lin_position = session.behavior["df"]["lin_position"].values
             outcome_data[train_test_label] = self.format_spatial_location_for_decoder(
                 lin_position,
                 n_spatial_bins=n_spatial_bins,
@@ -411,7 +424,9 @@ class BatchFullAnalyses:
 
         return position
 
-    def get_cellreg_mappings(self, mouse, session_types, detected="everyday"):
+    def get_cellreg_mappings(
+        self, mouse, session_types, detected="everyday", neurons_from_session1=None
+    ):
         # For readability.
         cellreg_map = self.data[mouse]["CellReg"].map
         cellreg_sessions = self.data[mouse]["CellReg"].sessions
@@ -427,7 +442,13 @@ class BatchFullAnalyses:
 
         trimmed_map = trim_map(cellreg_map, session_list, detected=detected)
 
-        return trimmed_map
+        if neurons_from_session1 is None:
+            global_idx = trimmed_map.index
+        else:
+            in_list = trimmed_map.iloc[:, 0].isin(neurons_from_session1)
+            global_idx = trimmed_map[in_list].index
+
+        return trimmed_map, global_idx, session_list
 
 
 class BatchBehaviorAnalyses:
@@ -747,12 +768,12 @@ class BatchBehaviorAnalyses:
             for m, mouse in enumerate(self.mice):
                 mouse_data = self.all_sessions[mouse]
                 try:
-                    learning_trials["start"][m, s] = mouse_data[session_type].data['learning'][
-                        "start"
-                    ]
-                    learning_trials["inflection"][m, s] = mouse_data[
-                        session_type
-                    ].data['learning']["inflection"]
+                    learning_trials["start"][m, s] = mouse_data[session_type].data[
+                        "learning"
+                    ]["start"]
+                    learning_trials["inflection"][m, s] = mouse_data[session_type].data[
+                        "learning"
+                    ]["inflection"]
                 except KeyError:
                     pass
 
@@ -799,7 +820,7 @@ class BatchBehaviorAnalyses:
             for m, mouse in enumerate(self.mice):
                 mouse_data = self.all_sessions[mouse]
                 try:
-                    trial_counts[m, s] = int(mouse_data[session_type].ntrials)
+                    trial_counts[m, s] = int(mouse_data[session_type].data['ntrials'])
                 except KeyError:
                     trial_counts[m, s] = np.nan
 
@@ -1067,12 +1088,12 @@ if __name__ == "__main__":
     mice = [
         # "Betelgeuse_Scope25",
         # "Alcor_Scope20",
-        "Castor_Scope05",
+        #"Castor_Scope05",
         # "Draco_Scope02",
         "Encedalus_Scope14",
-        "Fornax",
-        "Hydra",
-        "Io",
+        #"Fornax",
+        #"Hydra",
+        #"Io",
         # "M1",
         # "M2",
         # "M3",
@@ -1085,7 +1106,8 @@ if __name__ == "__main__":
     # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
 
     B = BatchFullAnalyses(mice)
-    B.spatial_activity_by_trial_over_days(
+    B.plot_registered_cells('Encedalus_Scope14',['CircleTrackGoals1','CircleTrackGoals2'])
+    B.plot_rasters_by_day(
         "Io",
         [
             "CircleTrackGoals1",
