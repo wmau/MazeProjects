@@ -1300,7 +1300,7 @@ class BehaviorSession:
         self.sdt["d_prime"] = d_prime
         return self.sdt["d_prime"]
 
-    def get_learning_curve(self, trial_threshold=5, criterion=6):
+    def get_learning_curve(self, trial_threshold=5, criterion=7):
         """
         Get the smoothed number of correct responses over trials.
         Also get the trial number corresponding to when the mouse

@@ -31,9 +31,9 @@ class CalciumSession:
         data_fname="SyncedData.pkl",
         placefield_fname="Placefields.pkl",
         placefield_trials_fname="PlacefieldTrials.pkl",
-        overwrite_synced_data=False,
+        overwrite_synced_data=True,
         overwrite_placefields=False,
-        overwrite_placefield_trials=True,
+        overwrite_placefield_trials=False,
     ):
         """
         Single session analyses and plots for miniscope data.

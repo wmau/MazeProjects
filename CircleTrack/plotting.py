@@ -39,6 +39,20 @@ def plot_raster(ScrollObj):
         cmap = 'binary'
     axs[0].set_title(ScrollObj.titles[ScrollObj.current_position])
     axs[0].imshow(rasters[ScrollObj.current_position], cmap=cmap)
+    axs[0].set_aspect(5)
     axs[1].plot(tuning_curve[ScrollObj.current_position])
 
     ScrollObj.last_position = len(ScrollObj.rasters)
+
+def plot_daily_rasters(ScrollObj):
+    attrs = ['rasters']
+    check_attrs(ScrollObj, attrs)
+
+    axs = ScrollObj.ax
+    rasters = ScrollObj.rasters
+    #tuning_curves = ScrollObj.tuning_curves
+
+    for day, raster in enumerate(rasters) :
+        axs[day, 0].imshow(raster[ScrollObj.current_position])
+
+    ScrollObj.last_position = rasters[0].shape[0]
