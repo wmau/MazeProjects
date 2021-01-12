@@ -47,7 +47,7 @@ class BatchFullAnalyses:
 
         # for mouse in mice:
         #     S_list = [self.data[mouse][session].data['imaging']['S']
-        #               for session in self.session_types]
+        #               for session in self.meta['session_types]]
         #
         #     cell_map = self.data[mouse]['CellReg'].map
         #
@@ -278,7 +278,7 @@ class BatchFullAnalyses:
         # Separate spatially binned location into training and test.
         outcome_data = dict()
         for session, train_test_label in zip(sessions, ["train", "test"]):
-            lin_position = session.behavior["df"]["lin_position"].values
+            lin_position = session.behavior.data["df"]["lin_position"].values
             outcome_data[train_test_label] = self.format_spatial_location_for_decoder(
                 lin_position,
                 n_spatial_bins=n_spatial_bins,
@@ -461,18 +461,20 @@ class BatchBehaviorAnalyses:
         :param project_folder:
         """
         # Compile data for all animals.
-        self.all_sessions = MultiAnimal(
+        self.data = dict()
+        self.data['mice'] = MultiAnimal(
             mice,
             project_folder,
             behavior="CircleTrack",
             SessionFunction=BehaviorSession,
         )
-        self.mice = mice
-        self.n_mice = len(mice)
+        self.meta = dict()
+        self.meta['mice'] = mice
+        self.meta['n_mice'] = len(mice)
 
         # Define session types here. Watch out for typos.
         # Order matters. Plots will be in the order presented here.
-        self.session_types = [
+        self.meta['session_types'] = [
             "CircleTrackShaping1",
             "CircleTrackShaping2",
             "CircleTrackGoals1",
@@ -483,21 +485,21 @@ class BatchBehaviorAnalyses:
         ]
 
         # Same as session types, just without 'CircleTrack'.
-        self.session_labels = [
+        self.meta['session_labels'] = [
             session_type.replace("CircleTrack", "")
-            for session_type in self.session_types
+            for session_type in self.meta['session_types']
         ]
 
         # Gather the number of trials for each session type and
         # arrange it in a (mouse, session) array.
-        self.trial_counts, self.max_trials = self.count_trials()
+        self.data['trial_counts'], self.data['max_trials'] = self.count_trials()
         (
-            self.licks,
-            self.rewarded_ports,
-            self.n_drinks,
-            self.p_drinks,
+            self.data['licks'],
+            self.data['rewarded_ports'],
+            self.data['n_drinks'],
+            self.data['p_drinks'],
         ) = self.resort_data()
-        self.learning_trials = self.get_learning_trials()
+        self.data['learning_trials'] = self.get_learning_trials()
 
         pass
 
@@ -516,20 +518,20 @@ class BatchBehaviorAnalyses:
             Splits all trials in that session into n blocks.
         """
         # Compute signal detection calculations.
-        for sessions in self.all_sessions.values():
+        for sessions in self.data['mice'].values():
             for session in sessions.values():
                 session.SDT(n_trial_blocks=n_trial_blocks, plot=False)
 
         # Resort data into session types, listed by mouse.
         sdt_matrix = dict()
         sdt_categories = ["hits", "misses", "FAs", "CRs", "d_prime"]
-        for session_type in self.session_types:
+        for session_type in self.meta['session_types']:
             sdt_matrix[session_type] = {
-                key: nan_array((self.n_mice, n_trial_blocks)) for key in sdt_categories
+                key: nan_array((self.meta['n_mice'], n_trial_blocks)) for key in sdt_categories
             }
 
-            for m, mouse in enumerate(self.mice):
-                mouse_data = self.all_sessions[mouse]
+            for m, mouse in enumerate(self.meta['mice']):
+                mouse_data = self.data['mice'][mouse]
 
                 try:
                     for key in sdt_categories:
@@ -564,21 +566,21 @@ class BatchBehaviorAnalyses:
         if n_trial_blocks == 1:
             # Preallocate.
             fig, axs = plt.subplots(2, 1, figsize=(7, 9.5))
-            hits = nan_array((self.n_mice, len(self.session_types)))
-            CRs = nan_array((self.n_mice, len(self.session_types)))
-            d_primes = nan_array((self.n_mice, len(self.session_types)))
+            hits = nan_array((self.meta['n_mice'], len(self.meta['session_types'])))
+            CRs = nan_array((self.meta['n_mice'], len(self.meta['session_types'])))
+            d_primes = nan_array((self.meta['n_mice'], len(self.meta['session_types'])))
 
             # Acquire data and sort by session.
             for s, (session_type, label) in enumerate(
-                zip(self.session_types, self.session_labels)
+                zip(self.meta['session_types'], self.meta['session_labels'])
             ):
                 self.verify_sdt(1, session_type, "hits")
                 self.verify_sdt(1, session_type, "CRs")
                 self.verify_sdt(1, session_type, "d_prime")
 
-                for m, mouse in enumerate(self.mice):
+                for m, mouse in enumerate(self.meta['mice']):
                     try:
-                        session_data = self.all_sessions[mouse][session_type]
+                        session_data = self.data['mice'][mouse][session_type]
 
                         hits[m, s] = session_data.sdt["hits"][0]
                         CRs[m, s] = session_data.sdt["CRs"][0]
@@ -588,11 +590,11 @@ class BatchBehaviorAnalyses:
 
             # Plot the values.
             axs[0].plot(
-                self.session_labels, hits.T, "o-", color="forestgreen", label="Hits"
+                self.meta['session_labels'], hits.T, "o-", color="forestgreen", label="Hits"
             )
             axs[0].set_ylabel("%")
             axs[0].plot(CRs.T, "o-", color="steelblue", label="Correct rejections")
-            axs[1].plot(self.session_labels, d_primes.T, "o-", color="black")
+            axs[1].plot(self.meta['session_labels'], d_primes.T, "o-", color="black")
             axs[1].set_ylabel("d'")
             for ax in axs:
                 plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
@@ -607,7 +609,7 @@ class BatchBehaviorAnalyses:
             fig, axs = plt.subplots(4, 2, sharey="all", figsize=(7, 9.5))
             d_prime_axs = []
             for ax, session_type, label in zip(
-                axs.flatten(), self.session_types, self.session_labels
+                axs.flatten(), self.meta['session_types'], self.meta['session_labels']
             ):
                 self.plot_sdt("hits", n_trial_blocks, session_type, ax)
 
@@ -697,7 +699,7 @@ class BatchBehaviorAnalyses:
 
         # Get x and y axis labels.
         labels = [
-            self.session_labels[self.session_types.index(session_type)]
+            self.meta['session_labels'][self.meta['session_types'].index(session_type)]
             for session_type in [session1_type, session2_type]
         ]
 
@@ -760,13 +762,13 @@ class BatchBehaviorAnalyses:
 
     def get_learning_trials(self):
         learning_trials = {
-            "start": nan_array((self.n_mice, len(self.session_types))),
-            "inflection": nan_array((self.n_mice, len(self.session_types))),
+            "start": nan_array((self.meta['n_mice'], len(self.meta['session_types']))),
+            "inflection": nan_array((self.meta['n_mice'], len(self.meta['session_types']))),
         }
 
-        for s, session_type in enumerate(self.session_types):
-            for m, mouse in enumerate(self.mice):
-                mouse_data = self.all_sessions[mouse]
+        for s, session_type in enumerate(self.meta['session_types']):
+            for m, mouse in enumerate(self.meta['mice']):
+                mouse_data = self.data['mice'][mouse]
                 try:
                     learning_trials["start"][m, s] = mouse_data[session_type].data[
                         "learning"
@@ -783,18 +785,18 @@ class BatchBehaviorAnalyses:
         if ax is None:
             fig, ax = plt.subplots()
 
-        ax.plot(self.session_labels, self.learning_trials["inflection"].T, "yo-")
+        ax.plot(self.meta['session_labels'], self.data['learning_trials']["inflection"].T, "yo-")
         ax.set_ylabel("Learning inflection trial #")
 
     def plot_learning_trials_per_mouse(self):
-        for mouse in self.mice:
-            mouse_data = self.all_sessions[mouse]
+        for mouse in self.meta['mice']:
+            mouse_data = self.data['mice'][mouse]
             fig, axs = plt.subplots(3, 2, sharex="all", sharey="all", figsize=(6.4, 6))
 
             sessions = [
-                session for session in self.session_types if "Shaping" not in session
+                session for session in self.meta['session_types'] if "Shaping" not in session
             ]
-            labels = [label for label in self.session_labels if "Shaping" not in label]
+            labels = [label for label in self.meta['session_labels'] if "Shaping" not in label]
             for ax, session, label in zip(axs.flatten(), sessions, labels):
                 try:
                     mouse_data[session].plot_learning_curve(ax=ax)
@@ -815,10 +817,10 @@ class BatchBehaviorAnalyses:
 
         :return:
         """
-        trial_counts = nan_array((self.n_mice, len(self.session_types)))
-        for s, session_type in enumerate(self.session_types):
-            for m, mouse in enumerate(self.mice):
-                mouse_data = self.all_sessions[mouse]
+        trial_counts = nan_array((self.meta['n_mice'], len(self.meta['session_types'])))
+        for s, session_type in enumerate(self.meta['session_types']):
+            for m, mouse in enumerate(self.meta['mice']):
+                mouse_data = self.data['mice'][mouse]
                 try:
                     trial_counts[m, s] = int(mouse_data[session_type].data['ntrials'])
                 except KeyError:
@@ -837,7 +839,7 @@ class BatchBehaviorAnalyses:
         :return:
         """
         fig, ax = plt.subplots()
-        ax.plot(self.session_labels, self.trial_counts.T, "o-")
+        ax.plot(self.meta['session_labels'], self.data['trial_counts'].T, "o-")
         ax.set_xlabel("Session type")
         ax.set_ylabel("Number of trials")
         plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
@@ -858,30 +860,30 @@ class BatchBehaviorAnalyses:
         p_drink_matrix = dict()
         learning_start = dict()
         learning_inflection = dict()
-        for max_trials, session_type in zip(self.max_trials, self.session_types):
-            lick_matrix[session_type] = nan_array((self.n_mice, max_trials, 8))
-            rewarded_matrix[session_type] = np.zeros((self.n_mice, 8), dtype=bool)
-            drink_matrix[session_type] = nan_array((self.n_mice, max_trials))
-            p_drink_matrix[session_type] = nan_array((self.n_mice, max_trials))
-            learning_start[session_type] = nan_array((self.n_mice,))
-            learning_inflection[session_type] = nan_array((self.n_mice,))
+        for max_trials, session_type in zip(self.data['max_trials'], self.meta['session_types']):
+            lick_matrix[session_type] = nan_array((self.meta['n_mice'], max_trials, 8))
+            rewarded_matrix[session_type] = np.zeros((self.meta['n_mice'], 8), dtype=bool)
+            drink_matrix[session_type] = nan_array((self.meta['n_mice'], max_trials))
+            p_drink_matrix[session_type] = nan_array((self.meta['n_mice'], max_trials))
+            learning_start[session_type] = nan_array((self.meta['n_mice'],))
+            learning_inflection[session_type] = nan_array((self.meta['n_mice'],))
 
             # Get data and sort by session type. .
-            for m, mouse in enumerate(self.mice):
-                mouse_data = self.all_sessions[mouse]
+            for m, mouse in enumerate(self.meta['mice']):
+                mouse_data = self.data['mice'][mouse]
                 try:
-                    session_licks = mouse_data[session_type].all_licks
+                    session_licks = mouse_data[session_type].data['all_licks']
                     mat_size = session_licks.shape
                     lick_matrix[session_type][
                         m, : mat_size[0], : mat_size[1]
                     ] = session_licks
 
                     # Also get which ports were rewarded.
-                    rewarded = mouse_data[session_type].rewarded_ports
+                    rewarded = mouse_data[session_type].data['rewarded_ports']
                     rewarded_matrix[session_type][m] = rewarded
 
                     # Also get number of drinks for each trial.
-                    session_drinks = mouse_data[session_type].n_drinks
+                    session_drinks = mouse_data[session_type].data['n_drinks']
                     drink_matrix[session_type][
                         m, : session_drinks.shape[0]
                     ] = session_drinks
@@ -922,7 +924,7 @@ class BatchBehaviorAnalyses:
         # Plot lick rates.
         fig, axs = plt.subplots(4, 2, sharey="all", sharex="all", figsize=(6.6, 9.4))
         for ax, session_type, label in zip(
-            axs.flatten(), self.session_types, self.session_labels
+            axs.flatten(), self.meta['session_types'], self.meta['session_labels']
         ):
             self.plot_rewarded_licks(session_type, ax)
             ax.set_title(label)
@@ -951,8 +953,8 @@ class BatchBehaviorAnalyses:
         """
         # Get the licks across mice for that session.
         # Also get the port numbers that were rewarded.
-        licks = self.licks[session_type]
-        rewarded_ports = self.rewarded_ports[session_type]
+        licks = self.data['licks'][session_type]
+        rewarded_ports = self.data['rewarded_ports'][session_type]
 
         # Find the previous session to figure out what was previously rewarded.
         try:
@@ -972,7 +974,7 @@ class BatchBehaviorAnalyses:
         # Some mice might not have the specified session.
         # Exclude those mice.
         mice_to_include = [
-            session_type in mouse for mouse in self.all_sessions.values()
+            session_type in mouse for mouse in self.data['mice'].values()
         ]
         n_mice = np.sum(mice_to_include)
         licks = licks[mice_to_include]
@@ -1073,13 +1075,13 @@ class BatchBehaviorAnalyses:
         :return:
         """
         # If it's the first session, don't get the previous session.
-        previous_session_number = self.session_types.index(session_type) - 1
+        previous_session_number = self.meta['session_types'].index(session_type) - 1
         assert previous_session_number > -1, KeyError(
             "No other session before this one!"
         )
 
-        previous_session = self.session_types[previous_session_number]
-        previously_rewarded = self.rewarded_ports[previous_session]
+        previous_session = self.meta['session_types'][previous_session_number]
+        previously_rewarded = self.data['rewarded_ports'][previous_session]
 
         return previously_rewarded
 

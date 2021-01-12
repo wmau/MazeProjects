@@ -1231,8 +1231,8 @@ class BehaviorSession:
         for trial_block in licks:
             # Get number of passes through ports that should or should not be licked.
             ntrials = len(trial_block)
-            go_trials = ntrials * self.data['n_ewarded_ports']
-            nogo_trials = ntrials * (8 - self.data['n_ewarded_ports'])
+            go_trials = ntrials * self.data['n_rewarded_ports']
+            nogo_trials = ntrials * (8 - self.data['n_rewarded_ports'])
 
             # Binarized the lick array so that at least one lick will mark it as
             # correct.
