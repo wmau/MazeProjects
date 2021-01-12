@@ -189,28 +189,31 @@ class BatchFullAnalyses:
         )[:-1]
 
         # Gather neurons and build dictionaries for HoloMap.
-        viz_fields = []
+        daily_rasters = []
+        placefields = []
         for i, session_type in enumerate(session_types):
             neurons_to_analyze = trimmed_map.iloc[trimmed_map.index.isin(global_idx), i]
 
             if mode == "holoviews":
-                fields = sessions[session_type].viz_spatial_trial_activity(
+                rasters = sessions[session_type].viz_spatial_trial_activity(
                     neurons=neurons_to_analyze, preserve_neuron_idx=False
                 )
             elif mode in ["png", "scroll"]:
-                fields = (
+                rasters = (
                     sessions[session_type].spatial.data["rasters"][neurons_to_analyze]
                     > 0
                 )
+
+                placefields.append(sessions[session_type].spatial.data["placefields"][neurons_to_analyze])
             else:
                 raise ValueError("mode must be holoviews, png, or scroll")
-            viz_fields.append(fields)
+            daily_rasters.append(rasters)
 
         if mode == "png":
-            for neuron in range(viz_fields[0].shape[0]):
-                fig, axs = plt.subplots(1, len(viz_fields))
+            for neuron in range(daily_rasters[0].shape[0]):
+                fig, axs = plt.subplots(1, len(daily_rasters))
                 for s, ax in enumerate(axs):
-                    ax.imshow(viz_fields[s][neuron], cmap="gray")
+                    ax.imshow(daily_rasters[s][neuron], cmap="gray")
 
                 fname = os.path.join(
                     r"Z:\Will\Drift\Data",
@@ -226,12 +229,13 @@ class BatchFullAnalyses:
                 current_position=0,
                 nrows=len(session_types),
                 ncols=2,
-                rasters=viz_fields,
+                rasters=daily_rasters,
+                tuning_curves=placefields,
             )
 
-        # List of dictionaries. Do HoloMap(viz_fields) in a
+        # List of dictionaries. Do HoloMap(daily_rasters) in a
         # jupyter notebook.
-        return viz_fields
+        return daily_rasters
 
     def decode_place(
         self,
