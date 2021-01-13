@@ -12,6 +12,7 @@ from CaImaging.Behavior import spatial_bin
 import holoviews as hv
 import os
 import pickle as pkl
+from CaImaging.Assemblies import find_assemblies
 
 hv.extension("bokeh")
 from bokeh.plotting import show
@@ -28,12 +29,10 @@ class CalciumSession:
         S_std_thresh=1,
         circle_radius=38.1,
         velocity_threshold=10,
-        data_fname="SyncedData.pkl",
-        placefield_fname="Placefields.pkl",
-        placefield_trials_fname="PlacefieldTrials.pkl",
         overwrite_synced_data=False,
         overwrite_placefields=False,
         overwrite_placefield_trials=False,
+        overwrite_assemblies=False,
     ):
         """
         Single session analyses and plots for miniscope data.
@@ -50,7 +49,7 @@ class CalciumSession:
             "velocity_threshold": velocity_threshold,
         }
 
-        fpath = os.path.join(self.meta["folder"], data_fname)
+        fpath = os.path.join(self.meta["folder"], "SyncedData.pkl")
         try:
             if overwrite_synced_data:
                 print(f"Overwriting {fpath}.")
@@ -84,7 +83,7 @@ class CalciumSession:
         self.imaging["n_neurons"] = self.imaging["C"].shape[0]
 
         # Get place fields.
-        fpath = os.path.join(self.meta["folder"], placefield_fname)
+        fpath = os.path.join(self.meta["folder"], "Placefields.pkl")
         try:
             if overwrite_placefields:
                 print(f"Overwriting {fpath}.")
@@ -121,7 +120,7 @@ class CalciumSession:
                 pkl.dump(self.spatial, file)
 
         # Get spatial activity by trial.
-        fpath = os.path.join(session_folder, placefield_trials_fname)
+        fpath = os.path.join(session_folder, "PlacefieldTrials.pkl")
         try:
             if overwrite_placefield_trials:
                 print(f"Overwriting {fpath}")
@@ -146,6 +145,20 @@ class CalciumSession:
                     ),
                     file,
                 )
+
+        fpath = os.path.join(session_folder, 'Assemblies.pkl')
+        try:
+            if overwrite_assemblies:
+                print(f"Overwriting {fpath}")
+                raise Exception
+            with open(fpath, "rb") as file:
+                self.assemblies = pkl.load(file)
+
+        except:
+            self.assemblies = find_assemblies(self.imaging['S'], nullhyp ='circ', plot=False)
+
+            with open(fpath, 'wb') as file:
+                pkl.dump(self.assemblies, file)
 
     def plot_spiral_spikes(self, first_neuron=0):
         """
