@@ -38,7 +38,6 @@ def plot_raster(ScrollObj):
         cmap = "binary"
     axs[0].set_title(ScrollObj.titles[ScrollObj.current_position])
     axs[0].imshow(rasters[ScrollObj.current_position], cmap=cmap)
-    axs[0].set_aspect(5)
     axs[1].plot(tuning_curve[ScrollObj.current_position])
 
     ScrollObj.last_position = len(ScrollObj.rasters)
