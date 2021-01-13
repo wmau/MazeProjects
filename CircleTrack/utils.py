@@ -145,26 +145,27 @@ def sync(
         Camera number corresponding to the behavior camera.
     """
     # Sync data by downsampling behavior.
-    synced, minian, behavior, frame_numbers = sync_data(
+    postsync_behavior, minian, presync_behavior = sync_data(
         behavior_data, minian_folder, timestamp_path, miniscope_cam=miniscope_cam, behav_cam=behav_cam
     )
 
     # Find all water delivery frames and relocate them to the
     # next closest frame that survived downsample.
-    water_frames = behavior.frame.loc[behavior.water]
-    synced_frames = synced.frame
+    water_frames = presync_behavior.frame.loc[presync_behavior.water]
+    synced_frames = postsync_behavior.frame
+    corrected = postsync_behavior.copy()
     for frame in water_frames:
         matching_frame = find_closest(synced_frames, frame, sorted=True)[0]
-        synced.loc[matching_frame, "water"] = True
+        corrected.loc[matching_frame, "water"] = True
 
     # Do the same to lick frames.
-    lick_frames = behavior.frame.loc[behavior.lick_port > -1]
-    ports = behavior.lick_port.loc[behavior.lick_port > -1]
+    lick_frames = presync_behavior.frame.loc[presync_behavior.lick_port > -1]
+    ports = presync_behavior.lick_port.loc[presync_behavior.lick_port > -1]
     for port, frame in zip(ports, lick_frames):
         matching_frame = find_closest(synced_frames, frame, sorted=True)[0]
-        synced.loc[matching_frame, "lick_port"] = port
+        corrected.loc[matching_frame, "lick_port"] = port
 
-    return synced, minian, frame_numbers
+    return corrected, minian
 
 
 class SessionStitcher:

@@ -44,14 +44,14 @@ class CalciumSession:
         """
         # Get the behavioral data.
         self.meta = {
-            "minian_folder": session_folder,
+            "folder": session_folder,
             "spatial_bin_size": spatial_bin_size_radians,
             "S_std_thresh": S_std_thresh,
             "velocity_threshold": velocity_threshold,
         }
 
         # Get the synced behavior and calcium imaging data.
-        fpath = os.path.join(self.meta["minian_folder"], "SyncedData.pkl")
+        fpath = os.path.join(self.meta["folder"], "SyncedData.pkl")
         try:
             if overwrite_synced_data:
                 print(f"Overwriting {fpath}.")
@@ -68,7 +68,7 @@ class CalciumSession:
             timestamp_paths = self.behavior.meta["paths"]["timestamps"]
 
             # Combine behavioral and calcium imaging data.
-            self.behavior.data["df"], self.imaging, self.meta["frame_numbers"] = sync(
+            self.behavior.data["df"], self.imaging = sync(
                 self.meta["minian_path"], self.behavior.data["df"], timestamp_paths
             )
 

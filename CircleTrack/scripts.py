@@ -1137,7 +1137,7 @@ if __name__ == "__main__":
         # "Alcor_Scope20",
         # "Castor_Scope05",
         # "Draco_Scope02",
-        "Encedalus_Scope14",
+         "Encedalus_Scope14",
          "Fornax",
          "Hydra",
          "Io",
