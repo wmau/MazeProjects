@@ -12,7 +12,7 @@ from CaImaging.Behavior import spatial_bin
 import holoviews as hv
 import os
 import pickle as pkl
-from CaImaging.Assemblies import find_assemblies
+from CaImaging.Assemblies import find_assemblies, preprocess_multiple_sessions
 from CircleTrack.utils import sync
 from CircleTrack.Assemblies import write_assembly_triggered_movie
 
@@ -31,10 +31,10 @@ class CalciumSession:
         S_std_thresh=1,
         circle_radius=38.1,
         velocity_threshold=10,
-        overwrite_synced_data=False,
-        overwrite_placefields=False,
-        overwrite_placefield_trials=False,
-        overwrite_assemblies=False,
+        overwrite_synced_data=True,
+        overwrite_placefields=True,
+        overwrite_placefield_trials=True,
+        overwrite_assemblies=True,
     ):
         """
         Single session analyses and plots for miniscope data.
@@ -167,8 +167,12 @@ class CalciumSession:
                 self.assemblies = pkl.load(file)
 
         except:
+            processed_for_assembly_detection = preprocess_multiple_sessions([self.imaging['S']],
+                                                                            smooth_factor=5,
+                                                                            use_bool=True)
+            data = processed_for_assembly_detection['processed'][0]
             self.assemblies = find_assemblies(
-                self.imaging["S"], nullhyp="circ", plot=False
+                data, nullhyp="circ", plot=False, n_shuffles=500
             )
 
             with open(fpath, "wb") as file:
@@ -360,7 +364,7 @@ class CalciumSession:
         movie_fname = self.meta["paths"]["BehaviorVideo"]
 
         fpath = os.path.join(self.meta['folder'], f'Assembly #{assembly_number}.avi')
-        write_assembly_triggered_movie(assembly_activations, behavior_frame_numbers, movie_fname, fpath=fpath)
+        write_assembly_triggered_movie(assembly_activations, behavior_frame_numbers, movie_fname, fpath=fpath, threshold=threshold)
 
 if __name__ == "__main__":
     folder = (
