@@ -102,6 +102,7 @@ class BatchFullAnalyses:
             self.data[mouse]["CellReg"].path, session_list, neurons_from_session1
         )
 
+
     def map_placefields(self, mouse, session_types, neurons_from_session1=None):
         # Get neurons and cell registration mappings.
         trimmed_map, global_idx = self.get_cellreg_mappings(
@@ -140,6 +141,19 @@ class BatchFullAnalyses:
             plt.hist(corrs["r"])
 
         return corrs
+
+    def plot_goals_vs_reversal_stability(self):
+        goals = ('CircleTrackGoals1', 'CircleTrackGoals2')
+        reversal = ('CircleTrackGoals2', 'CircleTrackReversal1')
+
+        median_r = np.zeros((len(self.meta['mice']), 2))
+        fig, ax = plt.subplots()
+        for i, mouse in enumerate(self.meta['mice']):
+            median_r[i, 0] = np.nanmedian(self.correlate_fields(mouse, goals, show_histogram=False)['r'])
+            median_r[i, 1] = np.nanmedian(self.correlate_fields(mouse, reversal, show_histogram=False)['r'])
+
+            ax.plot(median_r[i], 'o-')
+
 
     def correlate_stability_to_reversal(
         self,
