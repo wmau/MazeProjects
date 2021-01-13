@@ -4,6 +4,7 @@ import cv2
 from scipy.stats import zscore
 import os
 from tqdm import tqdm
+from CaImaging import util
 
 def plot_assembly(pattern, activation, spike_times, sort_spike_times=True, ax=None):
     # Define axes.
@@ -27,9 +28,13 @@ def write_assembly_triggered_movie(activation, frame_numbers, behavior_movie,
     z_activation = zscore(activation)
     above_threshold_frames = frame_numbers[z_activation > threshold]
 
+    grouped_frames = util.cluster(above_threshold_frames, 30)
+
     compressionCodec = "FFV1"
     codec = cv2.VideoWriter_fourcc(*compressionCodec)
     cap = cv2.VideoCapture(behavior_movie)
+    ret, frame = cap.read()
+    blank_frame = np.zeros_like(frame)
     rows, cols = int(cap.get(4)), int(cap.get(3))
 
     if fpath is None:
@@ -39,10 +44,14 @@ def write_assembly_triggered_movie(activation, frame_numbers, behavior_movie,
     writeFile = cv2.VideoWriter(fpath, codec, 15, (cols, rows),
                                 isColor=True)
     print(f'Writing {fpath}')
-    for frame_number in tqdm(above_threshold_frames):
-        cap.set(1, frame_number)
-        ret, frame = cap.read()
-        writeFile.write(frame)
+    for group in grouped_frames:
+        for frame_number in group:
+            cap.set(1, frame_number)
+            ret, frame = cap.read()
+            writeFile.write(frame)
+
+        for i in range(15):
+            writeFile.write(blank_frame)
 
     writeFile.release()
     cap.release()
