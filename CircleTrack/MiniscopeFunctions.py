@@ -206,7 +206,6 @@ class CalciumSession:
         cell_number_labels = [f"Cell #{n}" for n in neurons]
         self.raster_plot = ScrollPlot(
             plot_raster,
-            current_position=neurons[0],
             nrows=2,
             rasters=rasters,
             tuning_curves=tuning_curves,
@@ -343,7 +342,7 @@ class CalciumSession:
 
 
 if __name__ == "__main__":
-    folder = r"Z:\Will\Drift\Data\Io\12_07_2020_CircleTrackRecall\14_27_06"
+    folder = r"Z:\Will\Drift\Data\Encedalus_Scope14\10_13_2020_CircleTrackGoals2\16_55_09"
     S = CalciumSession(folder)
     pvals = S.spatial["placefield_class"].data["spatial_info_pvals"]
     S.scrollplot_rasters(neurons=np.where(np.asarray(pvals) < 0.01)[0], binary=True)
