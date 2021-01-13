@@ -14,6 +14,7 @@ import os
 import pickle as pkl
 from CaImaging.Assemblies import find_assemblies
 from CircleTrack.utils import sync
+from CircleTrack.Assemblies import write_assembly_triggered_movie
 
 hv.extension("bokeh")
 from bokeh.plotting import show
@@ -30,7 +31,7 @@ class CalciumSession:
         S_std_thresh=1,
         circle_radius=38.1,
         velocity_threshold=10,
-        overwrite_synced_data=True,
+        overwrite_synced_data=False,
         overwrite_placefields=False,
         overwrite_placefield_trials=False,
         overwrite_assemblies=False,
@@ -50,6 +51,7 @@ class CalciumSession:
             "velocity_threshold": velocity_threshold,
         }
 
+            #############################################
         # Get the synced behavior and calcium imaging data.
         fpath = os.path.join(self.meta["folder"], "SyncedData.pkl")
         try:
@@ -59,17 +61,17 @@ class CalciumSession:
             with open(fpath, "rb") as file:
                 (self.behavior, self.imaging) = pkl.load(file)
 
-            self.meta["minian_path"] = self.behavior.meta["paths"]["minian"]
+            self.meta["paths"] = self.behavior.meta["paths"]
         except:
             self.behavior = BehaviorSession(self.meta["folder"])
 
             # Get paths
-            self.meta["minian_path"] = self.behavior.meta["paths"]["minian"]
+            self.meta["paths"] = self.behavior.meta["paths"]
             timestamp_paths = self.behavior.meta["paths"]["timestamps"]
 
             # Combine behavioral and calcium imaging data.
             self.behavior.data["df"], self.imaging = sync(
-                self.meta["minian_path"], self.behavior.data["df"], timestamp_paths
+                self.meta["paths"]["minian"], self.behavior.data["df"], timestamp_paths
             )
 
             # Redo trial counting to account in case some frames got cut
@@ -88,6 +90,7 @@ class CalciumSession:
         # Get number of neurons.
         self.imaging["n_neurons"] = self.imaging["C"].shape[0]
 
+            #############################################
         # Get place fields.
         fpath = os.path.join(self.meta["folder"], "Placefields.pkl")
         try:
@@ -125,6 +128,7 @@ class CalciumSession:
             with open(fpath, "wb") as file:
                 pkl.dump(self.spatial, file)
 
+            #############################################
         # Get spatial activity by trial.
         fpath = os.path.join(session_folder, "PlacefieldTrials.pkl")
         try:
@@ -152,6 +156,8 @@ class CalciumSession:
                     file,
                 )
 
+            #############################################
+        # Get assemblies.
         fpath = os.path.join(session_folder, "Assemblies.pkl")
         try:
             if overwrite_assemblies:
@@ -272,7 +278,7 @@ class CalciumSession:
 
             # Weight position by activity of each neuron.
             for n, neuron in enumerate(S):
-                spiking = neuron[time_bins] * running_this_trial
+                spiking = (neuron[time_bins] * running_this_trial).astype(int)
                 fields[n, trial_number, :] = spatial_bin(
                     positions_this_trial,
                     filler,
@@ -348,12 +354,19 @@ class CalciumSession:
 
         return corr_matrix
 
+    def write_assembly_activation_movie(self, assembly_number, threshold=2.58):
+        assembly_activations = self.assemblies['activations'][assembly_number]
+        behavior_frame_numbers = self.behavior.data['df']['frame'].to_numpy()
+        movie_fname = self.meta["paths"]["BehaviorVideo"]
+
+        fpath = os.path.join(self.meta['folder'], f'Assembly #{assembly_number}.avi')
+        write_assembly_triggered_movie(assembly_activations, behavior_frame_numbers, movie_fname, fpath=fpath)
 
 if __name__ == "__main__":
     folder = (
-        r"Z:\Will\Drift\Data\Encedalus_Scope14\10_13_2020_CircleTrackGoals2\16_55_09"
+        r'Z:\Will\Drift\Data\Castor_Scope05\09_08_2020_CircleTrackGoals1\17_38_17'
     )
-    S = CalciumSession(folder)
+    S = CalciumSession(folder, overwrite_placefield_trials=True)
     pvals = S.spatial["placefield_class"].data["spatial_info_pvals"]
     S.scrollplot_rasters(neurons=np.where(np.asarray(pvals) < 0.01)[0], binary=True)
     # S.spatial_activity_by_trial(0.1)
