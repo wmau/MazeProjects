@@ -110,9 +110,9 @@ def get_session_folders(mouse_folder: str):
 
 
 def sync(
-    folder,
-    csv_fname="PreprocessedBehavior.csv",
-    timestamp_fname="timestamp.dat",
+    minian_folder,
+    behavior_data,
+    timestamp_path,
     miniscope_cam=5,
     behav_cam=1,
 ):
@@ -134,7 +134,7 @@ def sync(
     csv_fname: str
         File name of the Preprocess() csv.
 
-    timestamp_fname: str
+    timestamp_path: str
         File name of the timestamp file (default from Miniscope
         DAQ is timsetamp.dat).
 
@@ -144,16 +144,9 @@ def sync(
     behav_cam: int
         Camera number corresponding to the behavior camera.
     """
-    # Check files.
-    csv = os.path.join(folder, csv_fname)
-    assert os.path.isfile(csv), FileNotFoundError("Run Preprocess first.")
-
-    timestamp = os.path.join(folder, timestamp_fname)
-    assert os.path.isfile(timestamp), FileNotFoundError(f"{timestamp} missing.")
-
     # Sync data by downsampling behavior.
-    synced, minian, behavior = sync_data(
-        csv, folder, timestamp, miniscope_cam=miniscope_cam, behav_cam=behav_cam
+    synced, minian, behavior, frame_numbers = sync_data(
+        behavior_data, minian_folder, timestamp_path, miniscope_cam=miniscope_cam, behav_cam=behav_cam
     )
 
     # Find all water delivery frames and relocate them to the
@@ -171,7 +164,7 @@ def sync(
         matching_frame = find_closest(synced_frames, frame, sorted=True)[0]
         synced.loc[matching_frame, "lick_port"] = port
 
-    return synced, minian, behavior
+    return synced, minian, frame_numbers
 
 
 class SessionStitcher:

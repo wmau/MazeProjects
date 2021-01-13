@@ -38,7 +38,7 @@ def make_pattern_dict():
 
 def grab_paths(session_folder=None):
     """
-    Get the data paths for a session folder.
+    Get the data paths for a session minian_folder.
 
     :param session_folder:
     :return:
@@ -106,7 +106,7 @@ class Session_Metadata:
     def __init__(self, session_folder=None, overwrite=False):
         """
         Locate the metadata in a session. This will typically
-        include things like minian output folder, behavior
+        include things like minian output minian_folder, behavior
         tracking csvs, timestamps, etc. The files found
         are defined by the pattern dict in the function
         make_pattern_dict().
@@ -114,7 +114,7 @@ class Session_Metadata:
         :parameters
         ---
         session_folder: str
-            Full path to the folder you want to extract
+            Full path to the minian_folder you want to extract
             metadata from.
 
         overwrite: bool
@@ -122,7 +122,7 @@ class Session_Metadata:
             metadata csv.
 
         """
-        # If folder is not specified, open a dialog box.
+        # If minian_folder is not specified, open a dialog box.
         if session_folder is None:
             self.session_folder = filedialog.askdirectory()
         else:
@@ -183,7 +183,7 @@ class Metadata_CSV:
     ):
         """
         Makes a CSV file containing the metadata of all the sessions
-        for a particular project. This includes session folder
+        for a particular project. This includes session minian_folder
         locations as well as individual files within those folders.
         For example, ezTrack outputs or timestamps.dat.
 

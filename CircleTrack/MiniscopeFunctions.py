@@ -2,7 +2,7 @@ from CircleTrack.BehaviorFunctions import BehaviorSession, spiral_plot
 import matplotlib.pyplot as plt
 import numpy as np
 from CaImaging.util import sync_data, nan_array
-from CaImaging.Miniscope import threshold_S
+from CaImaging.Miniscope import get_transient_timestamps
 from util import Session_Metadata
 from CircleTrack.BehaviorFunctions import linearize_trajectory
 from CaImaging.util import ScrollPlot
@@ -13,6 +13,7 @@ import holoviews as hv
 import os
 import pickle as pkl
 from CaImaging.Assemblies import find_assemblies
+from CircleTrack.utils import sync
 
 hv.extension("bokeh")
 from bokeh.plotting import show
@@ -29,7 +30,7 @@ class CalciumSession:
         S_std_thresh=1,
         circle_radius=38.1,
         velocity_threshold=10,
-        overwrite_synced_data=False,
+        overwrite_synced_data=True,
         overwrite_placefields=False,
         overwrite_placefield_trials=False,
         overwrite_assemblies=False,
@@ -39,17 +40,18 @@ class CalciumSession:
 
         :parameter
         session_folder: str
-            Session folder.
+            Session minian_folder.
         """
         # Get the behavioral data.
         self.meta = {
-            "folder": session_folder,
+            "minian_folder": session_folder,
             "spatial_bin_size": spatial_bin_size_radians,
             "S_std_thresh": S_std_thresh,
             "velocity_threshold": velocity_threshold,
         }
 
-        fpath = os.path.join(self.meta["folder"], "SyncedData.pkl")
+        # Get the synced behavior and calcium imaging data.
+        fpath = os.path.join(self.meta["minian_folder"], "SyncedData.pkl")
         try:
             if overwrite_synced_data:
                 print(f"Overwriting {fpath}.")
@@ -66,8 +68,8 @@ class CalciumSession:
             timestamp_paths = self.behavior.meta["paths"]["timestamps"]
 
             # Combine behavioral and calcium imaging data.
-            self.behavior.data["df"], self.imaging, _ = sync_data(
-                self.behavior.data["df"], self.meta["minian_path"], timestamp_paths
+            self.behavior.data["df"], self.imaging, self.meta["frame_numbers"] = sync(
+                self.meta["minian_path"], self.behavior.data["df"], timestamp_paths
             )
 
             # Redo trial counting to account in case some frames got cut
@@ -77,7 +79,11 @@ class CalciumSession:
             with open(fpath, "wb") as file:
                 pkl.dump((self.behavior, self.imaging), file)
 
-        self.imaging["S_binary"] = threshold_S(self.imaging["S"], S_std_thresh)
+        (
+            self.imaging["spike_times"],
+            self.imaging["spike_mags"],
+            self.imaging["S_binary"],
+        ) = get_transient_timestamps(self.imaging["S"], thresh_type="eps")
 
         # Get number of neurons.
         self.imaging["n_neurons"] = self.imaging["C"].shape[0]
@@ -146,7 +152,7 @@ class CalciumSession:
                     file,
                 )
 
-        fpath = os.path.join(session_folder, 'Assemblies.pkl')
+        fpath = os.path.join(session_folder, "Assemblies.pkl")
         try:
             if overwrite_assemblies:
                 print(f"Overwriting {fpath}")
@@ -155,9 +161,11 @@ class CalciumSession:
                 self.assemblies = pkl.load(file)
 
         except:
-            self.assemblies = find_assemblies(self.imaging['S'], nullhyp ='circ', plot=False)
+            self.assemblies = find_assemblies(
+                self.imaging["S"], nullhyp="circ", plot=False
+            )
 
-            with open(fpath, 'wb') as file:
+            with open(fpath, "wb") as file:
                 pkl.dump(self.assemblies, file)
 
     def plot_spiral_spikes(self, first_neuron=0):
@@ -342,7 +350,9 @@ class CalciumSession:
 
 
 if __name__ == "__main__":
-    folder = r"Z:\Will\Drift\Data\Encedalus_Scope14\10_13_2020_CircleTrackGoals2\16_55_09"
+    folder = (
+        r"Z:\Will\Drift\Data\Encedalus_Scope14\10_13_2020_CircleTrackGoals2\16_55_09"
+    )
     S = CalciumSession(folder)
     pvals = S.spatial["placefield_class"].data["spatial_info_pvals"]
     S.scrollplot_rasters(neurons=np.where(np.asarray(pvals) < 0.01)[0], binary=True)
