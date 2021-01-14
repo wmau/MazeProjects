@@ -17,12 +17,13 @@ from CircleTrack.SessionCollation import MultiAnimal
 from CaImaging.CellReg import rearrange_neurons, trim_map, scrollplot_footprints
 from sklearn.naive_bayes import MultinomialNB, BernoulliNB
 from sklearn.linear_model import LinearRegression
-from CaImaging.Assemblies import lapsed_activation, plot_assemblies
+from CaImaging.Assemblies import lapsed_activation, plot_assemblies, membership_sort
 from scipy.stats import circmean
 import numpy as np
 from scipy.stats import mode
 import os
 from CircleTrack.plotting import plot_daily_rasters
+from CaImaging.Assemblies import preprocess_multiple_sessions, lapsed_activation
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -102,7 +103,6 @@ class BatchFullAnalyses:
             self.data[mouse]["CellReg"].path, session_list, neurons_from_session1
         )
 
-
     def map_placefields(self, mouse, session_types, neurons_from_session1=None):
         # Get neurons and cell registration mappings.
         trimmed_map, global_idx = self.get_cellreg_mappings(
@@ -154,7 +154,6 @@ class BatchFullAnalyses:
 
             ax.plot(median_r[i], 'o-')
 
-
     def correlate_stability_to_reversal(
         self,
         corr_sessions=("CircleTrackGoals1", "CircleTrackGoals2"),
@@ -172,8 +171,35 @@ class BatchFullAnalyses:
 
         fig, ax = plt.subplots()
         ax.scatter(median_r, criterion)
+        ax.set_xlabel('Median place field correlation Goals1 vs Goals 2 [r]')
+        ax.set_ylabel('Trials to criterion Reversal1')
 
         return median_r, criterion
+
+    def get_placefield_distribution_comparisons(self,
+                                                session_pair1=('CircleTrackGoals1', 'CircleTrackGoals2'),
+                                                session_pair2=('CircleTrackGoals2', 'CircleTrackReversal1')):
+        r = {'pair1': [],
+             'pair2': [],
+             }
+        for mouse in self.meta['mice']:
+            for key, pair in zip(['pair1', 'pair2'], [session_pair1, session_pair2]):
+                r[key].append(self.correlate_fields(mouse, pair, show_histogram=False)['r'])
+
+        grid = RectangularStrategy.get_grid_arrangement(len(self.meta['mice']))
+        fig, axs = plt.subplots(
+            max(grid), len(grid)
+        )
+
+        for i, (ax, mouse) in enumerate(zip(axs.flatten(), self.meta['mice'])):
+            pair1 = r['pair1'][i]
+            pair1 = np.asarray(pair1)[~np.isnan(pair1)]
+
+            pair2 = r['pair2'][i]
+            pair2 = np.asarray(pair2)[~np.isnan(pair2)]
+            ax.boxplot([pair1, pair2])
+            ax.set_title(mouse)
+
 
     def plot_rasters_by_day(
         self, mouse, session_types, neurons_from_session1=None, mode="scroll"
@@ -476,6 +502,15 @@ class BatchFullAnalyses:
 
         return trimmed_map, global_idx, session_list
 
+    def get_lapsed_assembly_activation(self, mouse, session_types):
+        S_list = self.rearrange_neurons(mouse, session_types, 'S')
+        data = preprocess_multiple_sessions(S_list, smooth_factor=5,
+                                            use_bool=True,
+                                            z_method='global')
+
+        lapsed_assemblies = lapsed_activation(data['processed'])
+
+        return lapsed_assemblies
 
     def plot_lapsed_assemblies(self, mouse, session_types):
         lapsed_assemblies = self.get_lapsed_assembly_activation(mouse, session_types)
@@ -857,7 +892,8 @@ class BatchBehaviorAnalyses:
 
             start_patch = mpatches.Patch(color="g", label="Start of learning")
             inflection_patch = mpatches.Patch(color="y", label="Inflection point")
-            axs.flatten()[-1].legend(handles=[start_patch, inflection_patch])
+            criterion_patch = mpatches.Patch(color='b', label='Criterion')
+            axs.flatten()[-1].legend(handles=[start_patch, inflection_patch, criterion_patch])
         pass
 
     def count_trials(self):
@@ -1145,9 +1181,9 @@ if __name__ == "__main__":
         # "Alcor_Scope20",
         # "Castor_Scope05",
         # "Draco_Scope02",
-         "Encedalus_Scope14",
-         "Fornax",
-         "Hydra",
+         #"Encedalus_Scope14",
+         #"Fornax",
+         #"Hydra",
          "Io",
         # "M1",
         # "M2",
@@ -1161,8 +1197,8 @@ if __name__ == "__main__":
     # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
 
     B = BatchFullAnalyses(mice)
-    B.plot_registered_cells(
-        "Encedalus_Scope14", ["CircleTrackGoals1", "CircleTrackGoals2"]
+    B.plot_rasters_by_day(
+        "Io", ["CircleTrackGoals1", "CircleTrackGoals2", 'CircleTrackReversal1', 'CircleTrackReversal2']
     )
     B.plot_rasters_by_day(
         "Io",
