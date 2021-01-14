@@ -23,6 +23,8 @@ def plot_assembly(pattern, activation, spike_times, sort_spike_times=True, ax=No
     activation_ax.plot(activation)
     spikes_ax.eventplot(sorted_spike_times, color='k')
 
+    return activation_ax, spikes_ax
+
 def write_assembly_triggered_movie(activation, frame_numbers, behavior_movie,
                                    fpath=None, threshold=2.58):
     z_activation = zscore(activation)
@@ -55,3 +57,4 @@ def write_assembly_triggered_movie(activation, frame_numbers, behavior_movie,
 
     writeFile.release()
     cap.release()
+

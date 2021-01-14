@@ -12,9 +12,9 @@ from CaImaging.Behavior import spatial_bin
 import holoviews as hv
 import os
 import pickle as pkl
-from CaImaging.Assemblies import find_assemblies, preprocess_multiple_sessions
+from CaImaging.Assemblies import find_assemblies, preprocess_multiple_sessions, membership_sort, plot_assemblies
 from CircleTrack.utils import sync
-from CircleTrack.Assemblies import write_assembly_triggered_movie
+from CircleTrack.Assemblies import write_assembly_triggered_movie, plot_assembly
 
 hv.extension("bokeh")
 from bokeh.plotting import show
@@ -31,10 +31,10 @@ class CalciumSession:
         S_std_thresh=1,
         circle_radius=38.1,
         velocity_threshold=10,
-        overwrite_synced_data=True,
-        overwrite_placefields=True,
-        overwrite_placefield_trials=True,
-        overwrite_assemblies=True,
+        overwrite_synced_data=False,
+        overwrite_placefields=False,
+        overwrite_placefield_trials=False,
+        overwrite_assemblies=False,
     ):
         """
         Single session analyses and plots for miniscope data.
@@ -366,9 +366,25 @@ class CalciumSession:
         fpath = os.path.join(self.meta['folder'], f'Assembly #{assembly_number}.avi')
         write_assembly_triggered_movie(assembly_activations, behavior_frame_numbers, movie_fname, fpath=fpath, threshold=threshold)
 
+    def plot_assembly(self, assembly_number):
+        pattern = self.assemblies['patterns'][assembly_number]
+        activation = self.assemblies['activations'][assembly_number]
+        spike_times = self.imaging['spike_times']
+
+        activation_ax, spikes_ax = plot_assembly(pattern, activation, spike_times)
+
+        return activation_ax, spikes_ax
+
+    def plot_all_assemblies(self):
+        sorted_spiking, sorted_colors = membership_sort(
+            self.assemblies['patterns'],
+            self.imaging['spike_times'])
+        plot_assemblies(self.assemblies['activations'],
+                        sorted_spiking, colors=sorted_colors)
+
 if __name__ == "__main__":
     folder = (
-        r'Z:\Will\Drift\Data\Castor_Scope05\09_08_2020_CircleTrackGoals1\17_38_17'
+        r'Z:\Will\Drift\Data\Encedalus_Scope14\10_14_2020_CircleTrackReversal1\14_00_11'
     )
     S = CalciumSession(folder, overwrite_placefield_trials=True)
     pvals = S.spatial["placefield_class"].data["spatial_info_pvals"]

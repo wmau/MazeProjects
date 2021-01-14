@@ -52,7 +52,7 @@ def plot_daily_rasters(ScrollObj):
     tuning_curves = ScrollObj.tuning_curves
 
     for day, (raster, tuning_curve) in enumerate(zip(rasters, tuning_curves)):
-        axs[day, 0].imshow(raster[ScrollObj.current_position])
+        axs[day, 0].imshow(raster[ScrollObj.current_position], cmap='gray', aspect='auto')
         axs[day, 1].plot(tuning_curve[ScrollObj.current_position])
 
     ScrollObj.last_position = rasters[0].shape[0]
