@@ -477,6 +477,14 @@ class BatchFullAnalyses:
         return trimmed_map, global_idx, session_list
 
 
+    def plot_lapsed_assemblies(self, mouse, session_types):
+        lapsed_assemblies = self.get_lapsed_assembly_activation(mouse, session_types)
+        spiking = self.rearrange_neurons(mouse, session_types, 'spike_times')
+
+        #sorted_spiking, sorted_colors = membership_sort(lapsed_assemblies['patterns'][0], spiking)
+        #plot_assemblies(lapsed_assemblies['activations'], )
+
+
 class BatchBehaviorAnalyses:
     def __init__(self, mice, project_folder=r"Z:\Will\Drift\Data"):
         """
