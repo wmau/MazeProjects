@@ -20,10 +20,11 @@ from sklearn.linear_model import LinearRegression
 from CaImaging.Assemblies import lapsed_activation, plot_assemblies, membership_sort
 from scipy.stats import circmean
 import numpy as np
-from scipy.stats import mode
+from scipy.stats import mode, zscore
 import os
-from CircleTrack.plotting import plot_daily_rasters
+from CircleTrack.plotting import plot_daily_rasters, plot_spiral
 from CaImaging.Assemblies import preprocess_multiple_sessions, lapsed_activation
+from CircleTrack.Assemblies import plot_assembly
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -61,7 +62,7 @@ class BatchFullAnalyses:
         #
         #     rearranged = rearrange_neurons(cell_map, S_list)
 
-    def rearrange_neurons(self, mouse, session_types, data_type):
+    def rearrange_neurons(self, mouse, session_types, data_type, detected='everyday'):
         """
         Rearrange neural activity matrix to have the same neuron in
         each row.
@@ -81,7 +82,7 @@ class BatchFullAnalyses:
         """
         sessions = self.data[mouse]
         trimmed_map = self.get_cellreg_mappings(
-            mouse, session_types, detected="everyday", neurons_from_session1=None
+            mouse, session_types, detected=detected, neurons_from_session1=None
         )[0]
 
         # Get calcium activity from each session for this mouse.
@@ -143,16 +144,20 @@ class BatchFullAnalyses:
         return corrs
 
     def plot_goals_vs_reversal_stability(self):
-        goals = ('CircleTrackGoals1', 'CircleTrackGoals2')
-        reversal = ('CircleTrackGoals2', 'CircleTrackReversal1')
+        goals = ("CircleTrackGoals1", "CircleTrackGoals2")
+        reversal = ("CircleTrackGoals2", "CircleTrackReversal1")
 
-        median_r = np.zeros((len(self.meta['mice']), 2))
+        median_r = np.zeros((len(self.meta["mice"]), 2))
         fig, ax = plt.subplots()
-        for i, mouse in enumerate(self.meta['mice']):
-            median_r[i, 0] = np.nanmedian(self.correlate_fields(mouse, goals, show_histogram=False)['r'])
-            median_r[i, 1] = np.nanmedian(self.correlate_fields(mouse, reversal, show_histogram=False)['r'])
+        for i, mouse in enumerate(self.meta["mice"]):
+            median_r[i, 0] = np.nanmedian(
+                self.correlate_fields(mouse, goals, show_histogram=False)["r"]
+            )
+            median_r[i, 1] = np.nanmedian(
+                self.correlate_fields(mouse, reversal, show_histogram=False)["r"]
+            )
 
-            ax.plot(median_r[i], 'o-')
+            ax.plot(median_r[i], "o-")
 
     def correlate_stability_to_reversal(
         self,
@@ -165,43 +170,43 @@ class BatchFullAnalyses:
             corrs = self.correlate_fields(mouse, corr_sessions, show_histogram=False)
             median_r.append(np.nanmedian(corrs["r"]))
             behavior = self.data[mouse][criterion_session].behavior
-            criterion.append(
-                behavior.data["learning"]["criterion"]
-            )
+            criterion.append(behavior.data["learning"]["criterion"])
 
         fig, ax = plt.subplots()
         ax.scatter(median_r, criterion)
-        ax.set_xlabel('Median place field correlation Goals1 vs Goals 2 [r]')
-        ax.set_ylabel('Trials to criterion Reversal1')
+        ax.set_xlabel("Median place field correlation Goals1 vs Goals 2 [r]")
+        ax.set_ylabel("Trials to criterion Reversal1")
 
         return median_r, criterion
 
-    def get_placefield_distribution_comparisons(self,
-                                                session_pair1=('CircleTrackGoals1', 'CircleTrackGoals2'),
-                                                session_pair2=('CircleTrackGoals2', 'CircleTrackReversal1')):
-        r = {'pair1': [],
-             'pair2': [],
-             }
-        for mouse in self.meta['mice']:
-            for key, pair in zip(['pair1', 'pair2'], [session_pair1, session_pair2]):
-                r[key].append(self.correlate_fields(mouse, pair, show_histogram=False)['r'])
+    def get_placefield_distribution_comparisons(
+        self,
+        session_pair1=("CircleTrackGoals1", "CircleTrackGoals2"),
+        session_pair2=("CircleTrackGoals2", "CircleTrackReversal1"),
+    ):
+        r = {
+            "pair1": [],
+            "pair2": [],
+        }
+        for mouse in self.meta["mice"]:
+            for key, pair in zip(["pair1", "pair2"], [session_pair1, session_pair2]):
+                r[key].append(
+                    self.correlate_fields(mouse, pair, show_histogram=False)["r"]
+                )
 
-        grid = SquareStrategy.get_grid_arrangement(len(self.meta['mice']))
-        fig, axs = plt.subplots(
-            max(grid), len(grid)
-        )
+        grid = SquareStrategy.get_grid_arrangement(len(self.meta["mice"]))
+        fig, axs = plt.subplots(max(grid), len(grid))
 
-        for i, (ax, mouse) in enumerate(zip(axs.flatten(), self.meta['mice'])):
-            pair1 = r['pair1'][i]
+        for i, (ax, mouse) in enumerate(zip(axs.flatten(), self.meta["mice"])):
+            pair1 = r["pair1"][i]
             pair1 = np.asarray(pair1)[~np.isnan(pair1)]
 
-            pair2 = r['pair2'][i]
+            pair2 = r["pair2"][i]
             pair2 = np.asarray(pair2)[~np.isnan(pair2)]
             ax.boxplot([pair1, pair2])
             ax.set_title(mouse)
 
         return r
-
 
     def plot_rasters_by_day(
         self, mouse, session_types, neurons_from_session1=None, mode="scroll"
@@ -246,7 +251,11 @@ class BatchFullAnalyses:
                     > 0
                 )
 
-                placefields.append(sessions[session_type].spatial.data["placefields"][neurons_to_analyze])
+                placefields.append(
+                    sessions[session_type].spatial.data["placefields"][
+                        neurons_to_analyze
+                    ]
+                )
             else:
                 raise ValueError("mode must be holoviews, png, or scroll")
             daily_rasters.append(rasters)
@@ -314,9 +323,7 @@ class BatchFullAnalyses:
             Flag for showing plots.
         """
         # Get sessions and neural activity.
-        sessions = [
-            self.data[mouse][session] for session in training_and_test_sessions
-        ]
+        sessions = [self.data[mouse][session] for session in training_and_test_sessions]
         S_list = self.rearrange_neurons(
             mouse, training_and_test_sessions, data_type="S_binary"
         )
@@ -360,40 +367,49 @@ class BatchFullAnalyses:
         # plt.plot(y_real, alpha=0.2)
         # plt.plot(y_predicted, alpha=0.2)
 
-    def plot_reversal_decoding_error(self,
-                                     mouse,
-                                     classifier=BernoulliNB(),
-                                     decoder_time_bin_size=1,
-                                     n_spatial_bins=36,
-                                     error_time_bin_size=300):
-        goals_to_goals_decoding_error = self.find_decoding_error(mouse,
-                                                                 ('CircleTrackGoals1', 'CircleTrackGoals2'),
-                                                                 classifier=classifier,
-                                                                 decoder_time_bin_size=decoder_time_bin_size,
-                                                                 n_spatial_bins=n_spatial_bins,
-                                                                 error_time_bin_size=error_time_bin_size,
-                                                                 show_plot=False)
+    def plot_reversal_decoding_error(
+        self,
+        mouse,
+        classifier=BernoulliNB(),
+        decoder_time_bin_size=1,
+        n_spatial_bins=36,
+        error_time_bin_size=300,
+    ):
+        goals_to_goals_decoding_error = self.find_decoding_error(
+            mouse,
+            ("CircleTrackGoals1", "CircleTrackGoals2"),
+            classifier=classifier,
+            decoder_time_bin_size=decoder_time_bin_size,
+            n_spatial_bins=n_spatial_bins,
+            error_time_bin_size=error_time_bin_size,
+            show_plot=False,
+        )
 
-        goals_to_reversal_decoding_error = self.find_decoding_error(mouse,
-                                                                    ('CircleTrackGoals2', 'CircleTrackReversal1'),
-                                                                    classifier=classifier,
-                                                                    decoder_time_bin_size=decoder_time_bin_size,
-                                                                    n_spatial_bins=n_spatial_bins,
-                                                                    error_time_bin_size=error_time_bin_size,
-                                                                    show_plot=False)
-
+        goals_to_reversal_decoding_error = self.find_decoding_error(
+            mouse,
+            ("CircleTrackGoals2", "CircleTrackReversal1"),
+            classifier=classifier,
+            decoder_time_bin_size=decoder_time_bin_size,
+            n_spatial_bins=n_spatial_bins,
+            error_time_bin_size=error_time_bin_size,
+            show_plot=False,
+        )
 
         time_bins_goals = range(len(goals_to_goals_decoding_error))
-        time_bins_reversal = np.arange(len(goals_to_reversal_decoding_error)) + time_bins_goals[-1] + 1
+        time_bins_reversal = (
+            np.arange(len(goals_to_reversal_decoding_error)) + time_bins_goals[-1] + 1
+        )
 
         fig, ax = plt.subplots()
-        for errors, x in zip([goals_to_goals_decoding_error, goals_to_reversal_decoding_error],
-                             [time_bins_goals, time_bins_reversal]):
+        for errors, x in zip(
+            [goals_to_goals_decoding_error, goals_to_reversal_decoding_error],
+            [time_bins_goals, time_bins_reversal],
+        ):
             means = [np.mean(error) for error in errors]
             sems = [np.std(error) / np.sqrt(error.shape[0]) for error in errors]
             ax.errorbar(x, means, yerr=sems)
-        ax.set_ylabel('Decoding error [spatial bins]')
-        ax.set_xlabel('Time bins')
+        ax.set_ylabel("Decoding error [spatial bins]")
+        ax.set_xlabel("Time bins")
 
     def find_decoding_error(
         self,
@@ -535,23 +551,48 @@ class BatchFullAnalyses:
 
         return trimmed_map, global_idx, session_list
 
-    def get_lapsed_assembly_activation(self, mouse, session_types):
-        S_list = self.rearrange_neurons(mouse, session_types, 'S')
-        data = preprocess_multiple_sessions(S_list, smooth_factor=5,
-                                            use_bool=True,
-                                            z_method='global')
+    def get_lapsed_assembly_activation(
+        self, mouse, session_types, smooth_factor=5, use_bool=True, z_method="global", detected='everyday'
+    ):
+        S_list = self.rearrange_neurons(mouse, session_types, "S")
+        data = preprocess_multiple_sessions(
+            S_list, smooth_factor=smooth_factor, use_bool=use_bool, z_method=z_method
+        )
 
-        lapsed_assemblies = lapsed_activation(data['processed'])
+        lapsed_assemblies = lapsed_activation(data["processed"])
 
         return lapsed_assemblies
 
     def plot_lapsed_assemblies(self, mouse, session_types):
         lapsed_assemblies = self.get_lapsed_assembly_activation(mouse, session_types)
-        spiking = self.rearrange_neurons(mouse, session_types, 'spike_times')
+        spiking = self.rearrange_neurons(mouse, session_types, "spike_times")
 
-        #sorted_spiking, sorted_colors = membership_sort(lapsed_assemblies['patterns'][0], spiking)
-        #plot_assemblies(lapsed_assemblies['activations'], )
+        n_sessions = len(lapsed_assemblies['activations'])
+        for i, pattern in enumerate(lapsed_assemblies['patterns']):
+            fig, axs = plt.subplots(n_sessions, 1)
+            for ax, activation, spike_times in zip(axs,
+                                                   lapsed_assemblies[
+                                                       'activations'],
+                                                   spiking):
+                plot_assembly(pattern, activation[i], spike_times, ax=ax)
 
+        return lapsed_assemblies, spiking
+
+    def spiral_scrollplot_assemblies(self, mouse, session_type, threshold=2.58):
+        session = self.data[mouse][session_type]
+        assemblies = session.assemblies
+        behavior_df = session.behavior.data['df']
+
+        z_activation = zscore(assemblies['activations'], axis=1)
+        above_threshold = z_activation > threshold
+
+        ScrollPlot(plot_spiral,
+                   t=behavior_df['t'],
+                   lin_position=behavior_df['lin_position'],
+                   markers=above_threshold,
+                   marker_legend='Assembly activation',
+                   subplot_kw={'projection': 'polar'}
+                   )
 
 class BatchBehaviorAnalyses:
     def __init__(self, mice, project_folder=r"Z:\Will\Drift\Data"):
@@ -925,8 +966,10 @@ class BatchBehaviorAnalyses:
 
             start_patch = mpatches.Patch(color="g", label="Start of learning")
             inflection_patch = mpatches.Patch(color="y", label="Inflection point")
-            criterion_patch = mpatches.Patch(color='b', label='Criterion')
-            axs.flatten()[-1].legend(handles=[start_patch, inflection_patch, criterion_patch])
+            criterion_patch = mpatches.Patch(color="b", label="Criterion")
+            axs.flatten()[-1].legend(
+                handles=[start_patch, inflection_patch, criterion_patch]
+            )
         pass
 
     def count_trials(self):
@@ -1212,12 +1255,12 @@ if __name__ == "__main__":
     mice = [
         # "Betelgeuse_Scope25",
         # "Alcor_Scope20",
-         "Castor_Scope05",
+        "Castor_Scope05",
         # "Draco_Scope02",
-         #"Encedalus_Scope14",
-         #"Fornax",
-         #"Hydra",
-         #"Io",
+        # "Encedalus_Scope14",
+        # "Fornax",
+        # "Hydra",
+        # "Io",
         # "M1",
         # "M2",
         # "M3",
@@ -1230,24 +1273,6 @@ if __name__ == "__main__":
     # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
 
     B = BatchFullAnalyses(mice)
-    B.plot_reversal_decoding_error('Castor_Scope05')
-    B.plot_rasters_by_day(
-        "Io", ["CircleTrackGoals1", "CircleTrackGoals2", 'CircleTrackReversal1', 'CircleTrackReversal2']
-    )
-    B.plot_rasters_by_day(
-        "Io",
-        [
-            "CircleTrackGoals1",
-            "CircleTrackGoals2",
-            "CircleTrackReversal1",
-            "CircleTrackReversal2",
-        ],
-    )
-    # corr_matrices = []
-    # for mouse in mice[2:5]:
-    #     for session in B.session_types[2:]:
-    #         corr_matrices.append(B.data[mouse][session].correlate_spatial_PVs_by_trial())
-    # pass
-    B.decode_place(
-        "Io", "CircleTrackGoals2", "CircleTrackReversal1", classifier=MultinomialNB()
-    )
+    lapsed_assemblies, spiking = B.plot_lapsed_assemblies('Castor_Scope05', ('CircleTrackGoals2','CircleTrackReversal1'))
+
+    pass
