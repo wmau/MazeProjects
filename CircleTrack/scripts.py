@@ -9,7 +9,7 @@ from CaImaging.util import (
     make_bins,
     ScrollPlot,
 )
-from grid_strategy.strategies import RectangularStrategy
+from grid_strategy.strategies import RectangularStrategy, SquareStrategy
 from scipy.stats import wilcoxon, spearmanr
 from statsmodels.stats.multitest import multipletests
 import matplotlib.patches as mpatches
@@ -166,7 +166,7 @@ class BatchFullAnalyses:
             median_r.append(np.nanmedian(corrs["r"]))
             behavior = self.data[mouse][criterion_session].behavior
             criterion.append(
-                behavior.data["learning"]["criterion"] / behavior.data["ntrials"]
+                behavior.data["learning"]["criterion"]
             )
 
         fig, ax = plt.subplots()
@@ -186,7 +186,7 @@ class BatchFullAnalyses:
             for key, pair in zip(['pair1', 'pair2'], [session_pair1, session_pair2]):
                 r[key].append(self.correlate_fields(mouse, pair, show_histogram=False)['r'])
 
-        grid = RectangularStrategy.get_grid_arrangement(len(self.meta['mice']))
+        grid = SquareStrategy.get_grid_arrangement(len(self.meta['mice']))
         fig, axs = plt.subplots(
             max(grid), len(grid)
         )
@@ -199,6 +199,8 @@ class BatchFullAnalyses:
             pair2 = np.asarray(pair2)[~np.isnan(pair2)]
             ax.boxplot([pair1, pair2])
             ax.set_title(mouse)
+
+        return r
 
 
     def plot_rasters_by_day(
@@ -280,8 +282,7 @@ class BatchFullAnalyses:
     def decode_place(
         self,
         mouse,
-        training_session,
-        test_session,
+        training_and_test_sessions,
         classifier=BernoulliNB(),
         time_bin_size=1,
         n_spatial_bins=36,
@@ -314,10 +315,10 @@ class BatchFullAnalyses:
         """
         # Get sessions and neural activity.
         sessions = [
-            self.data[mouse][session] for session in [training_session, test_session]
+            self.data[mouse][session] for session in training_and_test_sessions
         ]
         S_list = self.rearrange_neurons(
-            mouse, [training_session, test_session], data_type="S_binary"
+            mouse, training_and_test_sessions, data_type="S_binary"
         )
         fps = 15
 
@@ -358,13 +359,46 @@ class BatchFullAnalyses:
 
         # plt.plot(y_real, alpha=0.2)
         # plt.plot(y_predicted, alpha=0.2)
-        pass
+
+    def plot_reversal_decoding_error(self,
+                                     mouse,
+                                     classifier=BernoulliNB(),
+                                     decoder_time_bin_size=1,
+                                     n_spatial_bins=36,
+                                     error_time_bin_size=300):
+        goals_to_goals_decoding_error = self.find_decoding_error(mouse,
+                                                                 ('CircleTrackGoals1', 'CircleTrackGoals2'),
+                                                                 classifier=classifier,
+                                                                 decoder_time_bin_size=decoder_time_bin_size,
+                                                                 n_spatial_bins=n_spatial_bins,
+                                                                 error_time_bin_size=error_time_bin_size,
+                                                                 show_plot=False)
+
+        goals_to_reversal_decoding_error = self.find_decoding_error(mouse,
+                                                                    ('CircleTrackGoals2', 'CircleTrackReversal1'),
+                                                                    classifier=classifier,
+                                                                    decoder_time_bin_size=decoder_time_bin_size,
+                                                                    n_spatial_bins=n_spatial_bins,
+                                                                    error_time_bin_size=error_time_bin_size,
+                                                                    show_plot=False)
+
+
+        time_bins_goals = range(len(goals_to_goals_decoding_error))
+        time_bins_reversal = np.arange(len(goals_to_reversal_decoding_error)) + time_bins_goals[-1] + 1
+
+        fig, ax = plt.subplots()
+        for errors, x in zip([goals_to_goals_decoding_error, goals_to_reversal_decoding_error],
+                             [time_bins_goals, time_bins_reversal]):
+            means = [np.mean(error) for error in errors]
+            sems = [np.std(error) / np.sqrt(error.shape[0]) for error in errors]
+            ax.errorbar(x, means, yerr=sems)
+        ax.set_ylabel('Decoding error [spatial bins]')
+        ax.set_xlabel('Time bins')
 
     def find_decoding_error(
         self,
         mouse,
-        training_session,
-        test_session,
+        training_and_test_sessions,
         classifier=BernoulliNB(),
         decoder_time_bin_size=1,
         n_spatial_bins=36,
@@ -381,8 +415,7 @@ class BatchFullAnalyses:
         """
         y_predicted, predictor_data, outcome_data, classifier = self.decode_place(
             mouse,
-            training_session,
-            test_session,
+            training_and_test_sessions,
             classifier=classifier,
             time_bin_size=decoder_time_bin_size,
             n_spatial_bins=n_spatial_bins,
@@ -403,7 +436,7 @@ class BatchFullAnalyses:
             sem_errors = [np.std(dist) / np.sqrt(dist.shape[0]) for dist in binned_d]
             ax.errorbar(time_bins, mean_errors, yerr=sem_errors)
 
-        pass
+        return binned_d
 
     def get_circular_error(self, y_predicted, y_real, n_spatial_bins):
         """
@@ -1179,12 +1212,12 @@ if __name__ == "__main__":
     mice = [
         # "Betelgeuse_Scope25",
         # "Alcor_Scope20",
-        # "Castor_Scope05",
+         "Castor_Scope05",
         # "Draco_Scope02",
          #"Encedalus_Scope14",
          #"Fornax",
          #"Hydra",
-         "Io",
+         #"Io",
         # "M1",
         # "M2",
         # "M3",
@@ -1197,6 +1230,7 @@ if __name__ == "__main__":
     # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
 
     B = BatchFullAnalyses(mice)
+    B.plot_reversal_decoding_error('Castor_Scope05')
     B.plot_rasters_by_day(
         "Io", ["CircleTrackGoals1", "CircleTrackGoals2", 'CircleTrackReversal1', 'CircleTrackReversal2']
     )
