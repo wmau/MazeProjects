@@ -586,13 +586,18 @@ class BatchFullAnalyses:
         z_activation = zscore(assemblies['activations'], axis=1)
         above_threshold = z_activation > threshold
 
+        titles = [f'Assembly #{n}' for n in range(assemblies['significance'].nassemblies)]
         ScrollPlot(plot_spiral,
                    t=behavior_df['t'],
                    lin_position=behavior_df['lin_position'],
                    markers=above_threshold,
                    marker_legend='Assembly activation',
-                   subplot_kw={'projection': 'polar'}
+                   subplot_kw={'projection': 'polar'},
+                   lin_ports=session.behavior.data['lin_ports'],
+                   rewarded=session.behavior.data['rewarded_ports'],
+                   titles=titles,
                    )
+
 
 class BatchBehaviorAnalyses:
     def __init__(self, mice, project_folder=r"Z:\Will\Drift\Data"):
@@ -1273,6 +1278,7 @@ if __name__ == "__main__":
     # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
 
     B = BatchFullAnalyses(mice)
+    B.spiral_scrollplot_assemblies('Castor_Scope05', 'CircleTrackReversal1')
     lapsed_assemblies, spiking = B.plot_lapsed_assemblies('Castor_Scope05', ('CircleTrackGoals2','CircleTrackReversal1'))
 
     pass

@@ -4,16 +4,49 @@ from CaImaging.util import check_attrs
 
 
 def plot_spiral(ScrollObj):
-    attrs = ["t", "lin_position", "markers", "marker_legend"]
+    """
+    Scroll through rows of activation of cells/assemblies. ScrollObj should have the following fields:
+
+    t: array-like
+        Timestamps, usually from the t column of behavior_df.
+
+    lin_position: array-like, same size as t
+        Linearized position of the mouse.
+
+    markers: (n, t) boolean array-likes
+        Array that's True where a cell/assembly is active. The function will scroll through rows (n).
+
+    marker_legend: str
+        To indicate where the activations are from.
+
+    lin_ports: array-like or list
+        Linearized positions (polar coordinates) of the port locations.
+
+    rewarded: boolean array-like or list
+        To indicate whether each port was rewarded.
+
+    :param ScrollObj:
+    :return:
+    """
+    attrs = ["t", "lin_position", "markers", "marker_legend", "lin_ports", "rewarded"]
     check_attrs(ScrollObj, attrs)
 
     ax = ScrollObj.ax
     lin_position = ScrollObj.lin_position
     t = ScrollObj.t
+    lin_ports = ScrollObj.lin_ports
+    rewarded = ScrollObj.rewarded
     this_marker_set = ScrollObj.markers[ScrollObj.current_position]
+
+    colors = {True: 'g',
+              False: 'r',
+              }
 
     ax.plot(lin_position, t)
     ax.plot(lin_position[this_marker_set], t[this_marker_set], "ro", markersize=2)
+    for port, rewarded in zip(lin_ports, rewarded):
+        ax.axvline(x=port, color=colors[rewarded])
+
     ax.legend(["Trajectory", ScrollObj.marker_legend])
 
     ax.spines["polar"].set_visible(False)
@@ -22,7 +55,7 @@ def plot_spiral(ScrollObj):
     ax.set_theta_zero_location("N")
     ax.set_theta_direction(-1)
 
-    ScrollObj.last_position = len(ScrollObj.markers)
+    ScrollObj.last_position = ScrollObj.markers.shape[0] - 1
 
 
 def plot_raster(ScrollObj):
@@ -55,4 +88,4 @@ def plot_daily_rasters(ScrollObj):
         axs[day, 0].imshow(raster[ScrollObj.current_position], cmap='gray', aspect='auto')
         axs[day, 1].plot(tuning_curve[ScrollObj.current_position])
 
-    ScrollObj.last_position = rasters[0].shape[0]
+    ScrollObj.last_position = rasters[0].shape[0] - 1
