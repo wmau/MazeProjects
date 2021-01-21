@@ -25,6 +25,7 @@ import os
 from CircleTrack.plotting import plot_daily_rasters, plot_spiral
 from CaImaging.Assemblies import preprocess_multiple_sessions, lapsed_activation
 from CircleTrack.Assemblies import plot_assembly
+from itertools import permutations
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -94,6 +95,27 @@ class BatchFullAnalyses:
         rearranged = rearrange_neurons(trimmed_map, activity_list)
 
         return rearranged
+
+    def find_percent_overlaps(self, mouse, show_plot=True):
+        n_sessions = len(self.meta['session_types'])
+        r, c = np.triu_indices(n_sessions, 1)
+        overlaps = nan_array((n_sessions, n_sessions))
+        for session_pair, row, col in zip(
+                permutations(self.meta['session_types'], 2),
+                r, c):
+            overlap_map = self.get_cellreg_mappings(mouse,
+                                                    session_pair,
+                                                    detected='first_day')[0]
+
+            n_neurons_reactivated = np.sum(overlap_map.iloc[:,1] != -9999)
+            n_neurons_first_day = len(overlap_map)
+            overlaps[row, col] = n_neurons_reactivated / n_neurons_first_day
+
+        if show_plot:
+            fig, ax = plt.subplots()
+            ax.imshow(overlaps)
+
+        return overlaps
 
     def plot_registered_cells(self, mouse, session_types, neurons_from_session1=None):
         session_list = self.get_cellreg_mappings(
@@ -554,7 +576,7 @@ class BatchFullAnalyses:
     def get_lapsed_assembly_activation(
         self, mouse, session_types, smooth_factor=5, use_bool=True, z_method="global", detected='everyday'
     ):
-        S_list = self.rearrange_neurons(mouse, session_types, "S")
+        S_list = self.rearrange_neurons(mouse, session_types, "S", detected=detected)
         data = preprocess_multiple_sessions(
             S_list, smooth_factor=smooth_factor, use_bool=use_bool, z_method=z_method
         )
@@ -597,6 +619,7 @@ class BatchFullAnalyses:
                    rewarded=session.behavior.data['rewarded_ports'],
                    titles=titles,
                    )
+
 
 
 class BatchBehaviorAnalyses:
