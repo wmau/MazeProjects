@@ -96,7 +96,7 @@ class BatchFullAnalyses:
 
         return rearranged
 
-    def find_percent_overlaps(self, mouse, show_plot=True):
+    def find_percent_overlap(self, mouse, show_plot=True):
         n_sessions = len(self.meta['session_types'])
         r, c = np.triu_indices(n_sessions, 1)
         overlaps = nan_array((n_sessions, n_sessions))

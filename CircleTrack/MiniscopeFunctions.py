@@ -74,6 +74,8 @@ class CalciumSession:
                 self.meta["paths"]["minian"], self.behavior.data["df"], timestamp_paths
             )
 
+            self.imaging['C'], self.imaging['S'] = self.nan_bad_frames()
+
             # Redo trial counting to account in case some frames got cut
             # from behavior (e.g. because a miniscope video got truncated).
             self.behavior.data["ntrials"] = max(self.behavior.data["df"]["trials"] + 1)
@@ -177,6 +179,16 @@ class CalciumSession:
 
             with open(fpath, "wb") as file:
                 pkl.dump(self.assemblies, file)
+
+    def nan_bad_frames(self):
+        miniscope_folder = self.meta['paths']['minian']
+        C = self.imaging['C']
+        S = self.imaging['S']
+        frames = self.imaging['frames']
+
+        corrected_C, corrected_S = nan_corrupted_frames(miniscope_folder, C, S, frames)
+
+        return corrected_C, corrected_S
 
     def plot_spiral_spikes(self, first_neuron=0):
         """
@@ -382,9 +394,26 @@ class CalciumSession:
         plot_assemblies(self.assemblies['activations'],
                         sorted_spiking, colors=sorted_colors)
 
+
+def nan_corrupted_frames(miniscope_folder, C, S, frames):
+    bad_frames_folder = os.path.join(miniscope_folder, 'bad_frames')
+    if os.path.exists(bad_frames_folder):
+        bad_frames = [int(os.path.splitext(fname)[0]) for fname in os.listdir(bad_frames_folder)]
+        n_frames = len(bad_frames)
+        print(f'{n_frames} bad frames found. Correcting...')
+
+        match = np.asarray([x in bad_frames for x in frames])
+        C[:, match] = np.nan
+        S[:, match] = np.nan
+    else:
+        pass
+
+    return C, S
+
+
 if __name__ == "__main__":
     folder = (
-        r'Z:\Will\Drift\Data\Encedalus_Scope14\10_14_2020_CircleTrackReversal1\14_00_11'
+        r'Z:\Will\Drift\Data\Fornax\12_06_2020_CircleTrackReversal2\15_53_56'
     )
     S = CalciumSession(folder, overwrite_placefield_trials=True)
     pvals = S.spatial["placefield_class"].data["spatial_info_pvals"]
