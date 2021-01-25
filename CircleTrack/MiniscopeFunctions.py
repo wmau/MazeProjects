@@ -246,6 +246,26 @@ class CalciumSession:
 
         return self.raster_plot
 
+
+    def spiral_scrollplot_assemblies(self, threshold=2.58):
+        assemblies = self.assemblies
+        behavior_df = self.behavior.data['df']
+
+        z_activation = zscore(assemblies['activations'], axis=1)
+        above_threshold = z_activation > threshold
+
+        titles = [f'Assembly #{n}' for n in range(assemblies['significance'].nassemblies)]
+        ScrollPlot(plot_spiral,
+                   t=behavior_df['t'],
+                   lin_position=behavior_df['lin_position'],
+                   markers=above_threshold,
+                   marker_legend='Assembly activation',
+                   subplot_kw={'projection': 'polar'},
+                   lin_ports=self.behavior.data['lin_ports'],
+                   rewarded=self.behavior.data['rewarded_ports'],
+                   titles=titles,
+                   )
+
     def spatial_activity_by_trial(self):
         """
         Plot activity trial by trial, binned in linearized space.
@@ -413,9 +433,9 @@ def nan_corrupted_frames(miniscope_folder, C, S, frames):
 
 if __name__ == "__main__":
     folder = (
-        r'Z:\Will\Drift\Data\Fornax\12_06_2020_CircleTrackReversal2\15_53_56'
+        r'Z:\Will\Drift\Data\Io\12_07_2020_CircleTrackRecall\14_27_06'
     )
-    S = CalciumSession(folder, overwrite_placefield_trials=True)
+    S = CalciumSession(folder)
     pvals = S.spatial["placefield_class"].data["spatial_info_pvals"]
     S.scrollplot_rasters(neurons=np.where(np.asarray(pvals) < 0.01)[0], binary=True)
     # S.spatial_activity_by_trial(0.1)
