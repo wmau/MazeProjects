@@ -3,12 +3,12 @@ from CircleTrack.MiniscopeFunctions import CalciumSession
 import matplotlib.pyplot as plt
 from CaImaging.util import (
     sem,
-    errorfill,
     nan_array,
     bin_transients,
     make_bins,
     ScrollPlot,
 )
+from CaImaging.plotting import errorfill
 from grid_strategy.strategies import RectangularStrategy, SquareStrategy
 from scipy.stats import wilcoxon, spearmanr
 from statsmodels.stats.multitest import multipletests
@@ -25,7 +25,7 @@ import os
 from CircleTrack.plotting import plot_daily_rasters, plot_spiral
 from CaImaging.Assemblies import preprocess_multiple_sessions, lapsed_activation
 from CircleTrack.Assemblies import plot_assembly
-from itertools import permutations
+from itertools import product
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -96,20 +96,38 @@ class BatchFullAnalyses:
 
         return rearranged
 
+    def find_all_overlaps(self, show_plot=True):
+        n_sessions = len(self.meta['session_types'])
+        overlaps = nan_array((len(self.meta['mice']), n_sessions, n_sessions))
+
+        for i, mouse in enumerate(self.meta['mice']):
+            overlaps[i] = self.find_percent_overlap(mouse, show_plot=False)
+
+        if show_plot:
+            fig, ax = plt.subplots()
+            m = np.mean(overlaps, axis=0)
+            se = sem(overlaps, axis=0)
+            x = range(n_sessions)
+            for y, yerr in zip(m, se):
+                errorfill(x, y, yerr, ax=ax)
+
+        return overlaps
+
     def find_percent_overlap(self, mouse, show_plot=True):
         n_sessions = len(self.meta['session_types'])
-        r, c = np.triu_indices(n_sessions, 1)
+        r, c = np.indices((n_sessions, n_sessions))
         overlaps = nan_array((n_sessions, n_sessions))
-        for session_pair, row, col in zip(
-                permutations(self.meta['session_types'], 2),
-                r, c):
-            overlap_map = self.get_cellreg_mappings(mouse,
-                                                    session_pair,
-                                                    detected='first_day')[0]
+        for session_pair, i, j in zip(
+                product(self.meta['session_types'], self.meta['session_types']),
+                r.flatten(), c.flatten()):
+            if i != j:
+                overlap_map = self.get_cellreg_mappings(mouse,
+                                                        session_pair,
+                                                        detected='first_day')[0]
 
-            n_neurons_reactivated = np.sum(overlap_map.iloc[:,1] != -9999)
-            n_neurons_first_day = len(overlap_map)
-            overlaps[row, col] = n_neurons_reactivated / n_neurons_first_day
+                n_neurons_reactivated = np.sum(overlap_map.iloc[:,1] != -9999)
+                n_neurons_first_day = len(overlap_map)
+                overlaps[i, j] = n_neurons_reactivated / n_neurons_first_day
 
         if show_plot:
             fig, ax = plt.subplots()
@@ -599,8 +617,6 @@ class BatchFullAnalyses:
                 plot_assembly(pattern, activation[i], spike_times, ax=ax)
 
         return lapsed_assemblies, spiking
-
-
 
 
 class BatchBehaviorAnalyses:
@@ -1267,9 +1283,9 @@ if __name__ == "__main__":
         "Castor_Scope05",
         # "Draco_Scope02",
         # "Encedalus_Scope14",
-        # "Fornax",
-        # "Hydra",
-        # "Io",
+         "Fornax",
+         "Hydra",
+         "Io",
         # "M1",
         # "M2",
         # "M3",
@@ -1282,7 +1298,8 @@ if __name__ == "__main__":
     # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
 
     B = BatchFullAnalyses(mice)
-    B.spiral_scrollplot_assemblies('Castor_Scope05', 'CircleTrackReversal1')
+    B.correlate_stability_to_reversal()
+    #B.spiral_scrollplot_assemblies('Castor_Scope05', 'CircleTrackReversal1')
     lapsed_assemblies, spiking = B.plot_lapsed_assemblies('Castor_Scope05', ('CircleTrackGoals2','CircleTrackReversal1'))
 
     pass
