@@ -88,4 +88,14 @@ def plot_daily_rasters(ScrollObj):
         axs[day, 0].imshow(raster[ScrollObj.current_position], cmap='gray', aspect='auto')
         axs[day, 1].plot(tuning_curve[ScrollObj.current_position])
 
+    ymax = []
+    ymin = []
+    for ax in axs:
+        ylims = ax[1].get_ylim()
+        ymin.append(ylims[0])
+        ymax.append(ylims[1])
+
+    for ax in axs:
+        ax[1].set_ylim([min(ymin), max(ymax)])
+
     ScrollObj.last_position = rasters[0].shape[0] - 1
