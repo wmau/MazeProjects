@@ -262,17 +262,15 @@ class BatchFullAnalyses:
                     self.correlate_fields(mouse, pair, show_histogram=False)["r"]
                 )
 
-        grid = SquareStrategy.get_grid_arrangement(len(self.meta["mice"]))
-        fig, axs = plt.subplots(max(grid), len(grid))
+        fig, ax = plt.subplots()
+        x = np.linspace(0, 1, 5)
+        ax.boxplot([np.asarray(data)[~np.isnan(data)] for data in
+                    r['pair1']], positions=x)
 
-        for i, (ax, mouse) in enumerate(zip(axs.flatten(), self.meta["mice"])):
-            pair1 = r["pair1"][i]
-            pair1 = np.asarray(pair1)[~np.isnan(pair1)]
-
-            pair2 = r["pair2"][i]
-            pair2 = np.asarray(pair2)[~np.isnan(pair2)]
-            ax.boxplot([pair1, pair2])
-            ax.set_title(mouse)
+        x = np.linspace(2, 3, 5)
+        ax.boxplot([np.asarray(data)[~np.isnan(data)] for data in
+                    r['pair2']], positions=x)
+        ax.set_ylabel('Firing field correlations [r]')
 
         return r
 
