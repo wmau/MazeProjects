@@ -68,6 +68,22 @@ class BatchFullAnalyses:
         #
         #     rearranged = rearrange_neurons(cell_map, S_list)
 
+    def count_ensembles(self):
+        n_ensembles = nan_array((len(self.meta['mice']), len(self.meta['session_types'])))
+        for i, mouse in enumerate(self.meta['mice']):
+            for j, session_type in enumerate(self.meta['session_types']):
+                session = self.data[mouse][session_type]
+                n_ensembles[i,j] = session.assemblies['significance'].nassemblies
+
+        fig, ax = plt.subplots()
+        for n, mouse in zip(n_ensembles, self.meta['mice']):
+            ax.plot(self.meta['session_labels'], n)
+            ax.annotate(mouse, (0.1, n[0] + 1))
+
+        ax.set_ylabel('# of ensembles')
+        plt.setp(ax.xaxis.get_majorticklabels(), rotation=45)
+        fig.subplots_adjust(bottom=0.2)
+
     def rearrange_neurons(self, mouse, session_types, data_type, detected='everyday'):
         """
         Rearrange neural activity matrix to have the same neuron in

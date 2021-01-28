@@ -24,7 +24,7 @@ def plot_assembly(pattern, activation, spike_times, sort_spike_times=True, ax=No
     activation_ax.set_ylabel('Activation strength [a.u.]')
     activation_ax.set_xlabel('Frame #')
     spikes_ax.eventplot(sorted_spike_times, color='k')
-    spikes_ax.set_ylabel('Neurons')
+    spikes_ax.set_ylabel('Neurons', rotation=-90)
 
     return activation_ax, spikes_ax
 
