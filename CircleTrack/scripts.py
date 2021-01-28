@@ -55,6 +55,11 @@ class BatchFullAnalyses:
             "mice": mice,
         }
 
+        self.meta["session_labels"] = [
+            session_type.replace("CircleTrack", "")
+            for session_type in self.meta["session_types"]
+        ]
+
         # for mouse in mice:
         #     S_list = [self.data[mouse][session].data['imaging']['S']
         #               for session in self.meta['session_types]]
@@ -97,6 +102,10 @@ class BatchFullAnalyses:
         return rearranged
 
     def find_all_overlaps(self, show_plot=True):
+        """
+        Wrapper function for find_percent_overlap, run this per mouse.
+
+        """
         n_sessions = len(self.meta['session_types'])
         overlaps = nan_array((len(self.meta['mice']), n_sessions, n_sessions))
 
@@ -107,16 +116,19 @@ class BatchFullAnalyses:
             fig, ax = plt.subplots()
             m = np.mean(overlaps, axis=0)
             se = sem(overlaps, axis=0)
-            x = range(n_sessions)
+            x = self.meta['session_labels']
             for y, yerr in zip(m, se):
                 errorfill(x, y, yerr, ax=ax)
 
-        return overlaps
+            ax.set_ylabel('Proportion of registered cells')
+            plt.setp(ax.get_xticklabels(), rotation=45)
+
+        return overlaps, ax
 
     def find_percent_overlap(self, mouse, show_plot=True):
         n_sessions = len(self.meta['session_types'])
         r, c = np.indices((n_sessions, n_sessions))
-        overlaps = nan_array((n_sessions, n_sessions))
+        overlaps = np.ones((n_sessions, n_sessions))
         for session_pair, i, j in zip(
                 product(self.meta['session_types'], self.meta['session_types']),
                 r.flatten(), c.flatten()):
@@ -603,9 +615,9 @@ class BatchFullAnalyses:
 
         return lapsed_assemblies
 
-    def plot_lapsed_assemblies(self, mouse, session_types):
-        lapsed_assemblies = self.get_lapsed_assembly_activation(mouse, session_types)
-        spiking = self.rearrange_neurons(mouse, session_types, "spike_times")
+    def plot_lapsed_assemblies(self, mouse, session_types, detected='everyday'):
+        lapsed_assemblies = self.get_lapsed_assembly_activation(mouse, session_types, detected=detected)
+        spiking = self.rearrange_neurons(mouse, session_types, "spike_times", detected=detected)
 
         n_sessions = len(lapsed_assemblies['activations'])
         for i, pattern in enumerate(lapsed_assemblies['patterns']):
