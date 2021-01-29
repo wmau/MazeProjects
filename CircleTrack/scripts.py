@@ -249,27 +249,22 @@ class BatchFullAnalyses:
 
     def get_placefield_distribution_comparisons(
         self,
-        session_pair1=("CircleTrackGoals1", "CircleTrackGoals2"),
-        session_pair2=("CircleTrackGoals2", "CircleTrackReversal1"),
+        session_pairs=(('CircleTrackGoals1', 'CircleTrackGoals2'),
+                       ('CircleTrackGoals2', 'CircleTrackReversal1'))
     ):
-        r = {
-            "pair1": [],
-            "pair2": [],
-        }
+        r = {key: [] for key in session_pairs}
         for mouse in self.meta["mice"]:
-            for key, pair in zip(["pair1", "pair2"], [session_pair1, session_pair2]):
+            for key, pair in zip(session_pairs, session_pairs):
                 r[key].append(
                     self.correlate_fields(mouse, pair, show_histogram=False)["r"]
                 )
 
         fig, ax = plt.subplots()
-        x = np.linspace(0, 1, 5)
-        ax.boxplot([np.asarray(data)[~np.isnan(data)] for data in
-                    r['pair1']], positions=x)
+        for i, data in enumerate(r.values()):
+            x = np.linspace(2*i, 2*i+1, len(self.meta['mice']))
+            plot_me = [np.asarray(mouse_data)[~np.isnan(mouse_data)] for mouse_data in data]
+            ax.boxplot(plot_me, positions=x)
 
-        x = np.linspace(2, 3, 5)
-        ax.boxplot([np.asarray(data)[~np.isnan(data)] for data in
-                    r['pair2']], positions=x)
         ax.set_ylabel('Firing field correlations [r]')
 
         return r
