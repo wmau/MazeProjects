@@ -433,7 +433,7 @@ def nan_corrupted_frames(miniscope_folder, C, S, frames):
 
 if __name__ == "__main__":
     folder = (
-        r'Z:\Will\Drift\Data\Io\12_07_2020_CircleTrackRecall\14_27_06'
+        r'Z:\Will\Drift\Data\Encedalus_Scope14\10_14_2020_CircleTrackReversal1\14_00_11'
     )
     S = CalciumSession(folder)
     pvals = S.spatial["placefield_class"].data["spatial_info_pvals"]

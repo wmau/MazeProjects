@@ -7,6 +7,7 @@ from CaImaging.util import (
     bin_transients,
     make_bins,
     ScrollPlot,
+    contiguous_regions,
 )
 from CaImaging.plotting import errorfill
 from grid_strategy.strategies import RectangularStrategy, SquareStrategy
@@ -26,6 +27,8 @@ from CircleTrack.plotting import plot_daily_rasters, plot_spiral
 from CaImaging.Assemblies import preprocess_multiple_sessions, lapsed_activation
 from CircleTrack.Assemblies import plot_assembly
 from itertools import product
+import xarray as xr
+import pymannkendall as mk
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -139,7 +142,9 @@ class BatchFullAnalyses:
             ax.set_ylabel('Proportion of registered cells')
             plt.setp(ax.get_xticklabels(), rotation=45)
 
-        return overlaps, ax
+            return overlaps, ax
+
+        return overlaps
 
     def find_percent_overlap(self, mouse, show_plot=True):
         n_sessions = len(self.meta['session_types'])
@@ -638,6 +643,75 @@ class BatchFullAnalyses:
                 plot_assembly(pattern, activation[i], spike_times, ax=ax)
 
         return lapsed_assemblies, spiking
+
+    def find_assembly_trends(self, mouse, session_type, x='time', z_threshold=2.58, x_bin=60):
+        assemblies = self.data[mouse][session_type].assemblies
+
+        z_activations = zscore(assemblies['activations'], axis=1)
+
+        binned_activations = []
+        if x == 'time':
+            for assembly in z_activations:
+                on_frames = contiguous_regions(assembly > z_threshold)[:,0]
+                assembly_on = np.zeros_like(assembly)
+                assembly_on[on_frames] = 1
+
+                binned_activations.append(bin_transients(assembly_on[np.newaxis], x_bin, fps=15)[0])
+
+        assembly_trends = {'no trend': [],
+                           'decreasing': [],
+                           'increasing': [],
+                           }
+        for i, assembly in enumerate(binned_activations):
+            mk_test = mk.original_test(assembly)
+            assembly_trends[mk_test.trend].append(i)
+
+        return assembly_trends
+
+    def plot_assembly_trends(self, show_plot=True):
+        session_types = self.meta['session_types']
+        session_labels = self.meta['session_labels']
+        assembly_trend_arr = np.zeros(
+            (3,
+             len(self.meta['mice']),
+             len(session_types),
+             ),
+            dtype=object
+                                         )
+        assembly_counts_arr = np.zeros_like(assembly_trend_arr)
+
+        trend_strs = ['no trend', 'decreasing', 'increasing']
+        for i, mouse in enumerate(self.meta['mice']):
+            for j, session_type in enumerate(session_types):
+                assembly_trends = self.find_assembly_trends(mouse, session_type)
+
+                for h, trend in enumerate(trend_strs):
+                    assembly_trend_arr[h, i, j] = assembly_trends[trend]
+                    assembly_counts_arr[h, i, j] = len(assembly_trends[trend])
+
+        assembly_trends = xr.DataArray(assembly_trend_arr,
+                                       dims=('trend', 'mouse', 'session'),
+                                       coords={'trend': trend_strs,
+                                               'mouse': self.meta['mice'],
+                                               'session': session_types,
+                                               })
+
+        assembly_counts = xr.DataArray(assembly_counts_arr,
+                                       dims=('trend', 'mouse', 'session'),
+                                       coords={'trend': trend_strs,
+                                               'mouse': self.meta['mice'],
+                                               'session': session_types,
+                                               })
+
+        if show_plot:
+            fig, ax = plt.subplots()
+            p_decreasing = assembly_counts.sel(trend='decreasing') / assembly_counts.sum(dim='trend')
+
+            ax.plot(session_labels, p_decreasing.T)
+            ax.set_ylabel('Proportion ensembles with decreasing activity over session')
+            plt.setp(ax.get_xticklabels(), rotation=45)
+
+        return assembly_trends, assembly_counts
 
 
 class BatchBehaviorAnalyses:
@@ -1322,5 +1396,6 @@ if __name__ == "__main__":
     B.correlate_stability_to_reversal()
     #B.spiral_scrollplot_assemblies('Castor_Scope05', 'CircleTrackReversal1')
     lapsed_assemblies, spiking = B.plot_lapsed_assemblies('Castor_Scope05', ('CircleTrackGoals2','CircleTrackReversal1'))
+
 
     pass
