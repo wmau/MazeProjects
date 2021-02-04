@@ -644,20 +644,67 @@ class BatchFullAnalyses:
 
         return lapsed_assemblies, spiking
 
-    def find_assembly_trends(self, mouse, session_type, x='time', z_threshold=2.58, x_bin=60):
-        assemblies = self.data[mouse][session_type].assemblies
+    def find_assembly_trends(self, mouse, session_type, x='time', z_threshold=2.58, x_bin_size=60):
+        """
+        Find assembly "trends", whether they are increasing/decreasing in occurrence rate over the course
+        of a session. Use the Mann Kendall test to find trends.
 
+        :parameters
+        ---
+        mouse: str
+            Mouse name.
+
+        session_type: str
+            One of self.meta['session_types'].
+
+        x: str, 'time' or 'trial'
+            Whether you want to bin assembly activations by trial # or raw time.
+
+        z_threshold: float
+            Z-score threshold at which we consider an assembly to be active.
+
+        x_bin_size: int
+            If x == 'time', bin size in seconds.
+            If x == 'trial', bin size in trials.
+
+        :return
+        ---
+        assembly_trends: dict
+            With keys 'increasing', 'decreasing' or 'no trend' containing lists of assembly indices.
+        """
+        session = self.data[mouse][session_type]
+        assemblies = session.assemblies
+
+        # z-score all assembly activations within assembly.
         z_activations = zscore(assemblies['activations'], axis=1)
 
-        binned_activations = []
+        # Binarize activations so that there are no strings of 1s spanning multiple frames.
+        binarized_activations = np.zeros_like(z_activations)
+        for i, assembly in enumerate(z_activations):
+            on_frames = contiguous_regions(assembly > z_threshold)[:,0]
+            binarized_activations[i, on_frames] = 1
+
+        # If binning by time, sum activations every few seconds or minutes.
         if x == 'time':
-            for assembly in z_activations:
-                on_frames = contiguous_regions(assembly > z_threshold)[:,0]
-                assembly_on = np.zeros_like(assembly)
-                assembly_on[on_frames] = 1
+            binned_activations = []
 
-                binned_activations.append(bin_transients(assembly_on[np.newaxis], x_bin, fps=15)[0])
+            for assembly in binarized_activations:
+                binned_activations.append(bin_transients(assembly[np.newaxis], x_bin_size, fps=15)[0])
 
+            binned_activations = np.vstack(binned_activations)
+
+        # If binning by trials, sum activations every n trials.
+        elif x == 'trial':
+            trial_bins = np.arange(0, session.behavior.data['ntrials'], x_bin_size)
+            df = session.behavior.data['df']
+
+            binned_activations = np.zeros((binarized_activations.shape[0], len(trial_bins)))
+            for i, assembly in enumerate(binarized_activations):
+                for j, (lower, upper) in enumerate(zip(trial_bins, trial_bins[1:])):
+                    in_trial = (df['trials'] >= lower) & (df['trials'] < upper)
+                    binned_activations[i, j] = np.sum(assembly[in_trial])
+
+        # Group assemblies into either increasing, decreasing, or no trend in occurrence rate.
         assembly_trends = {'no trend': [],
                            'decreasing': [],
                            'increasing': [],
@@ -666,7 +713,7 @@ class BatchFullAnalyses:
             mk_test = mk.original_test(assembly)
             assembly_trends[mk_test.trend].append(i)
 
-        return assembly_trends
+        return assembly_trends, binned_activations
 
     def plot_assembly_trends(self, show_plot=True):
         session_types = self.meta['session_types']
