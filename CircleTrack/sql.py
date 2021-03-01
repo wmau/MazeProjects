@@ -2,8 +2,71 @@ import sqlite3
 import os
 from pathlib import Path
 from datetime import datetime
+from util import search_for_folders
 
 project_directory = r'D:\Projects\CircleTrack'
+
+class Database2:
+    def __init__(self, directory=r'Z:\Will', db_name='database.sqlite'):
+        self.directory = directory
+        self.db_path = os.path.join(self.directory, db_name)
+
+        self.connection = sqlite3.connect(self.db_path)
+        self.cursor = self.connection.cursor()
+
+        # Find all folders named 'Data'. The next folders inside should be mice.
+        self.project_folders = search_for_folders(self.directory, 'Data')
+
+    def __enter__(self):
+        return self
+
+    def __del__(self):
+        self.connection.close()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.cursor.close()
+        if isinstance(exc_val, Exception):
+            self.connection.rollback()
+        else:
+            self.connection.commit()
+
+        self.connection.close()
+
+    def make_db(self):
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mouse
+            (id INTEGER PRIMARY KEY
+            name TEXT UNIQUE
+            """)
+
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS project
+            (id INTEGER PRIMARY KEY,
+            mouse_id INTEGER,
+            path TEXT UNIQUE,
+            UNIQUE(mouse_id, path))
+            """)
+
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS session
+            (id INTEGER PRIMARY KEY
+            mouse_id INTEGER,
+            datetime DATETIME,
+            path TEXT UNIQUE, 
+            UNIQUE(mouse_id, path))
+            """)
+
+    def update_db(self):
+        for project in self.project_folders:
+            mice = [f.path for f in os.scandir(project)
+                    if f.is_dir()]
+
+            pass
+
+
+
+
+
 
 class Database:
     def __init__(self, directory=project_directory, db_name='mice.sqlite',
@@ -306,7 +369,7 @@ class Database:
         return [result[0] for result in results]
 
 if __name__ == '__main__':
-    with Database() as db:
+    with Database2() as db:
         db.make_db()
         db.update_db()
         #mouse_id = db.conditional_ID_query('mouse', 'id', 'name', 'Mouse4')[0]
