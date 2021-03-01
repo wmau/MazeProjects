@@ -4,6 +4,7 @@ from pathlib import Path
 from datetime import datetime
 from util import search_for_folders
 import regex
+import numpy as np
 
 project_directory = r'D:\Projects\CircleTrack'
 
@@ -48,19 +49,27 @@ class Database2:
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS project
             (id INTEGER PRIMARY KEY,
-            mouse_id INTEGER,
-            path TEXT UNIQUE,
-            UNIQUE(mouse_id, path))
+            project_name TEXT,
+            path TEXT UNIQUE)
             """)
 
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS session
             (id INTEGER PRIMARY KEY,
             mouse_id INTEGER,
+            project_id INTEGER,
             datetime DATETIME,
             path TEXT UNIQUE,
             UNIQUE(mouse_id, path))
             """)
+
+    def populate_projects(self):
+        projects = [(i, os.path.split(os.path.split(folder)[0])[-1], folder)
+                    for i, folder in enumerate(self.project_folders)]
+
+        self.cursor.executemany('''
+            INSERT OR IGNORE INTO project (id, project_name, path)
+            VALUES (?,?,?)''', (projects))
 
     def populate_mice(self):
         for project in self.project_folders:
@@ -77,20 +86,26 @@ class Database2:
             datetime.strptime(self.extract_datetime(folder),
                               '%m_%d_%Y %H_%M_%S')
 
-        for project in self.project_folders:
+        for project_id, project in enumerate(self.project_folders):
             mouse_folders = [f.path for f in os.scandir(project)
                              if f.is_dir()]
 
-            for mouse_id, mouse_folder in enumerate(mouse_folders):
-                data = [(mouse_id + 1, format_datetime(folder), folder)
+            for mouse_folder in mouse_folders:
+                mouse_name = os.path.split(mouse_folder)[-1]
+                mouse_id = self.cursor.execute('''
+                    SELECT id
+                    FROM mouse
+                    WHERE name = ?''', (mouse_name,)).fetchone()[0]
+
+                data = [(mouse_id, project_id, format_datetime(folder), folder)
                         for folder in search_for_folders(mouse_folder,
                                                          "^H?[0-9]+_M?[0-9]+_S?[0-9]+$")
                         ]
 
                 self.cursor.executemany('''
                     INSERT OR IGNORE INTO session
-                    (mouse_id, datetime, path)
-                    VALUES (?,?,?)''', data)
+                    (mouse_id, project_id, datetime, path)
+                    VALUES (?,?,?,?)''', data)
 
         pass
 
@@ -412,6 +427,7 @@ class Database:
 if __name__ == '__main__':
     with Database2() as db:
         db.make_db()
+        db.populate_projects()
         db.populate_mice()
         db.populate_sessions()
         #mouse_id = db.conditional_ID_query('mouse', 'id', 'name', 'Mouse4')[0]
