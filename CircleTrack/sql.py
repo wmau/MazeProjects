@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from datetime import datetime
 from util import search_for_folders
+import regex
 
 project_directory = r'D:\Projects\CircleTrack'
 
@@ -16,6 +17,11 @@ class Database2:
 
         # Find all folders named 'Data'. The next folders inside should be mice.
         self.project_folders = search_for_folders(self.directory, 'Data')
+        self.path_levels = {
+            "mouse": -3,
+            "date": -2,
+            "session": -1,
+        }
 
     def __enter__(self):
         return self
@@ -35,8 +41,8 @@ class Database2:
     def make_db(self):
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS mouse
-            (id INTEGER PRIMARY KEY
-            name TEXT UNIQUE
+            (id INTEGER PRIMARY KEY,
+            name TEXT UNIQUE)
             """)
 
         self.cursor.execute("""
@@ -49,22 +55,57 @@ class Database2:
 
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS session
-            (id INTEGER PRIMARY KEY
+            (id INTEGER PRIMARY KEY,
             mouse_id INTEGER,
             datetime DATETIME,
-            path TEXT UNIQUE, 
+            path TEXT UNIQUE,
             UNIQUE(mouse_id, path))
             """)
 
-    def update_db(self):
+    def populate_mice(self):
         for project in self.project_folders:
-            mice = [f.path for f in os.scandir(project)
+            mice = [(os.path.split(f.path)[-1],)
+                    for f in os.scandir(project)
                     if f.is_dir()]
 
-            pass
+            self.cursor.executemany('''
+                INSERT OR IGNORE INTO mouse (name)
+                VALUES (?)''', (mice))
 
+    def populate_sessions(self):
+        format_datetime = lambda folder: \
+            datetime.strptime(self.extract_datetime(folder),
+                              '%m_%d_%Y %H_%M_%S')
 
+        for project in self.project_folders:
+            mouse_folders = [f.path for f in os.scandir(project)
+                             if f.is_dir()]
 
+            for mouse_id, mouse_folder in enumerate(mouse_folders):
+                data = [(mouse_id + 1, format_datetime(folder), folder)
+                        for folder in search_for_folders(mouse_folder,
+                                                         "^H?[0-9]+_M?[0-9]+_S?[0-9]+$")
+                        ]
+
+                self.cursor.executemany('''
+                    INSERT OR IGNORE INTO session
+                    (mouse_id, datetime, path)
+                    VALUES (?,?,?)''', data)
+
+        pass
+
+    def extract_datetime(self, folder):
+        timestamp_folder = os.path.split(folder)[-1]
+        ts_matches = regex.findall('[0-9]+', timestamp_folder)
+
+        date_folder = os.path.split(os.path.split(folder)[0])[-1]
+        date_matches = regex.findall('[0-9]{2,4}', date_folder)
+        date_matches.sort(key=len)
+
+        datetime_str = f'{date_matches[0]}_{date_matches[1]}_{date_matches[-1]} ' \
+                       f'{ts_matches[0]}_{ts_matches[1]}_{ts_matches[2]}'
+
+        return datetime_str
 
 
 
@@ -371,7 +412,8 @@ class Database:
 if __name__ == '__main__':
     with Database2() as db:
         db.make_db()
-        db.update_db()
+        db.populate_mice()
+        db.populate_sessions()
         #mouse_id = db.conditional_ID_query('mouse', 'id', 'name', 'Mouse4')[0]
         #i = db.conditional_ID_query('session', 'path', 'mouse_id', mouse_id)
         pass
