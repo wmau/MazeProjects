@@ -704,6 +704,9 @@ class BatchFullAnalyses:
                     in_trial = (df['trials'] >= lower) & (df['trials'] < upper)
                     binned_activations[i, j] = np.sum(assembly[in_trial])
 
+        else:
+            raise ValueError('Invalid value for x.')
+
         # Group assemblies into either increasing, decreasing, or no trend in occurrence rate.
         assembly_trends = {'no trend': [],
                            'decreasing': [],
@@ -1424,10 +1427,13 @@ if __name__ == "__main__":
         # "Alcor_Scope20",
         "Castor_Scope05",
         # "Draco_Scope02",
-        # "Encedalus_Scope14",
-         "Fornax",
-         "Hydra",
-         "Io",
+        "Encedalus_Scope14",
+        "Fornax",
+        "Hydra",
+        "Io",
+        #"Janus",
+        "Kalyke",
+        "Lyra",
         # "M1",
         # "M2",
         # "M3",

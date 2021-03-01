@@ -808,8 +808,12 @@ class Preprocess:
 
     def auto_find_outliers(self, velocity_threshold=40):
         jump_frames = np.where((self.behavior_df["distance"] > velocity_threshold))[0]
-        for frame in jump_frames:
-            self.correct_position(frame)
+        while any(jump_frames):
+            self.correct_position(jump_frames[0])
+
+            jump_frames = np.where(
+                (self.behavior_df["distance"] > velocity_threshold))[
+                0]
 
     def get_timestamps(self):
         if not self.v4:
