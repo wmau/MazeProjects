@@ -40,7 +40,7 @@ class BatchFullAnalyses:
     def __init__(self, mice, project_folder=r"Z:\Will\Drift\Data"):
         # Collect data from all mice and sessions.
         self.data = MultiAnimal(
-            mice, project_folder, behavior="CircleTrack", SessionFunction=CalciumSession
+            mice, project_name="Drift", SessionFunction=CalciumSession
         )
 
         # Define session types here. Watch out for typos.
