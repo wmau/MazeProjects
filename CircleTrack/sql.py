@@ -46,6 +46,11 @@ class Database:
         self.populate_projects()
         self.populate_sessions()
 
+    def execute(self, sql_str, tuple):
+        output = self.cursor.execute(sql_str, tuple)
+
+        return output.fetchall()
+
     def make_db(self):
         self.cursor.execute(
             """
@@ -138,12 +143,11 @@ class Database:
                 self.cursor.executemany(
                     """
                     INSERT OR IGNORE INTO session
-                    (mouse_id, project_id, session_name, datetime, path)
+                    (mouse_id, project_id, datetime, session_name, path)
                     VALUES (?,?,?,?,?)""",
                     data,
                 )
 
-        pass
 
     def extract_folder_info(self, folder):
         """
@@ -189,7 +193,4 @@ class Database:
 
 if __name__ == "__main__":
     with Database() as db:
-        db.make_db()
-        db.populate_projects()
-        db.populate_mice()
-        db.populate_sessions()
+        db.create()
