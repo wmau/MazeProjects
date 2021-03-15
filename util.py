@@ -1,16 +1,13 @@
 import os
-from pathlib import Path
 import pickle as pkl
 import tkinter as tk
-import re
 
-from CaImaging.util import get_data_paths
+from CaImaging.util import get_data_paths, search_for_folders
 
 tkroot = tk.Tk()
 tkroot.withdraw()
 from tkinter import filedialog
 import pandas as pd
-import numpy as np
 
 
 def make_pattern_dict():
@@ -51,27 +48,6 @@ def grab_paths(session_folder=None):
     paths = get_data_paths(session_folder, pattern_dict)
 
     return paths
-
-
-def search_for_folders(folder, expression):
-    folders = []
-    for root, dirs, _ in os.walk(folder):
-        dirs[:] = [d for d in dirs if not re.match("^.*\.zarr$", d)]
-        for directory in dirs:
-            if re.match(expression, directory):
-                folders.append(os.path.join(root, directory))
-
-    return folders
-
-
-def search_for_files(folder, expression):
-    matched_files = []
-    for root, dirs, files in os.walk(folder):
-        for file in files:
-            if re.match(expression, file):
-                matched_files.append(os.path.join(root, file))
-
-    return matched_files
 
 
 def find_timestamp_file(timestamp_paths, camera_type):

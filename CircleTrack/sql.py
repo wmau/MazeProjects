@@ -2,7 +2,7 @@ import sqlite3
 import os
 from pathlib import Path
 from datetime import datetime
-from util import search_for_folders
+from CaImaging.util import search_for_folders
 import regex
 import numpy as np
 

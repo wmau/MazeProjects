@@ -1,5 +1,6 @@
 import os
-from CaImaging.util import concat_avis, sync_data, find_closest
+from CaImaging.util import concat_avis, sync_data, find_closest, \
+    search_for_folders, search_for_files
 import numpy as np
 import tkinter as tk
 
@@ -12,7 +13,6 @@ from shutil import copyfile, copytree
 import cv2
 import re
 from skimage.feature import register_translation
-from util import search_for_folders, search_for_files
 
 
 def circle_sizes(x, y):

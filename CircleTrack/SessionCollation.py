@@ -8,11 +8,11 @@ import os
 
 directory = r'Z:\Will'
 db_fname = 'database.sqlite'
-db_path = os.path.join(directory, db_fname)
 
 def MultiSession(mouse, project_name='Drift',
-                 SessionFunction=BehaviorSession, db_path=db_path):
-    db = Database(db_path)
+                 SessionFunction=BehaviorSession,
+                 directory=directory, db_fname=db_fname):
+    db = Database(directory, db_fname)
     sql_str = """
         SELECT session.session_name, session.path
         FROM session
