@@ -53,7 +53,7 @@ class RemoteReversal:
         pass
 
 class BatchFullAnalyses:
-    def __init__(self, mice, project_folder=r"Z:\Will\Drift\Data"):
+    def __init__(self, mice):
         # Collect data from all mice and sessions.
         self.data = MultiAnimal(
             mice, project_name="Drift", SessionFunction=CalciumSession
@@ -810,13 +810,15 @@ if __name__ == "__main__":
     # lapsed_assemblies, spiking = B.plot_lapsed_assemblies('Castor_Scope05', ('CircleTrackGoals2','CircleTrackReversal1'))
 
     RR = RemoteReversal(['Fornax',
-                         'Gemini_aged',
-                         #'Io',
-                         'Janus',
-                         'Lyra',
-                         'Miranda',
-                         'Naiad',
-                         'Oberon_aged',
-                         'Puck_aged'])
-
+                         # 'Gemini_aged',
+                         # #'Io',
+                         # 'Janus',
+                         # 'Lyra',
+                         # 'Miranda',
+                         # 'Naiad',
+                         # 'Oberon_aged',
+                         #'Puck_aged'
+                         ]
+                        )
+    RR.data['Fornax']['Goals3'].sdt_trials()
     pass

@@ -1231,10 +1231,14 @@ class BehaviorSession:
         ax.set_xlabel("Trials")
         ax.set_ylabel("Licks")
 
-    def sdt_trials(self, n_trial_blocks=None, plot=True):
+    def sdt_trials(self, n_trial_blocks=None, rolling_window=5,
+                   trial_interval=2, plot=True):
         # Split the session into N blocks.
         if n_trial_blocks is not None:
             licks = np.array_split(self.data["all_licks"], n_trial_blocks)
+        elif rolling_window is not None:
+            licks = self.rolling_window_licks(window_size=rolling_window,
+                                              trial_interval=trial_interval)
         else:
             licks = [self.data["all_licks"]]
 
@@ -1315,14 +1319,14 @@ class BehaviorSession:
         self.sdt["d_prime"] = d_prime
         return self.sdt["d_prime"]
 
-    def rolling_sdt(self, window_size=4, trial_interval=2):
-        sdt = {key: [] for key in ["hits", "misses", "FAs", "CRs"]}
-
+    def rolling_window_licks(self, window_size=4, trial_interval=2):
         windowed_licks = np.squeeze(
             sliding_window_view(self.data['all_licks'],
                                 (window_size, 8),
                                 axis=(0, 1))[
             ::trial_interval])
+
+        return windowed_licks
 
     def get_learning_curve(self, trial_threshold=5, criterion=7):
         """
