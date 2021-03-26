@@ -20,6 +20,7 @@ from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
 import cv2
 
+from numpy.lib.stride_tricks import sliding_window_view
 from CircleTrack.utils import circle_sizes, cart2pol
 from util import grab_paths, Session_Metadata, find_timestamp_file
 import tkinter as tk
@@ -1313,6 +1314,15 @@ class BehaviorSession:
 
         self.sdt["d_prime"] = d_prime
         return self.sdt["d_prime"]
+
+    def rolling_sdt(self, window_size=4, trial_interval=2):
+        sdt = {key: [] for key in ["hits", "misses", "FAs", "CRs"]}
+
+        windowed_licks = np.squeeze(
+            sliding_window_view(self.data['all_licks'],
+                                (window_size, 8),
+                                axis=(0, 1))[
+            ::trial_interval])
 
     def get_learning_curve(self, trial_threshold=5, criterion=7):
         """
