@@ -67,7 +67,10 @@ class CalciumSession:
 
             # Get paths
             self.meta["paths"] = self.behavior.meta["paths"]
-            timestamp_paths = self.behavior.meta["paths"]["timestamps"]
+            if not self.meta["paths"]["minian"]:
+                meta = Session_Metadata(session_folder, overwrite=True)
+                self.meta["paths"]["minian"] = meta.meta_dict["minian"]
+            timestamp_paths = self.meta["paths"]["timestamps"]
 
             # Combine behavioral and calcium imaging data.
             self.behavior.data["df"], self.imaging = sync(
