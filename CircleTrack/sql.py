@@ -5,14 +5,20 @@ from datetime import datetime
 from CaImaging.util import search_for_folders
 import regex
 import numpy as np
+import pandas as pd
 
 project_directory = r"D:\Projects\CircleTrack"
-
+mouse_csv = r"Z:\Will\mouse_info.csv"
 
 class Database:
-    def __init__(self, directory=r"Z:\Will", db_name="database.sqlite"):
+    def __init__(self, directory=r"Z:\Will", db_name="database.sqlite",
+                 from_scratch=False):
         self.directory = directory
         self.db_path = os.path.join(self.directory, db_name)
+
+        if from_scratch:
+            if os.path.exists(self.db_path):
+                os.remove(self.db_path)
 
         self.connection = sqlite3.connect(self.db_path)
         self.cursor = self.connection.cursor()
@@ -56,7 +62,9 @@ class Database:
             """
             CREATE TABLE IF NOT EXISTS mouse
             (id INTEGER PRIMARY KEY,
-            name TEXT UNIQUE)
+            name TEXT UNIQUE,
+            sex TEXT,
+            dob DATETIME)
             """
         )
 
@@ -96,15 +104,20 @@ class Database:
         )
 
     def populate_mice(self):
+        mouse_info = pd.read_csv(mouse_csv)
         for project in self.project_folders:
             mice = [
                 (os.path.split(f.path)[-1],) for f in os.scandir(project) if f.is_dir()
             ]
 
+            mice = [
+                tuple(mouse_info[mouse_info['Name'] == mouse[0]].values[0]) for mouse in mice
+            ]
+
             self.cursor.executemany(
                 """
-                INSERT OR IGNORE INTO mouse (name)
-                VALUES (?)""",
+                INSERT OR IGNORE INTO mouse (name, sex, dob)
+                VALUES (?, ?, ?)""",
                 (mice),
             )
 
@@ -192,5 +205,5 @@ class Database:
 
 
 if __name__ == "__main__":
-    with Database() as db:
+    with Database(from_scratch=True) as db:
         db.create()
