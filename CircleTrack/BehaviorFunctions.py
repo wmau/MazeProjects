@@ -1243,8 +1243,8 @@ class BehaviorSession:
             licks = [self.data["all_licks"]]
 
         # Preallocate dict.
-        sdt = {key: [] for key in ["hits", "misses", "FAs", "CRs"]}
-
+        sdt = {key: [] for key in ["hits", "misses", "FAs", "CRs", "d_prime"]}
+        Z = norm.ppf
         for trial_block in licks:
             # Get number of passes through ports that should or should not be licked.
             ntrials = len(trial_block)
@@ -1268,56 +1268,37 @@ class BehaviorSession:
             sdt["FAs"].append(FA_rate)
             sdt["CRs"].append(CR_rate)
 
-        if plot:
-            fig, ax = plt.subplots()
-            ax.plot(sdt["hits"])
-            ax.plot(sdt["CRs"])
-            ax.legend(("Hits", "Correct rejections"))
-
-        self.sdt = sdt
-        return self.sdt
-
-    def SDT(self, n_trial_blocks=4, plot=False):
-        """ returns a dict with d-prime measures given hits, misses, false alarms, and correct rejections"""
-        # Floors an ceilings are replaced by half hits and half FA's
-        self.sdt_trials(n_trial_blocks=n_trial_blocks, plot=plot)
-        Z = norm.ppf
-
-        d_prime = []
-        for hits, misses, fas, crs in zip(
-            self.sdt["hits"], self.sdt["misses"], self.sdt["FAs"], self.sdt["CRs"]
-        ):
+            #Also calculate d'
             # One way to prevent d' infinity.
             # half_hit = 0.5 / (hits + misses)
             # half_fa = 0.5 / (fas + crs)
 
-            # Another way.
-            n_trials = np.array_split(self.data["all_licks"], n_trial_blocks)[0].shape[
-                0
-            ]
-            correction = 1 / (2 * n_trials)
-
-            # Calculate hit_rate and avoid d' infinity
-            hit_rate = hits / (hits + misses)
+            correction = 1 / (2*ntrials)
+            hit_rate = hit_rate / (hit_rate + miss_rate)
             if hit_rate == 1:
-                hit_rate = 1 - correction
+                hit_rate= 1 - correction
                 # hit_rate = 1 - half_hit
             # if hit_rate == 0:
             # hit_rate = half_hit
 
-            # Calculate false alarm rate and avoid d' infinity
-            fa_rate = fas / (fas + crs)
+            FA_rate = FA_rate / (FA_rate + CR_rate)
             # if fa_rate == 1:
             # fa_rate = 1 - half_fa
-            if fa_rate == 0:
+            if FA_rate == 0:
                 # fa_rate = half_fa
-                fa_rate = correction
+                FA_rate = correction
 
-            # Return d'
-            d_prime.append(Z(hit_rate) - Z(fa_rate))
+            sdt["d_prime"].append(Z(hit_rate) - Z(FA_rate))
 
-        self.sdt["d_prime"] = d_prime
-        return self.sdt["d_prime"]
+        if plot:
+            fig, ax = plt.subplots()
+            ax.plot(sdt["hits"])
+            ax.plot(sdt["CRs"])
+            ax.plot(sdt["d_prime"], 'k')
+            ax.legend(("Hits", "Correct rejections", "d'"))
+
+        self.sdt = sdt
+        return self.sdt
 
     def rolling_window_licks(self, window_size=4, trial_interval=2):
         windowed_licks = np.squeeze(
@@ -1463,6 +1444,6 @@ def dlc_to_csv(folder: str):
 
 
 if __name__ == "__main__":
-    folder = r"Z:\Will\Drift\Data\Fornax\12_06_2020_CircleTrackReversal2\15_53_56"
-    P = Preprocess(folder)
-    # P.find_outliers()
+    folder = r"Z:\Will\RemoteReversal\Data\Fornax\2021_02_25_RecentReversal\10_04_05"
+    B = BehaviorSession(folder)
+    pass
