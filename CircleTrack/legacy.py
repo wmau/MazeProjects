@@ -24,7 +24,7 @@ class BatchBehaviorAnalyses:
         self.data["mice"] = MultiAnimal(
             mice,
             project_name="CircleTrack",
-            SessionFunction=BehaviorSession,
+            behavior_only=True,
         )
         self.meta = dict()
         self.meta["mice"] = mice

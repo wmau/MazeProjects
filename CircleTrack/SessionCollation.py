@@ -10,8 +10,13 @@ directory = r'Z:\Will'
 db_fname = 'database.sqlite'
 
 def MultiSession(mouse, project_name='Drift',
-                 SessionFunction=BehaviorSession,
+                 behavior_only=True,
                  directory=directory, db_fname=db_fname):
+    if behavior_only:
+        SessionFunction = BehaviorSession
+    else:
+        SessionFunction = CalciumSession
+
     db = Database(directory, db_fname)
     sql_str = """
         SELECT session.session_name, session.path
@@ -48,13 +53,13 @@ def MultiSession(mouse, project_name='Drift',
     return S
 
 
-def MultiAnimal(mice, project_name='Drift', SessionFunction=BehaviorSession):
+def MultiAnimal(mice, project_name='Drift', behavior_only=True):
     sessions_by_mouse = dict()
 
     for mouse in mice:
         print(f"Loading data from {mouse}")
         sessions_by_mouse[mouse] = MultiSession(
-            mouse, project_name=project_name, SessionFunction=SessionFunction
+            mouse, project_name=project_name, behavior_only=behavior_only
         )
 
     return sessions_by_mouse
