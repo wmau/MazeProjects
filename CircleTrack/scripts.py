@@ -31,46 +31,31 @@ plt.rcParams["svg.fonttype"] = "none"
 plt.rcParams["text.usetex"] = False
 plt.rcParams.update({"font.size": 12})
 
+session_types = {
+    "Drift": [
+        "CircleTrackShaping1",
+        "CircleTrackShaping2",
+        "CircleTrackGoals1",
+        "CircleTrackGoals2",
+        "CircleTrackReversal1",
+        "CircleTrackReversal2",
+        "CircleTrackRecall",
+    ],
+    "RemoteReversal": ["Goals1", "Goals2", "Goals3", "Goals4", "RecentReversal"],
+}
 
-class RemoteReversal:
-    def __init__(self, mice, behavior_only=True):
-        if behavior_only:
-            SessionFunction = BehaviorSession
-        else:
-            SessionFunction = CalciumSession
 
-        self.mice = mice
-        self.meta = {"session_types":
-                        ["Goals1",
-                         "Goals2",
-                         "Goals3",
-                         "Goals4",
-                         "RecentReversal"]
-                     }
-        self.data = MultiAnimal(mice, project_name='RemoteReversal',
-                                SessionFunction=SessionFunction)
-
-        pass
-
-class BatchFullAnalyses:
-    def __init__(self, mice):
+class ProjectAnalyses:
+    def __init__(self, mice, project_name="RemoteReversal", behavior_only=False):
         # Collect data from all mice and sessions.
         self.data = MultiAnimal(
-            mice, project_name="Drift", SessionFunction=CalciumSession
+            mice, project_name=project_name, behavior_only=behavior_only
         )
 
         # Define session types here. Watch out for typos.
         # Order matters. Plots will be in the order presented here.
         self.meta = {
-            "session_types": [
-                "CircleTrackShaping1",
-                "CircleTrackShaping2",
-                "CircleTrackGoals1",
-                "CircleTrackGoals2",
-                "CircleTrackReversal1",
-                "CircleTrackReversal2",
-                "CircleTrackRecall",
-            ],
+            "session_types": session_types[project_name],
             "mice": mice,
         }
 
@@ -88,22 +73,24 @@ class BatchFullAnalyses:
         #     rearranged = rearrange_neurons(cell_map, S_list)
 
     def count_ensembles(self):
-        n_ensembles = nan_array((len(self.meta['mice']), len(self.meta['session_types'])))
-        for i, mouse in enumerate(self.meta['mice']):
-            for j, session_type in enumerate(self.meta['session_types']):
+        n_ensembles = nan_array(
+            (len(self.meta["mice"]), len(self.meta["session_types"]))
+        )
+        for i, mouse in enumerate(self.meta["mice"]):
+            for j, session_type in enumerate(self.meta["session_types"]):
                 session = self.data[mouse][session_type]
-                n_ensembles[i,j] = session.assemblies['significance'].nassemblies
+                n_ensembles[i, j] = session.assemblies["significance"].nassemblies
 
         fig, ax = plt.subplots()
-        for n, mouse in zip(n_ensembles, self.meta['mice']):
-            ax.plot(self.meta['session_labels'], n)
+        for n, mouse in zip(n_ensembles, self.meta["mice"]):
+            ax.plot(self.meta["session_labels"], n)
             ax.annotate(mouse, (0.1, n[0] + 1))
 
-        ax.set_ylabel('# of ensembles')
+        ax.set_ylabel("# of ensembles")
         plt.setp(ax.xaxis.get_majorticklabels(), rotation=45)
         fig.subplots_adjust(bottom=0.2)
 
-    def rearrange_neurons(self, mouse, session_types, data_type, detected='everyday'):
+    def rearrange_neurons(self, mouse, session_types, data_type, detected="everyday"):
         """
         Rearrange neural activity matrix to have the same neuron in
         each row.
@@ -141,21 +128,21 @@ class BatchFullAnalyses:
         Wrapper function for find_percent_overlap, run this per mouse.
 
         """
-        n_sessions = len(self.meta['session_types'])
-        overlaps = nan_array((len(self.meta['mice']), n_sessions, n_sessions))
+        n_sessions = len(self.meta["session_types"])
+        overlaps = nan_array((len(self.meta["mice"]), n_sessions, n_sessions))
 
-        for i, mouse in enumerate(self.meta['mice']):
+        for i, mouse in enumerate(self.meta["mice"]):
             overlaps[i] = self.find_percent_overlap(mouse, show_plot=False)
 
         if show_plot:
             fig, ax = plt.subplots()
             m = np.mean(overlaps, axis=0)
             se = sem(overlaps, axis=0)
-            x = self.meta['session_labels']
+            x = self.meta["session_labels"]
             for y, yerr in zip(m, se):
                 errorfill(x, y, yerr, ax=ax)
 
-            ax.set_ylabel('Proportion of registered cells')
+            ax.set_ylabel("Proportion of registered cells")
             plt.setp(ax.get_xticklabels(), rotation=45)
 
             return overlaps, ax
@@ -163,18 +150,20 @@ class BatchFullAnalyses:
         return overlaps
 
     def find_percent_overlap(self, mouse, show_plot=True):
-        n_sessions = len(self.meta['session_types'])
+        n_sessions = len(self.meta["session_types"])
         r, c = np.indices((n_sessions, n_sessions))
         overlaps = np.ones((n_sessions, n_sessions))
         for session_pair, i, j in zip(
-                product(self.meta['session_types'], self.meta['session_types']),
-                r.flatten(), c.flatten()):
+            product(self.meta["session_types"], self.meta["session_types"]),
+            r.flatten(),
+            c.flatten(),
+        ):
             if i != j:
-                overlap_map = self.get_cellreg_mappings(mouse,
-                                                        session_pair,
-                                                        detected='first_day')[0]
+                overlap_map = self.get_cellreg_mappings(
+                    mouse, session_pair, detected="first_day"
+                )[0]
 
-                n_neurons_reactivated = np.sum(overlap_map.iloc[:,1] != -9999)
+                n_neurons_reactivated = np.sum(overlap_map.iloc[:, 1] != -9999)
                 n_neurons_first_day = len(overlap_map)
                 overlaps[i, j] = n_neurons_reactivated / n_neurons_first_day
 
@@ -270,8 +259,10 @@ class BatchFullAnalyses:
 
     def get_placefield_distribution_comparisons(
         self,
-        session_pairs=(('CircleTrackGoals1', 'CircleTrackGoals2'),
-                       ('CircleTrackGoals2', 'CircleTrackReversal1'))
+        session_pairs=(
+            ("CircleTrackGoals1", "CircleTrackGoals2"),
+            ("CircleTrackGoals2", "CircleTrackReversal1"),
+        ),
     ):
         r = {key: [] for key in session_pairs}
         for mouse in self.meta["mice"]:
@@ -282,11 +273,13 @@ class BatchFullAnalyses:
 
         fig, ax = plt.subplots()
         for i, data in enumerate(r.values()):
-            x = np.linspace(2*i, 2*i+1, len(self.meta['mice']))
-            plot_me = [np.asarray(mouse_data)[~np.isnan(mouse_data)] for mouse_data in data]
+            x = np.linspace(2 * i, 2 * i + 1, len(self.meta["mice"]))
+            plot_me = [
+                np.asarray(mouse_data)[~np.isnan(mouse_data)] for mouse_data in data
+            ]
             ax.boxplot(plot_me, positions=x)
 
-        ax.set_ylabel('Firing field correlations [r]')
+        ax.set_ylabel("Firing field correlations [r]")
 
         return r
 
@@ -634,7 +627,13 @@ class BatchFullAnalyses:
         return trimmed_map, global_idx, session_list
 
     def get_lapsed_assembly_activation(
-        self, mouse, session_types, smooth_factor=5, use_bool=True, z_method="global", detected='everyday'
+        self,
+        mouse,
+        session_types,
+        smooth_factor=5,
+        use_bool=True,
+        z_method="global",
+        detected="everyday",
     ):
         S_list = self.rearrange_neurons(mouse, session_types, "S", detected=detected)
         data = preprocess_multiple_sessions(
@@ -645,22 +644,27 @@ class BatchFullAnalyses:
 
         return lapsed_assemblies
 
-    def plot_lapsed_assemblies(self, mouse, session_types, detected='everyday'):
-        lapsed_assemblies = self.get_lapsed_assembly_activation(mouse, session_types, detected=detected)
-        spiking = self.rearrange_neurons(mouse, session_types, "spike_times", detected=detected)
+    def plot_lapsed_assemblies(self, mouse, session_types, detected="everyday"):
+        lapsed_assemblies = self.get_lapsed_assembly_activation(
+            mouse, session_types, detected=detected
+        )
+        spiking = self.rearrange_neurons(
+            mouse, session_types, "spike_times", detected=detected
+        )
 
-        n_sessions = len(lapsed_assemblies['activations'])
-        for i, pattern in enumerate(lapsed_assemblies['patterns']):
+        n_sessions = len(lapsed_assemblies["activations"])
+        for i, pattern in enumerate(lapsed_assemblies["patterns"]):
             fig, axs = plt.subplots(n_sessions, 1)
-            for ax, activation, spike_times in zip(axs,
-                                                   lapsed_assemblies[
-                                                       'activations'],
-                                                   spiking):
+            for ax, activation, spike_times in zip(
+                axs, lapsed_assemblies["activations"], spiking
+            ):
                 plot_assembly(pattern, activation[i], spike_times, ax=ax)
 
         return lapsed_assemblies, spiking
 
-    def find_assembly_trends(self, mouse, session_type, x='time', z_threshold=2.58, x_bin_size=60):
+    def find_assembly_trends(
+        self, mouse, session_type, x="time", z_threshold=2.58, x_bin_size=60
+    ):
         """
         Find assembly "trends", whether they are increasing/decreasing in occurrence rate over the course
         of a session. Use the Mann Kendall test to find trends.
@@ -692,42 +696,47 @@ class BatchFullAnalyses:
         assemblies = session.assemblies
 
         # z-score all assembly activations within assembly.
-        z_activations = zscore(assemblies['activations'], axis=1)
+        z_activations = zscore(assemblies["activations"], axis=1)
 
         # Binarize activations so that there are no strings of 1s spanning multiple frames.
         binarized_activations = np.zeros_like(z_activations)
         for i, assembly in enumerate(z_activations):
-            on_frames = contiguous_regions(assembly > z_threshold)[:,0]
+            on_frames = contiguous_regions(assembly > z_threshold)[:, 0]
             binarized_activations[i, on_frames] = 1
 
         # If binning by time, sum activations every few seconds or minutes.
-        if x == 'time':
+        if x == "time":
             binned_activations = []
 
             for assembly in binarized_activations:
-                binned_activations.append(bin_transients(assembly[np.newaxis], x_bin_size, fps=15)[0])
+                binned_activations.append(
+                    bin_transients(assembly[np.newaxis], x_bin_size, fps=15)[0]
+                )
 
             binned_activations = np.vstack(binned_activations)
 
         # If binning by trials, sum activations every n trials.
-        elif x == 'trial':
-            trial_bins = np.arange(0, session.behavior.data['ntrials'], x_bin_size)
-            df = session.behavior.data['df']
+        elif x == "trial":
+            trial_bins = np.arange(0, session.behavior.data["ntrials"], x_bin_size)
+            df = session.behavior.data["df"]
 
-            binned_activations = np.zeros((binarized_activations.shape[0], len(trial_bins)))
+            binned_activations = np.zeros(
+                (binarized_activations.shape[0], len(trial_bins))
+            )
             for i, assembly in enumerate(binarized_activations):
                 for j, (lower, upper) in enumerate(zip(trial_bins, trial_bins[1:])):
-                    in_trial = (df['trials'] >= lower) & (df['trials'] < upper)
+                    in_trial = (df["trials"] >= lower) & (df["trials"] < upper)
                     binned_activations[i, j] = np.sum(assembly[in_trial])
 
         else:
-            raise ValueError('Invalid value for x.')
+            raise ValueError("Invalid value for x.")
 
         # Group assemblies into either increasing, decreasing, or no trend in occurrence rate.
-        assembly_trends = {'no trend': [],
-                           'decreasing': [],
-                           'increasing': [],
-                           }
+        assembly_trends = {
+            "no trend": [],
+            "decreasing": [],
+            "increasing": [],
+        }
         for i, assembly in enumerate(binned_activations):
             mk_test = mk.original_test(assembly)
             assembly_trends[mk_test.trend].append(i)
@@ -735,19 +744,20 @@ class BatchFullAnalyses:
         return assembly_trends, binned_activations
 
     def plot_assembly_trends(self, show_plot=True):
-        session_types = self.meta['session_types']
-        session_labels = self.meta['session_labels']
+        session_types = self.meta["session_types"]
+        session_labels = self.meta["session_labels"]
         assembly_trend_arr = np.zeros(
-            (3,
-             len(self.meta['mice']),
-             len(session_types),
-             ),
-            dtype=object
-                                         )
+            (
+                3,
+                len(self.meta["mice"]),
+                len(session_types),
+            ),
+            dtype=object,
+        )
         assembly_counts_arr = np.zeros_like(assembly_trend_arr)
 
-        trend_strs = ['no trend', 'decreasing', 'increasing']
-        for i, mouse in enumerate(self.meta['mice']):
+        trend_strs = ["no trend", "decreasing", "increasing"]
+        for i, mouse in enumerate(self.meta["mice"]):
             for j, session_type in enumerate(session_types):
                 assembly_trends = self.find_assembly_trends(mouse, session_type)
 
@@ -755,29 +765,40 @@ class BatchFullAnalyses:
                     assembly_trend_arr[h, i, j] = assembly_trends[trend]
                     assembly_counts_arr[h, i, j] = len(assembly_trends[trend])
 
-        assembly_trends = xr.DataArray(assembly_trend_arr,
-                                       dims=('trend', 'mouse', 'session'),
-                                       coords={'trend': trend_strs,
-                                               'mouse': self.meta['mice'],
-                                               'session': session_types,
-                                               })
+        assembly_trends = xr.DataArray(
+            assembly_trend_arr,
+            dims=("trend", "mouse", "session"),
+            coords={
+                "trend": trend_strs,
+                "mouse": self.meta["mice"],
+                "session": session_types,
+            },
+        )
 
-        assembly_counts = xr.DataArray(assembly_counts_arr,
-                                       dims=('trend', 'mouse', 'session'),
-                                       coords={'trend': trend_strs,
-                                               'mouse': self.meta['mice'],
-                                               'session': session_types,
-                                               })
+        assembly_counts = xr.DataArray(
+            assembly_counts_arr,
+            dims=("trend", "mouse", "session"),
+            coords={
+                "trend": trend_strs,
+                "mouse": self.meta["mice"],
+                "session": session_types,
+            },
+        )
 
         if show_plot:
             fig, ax = plt.subplots()
-            p_decreasing = assembly_counts.sel(trend='decreasing') / assembly_counts.sum(dim='trend')
+            p_decreasing = assembly_counts.sel(
+                trend="decreasing"
+            ) / assembly_counts.sum(dim="trend")
 
             ax.plot(session_labels, p_decreasing.T)
-            ax.set_ylabel('Proportion ensembles with decreasing activity over session')
+            ax.set_ylabel("Proportion ensembles with decreasing activity over session")
             plt.setp(ax.get_xticklabels(), rotation=45)
 
         return assembly_trends, assembly_counts
+
+    def plot_behavior(self, mouse):
+        pass
 
 
 if __name__ == "__main__":
@@ -804,21 +825,24 @@ if __name__ == "__main__":
     # # B.plot_all_sdts(1)
     # # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
     #
-    # B = BatchFullAnalyses(mice)
+    # B = ProjectAnalyses(mice)
     # B.correlate_stability_to_reversal()
     # #B.spiral_scrollplot_assemblies('Castor_Scope05', 'CircleTrackReversal1')
     # lapsed_assemblies, spiking = B.plot_lapsed_assemblies('Castor_Scope05', ('CircleTrackGoals2','CircleTrackReversal1'))
 
-    RR = RemoteReversal(['Fornax',
-                         # 'Gemini_aged',
-                         # #'Io',
-                         # 'Janus',
-                         # 'Lyra',
-                         # 'Miranda',
-                         # 'Naiad',
-                         # 'Oberon_aged',
-                         #'Puck_aged'
-                         ]
-                        )
-    RR.data['Fornax']['Goals3'].sdt_trials()
+    RR = ProjectAnalyses(
+        [
+            "Fornax",
+            'Gemini_aged',
+            'Io',
+            'Janus',
+            'Lyra',
+            'Miranda',
+            'Naiad',
+            'Oberon_aged',
+            'Puck_aged'
+        ],
+        project_name='RemoteReversal'
+    )
+    RR.data["Fornax"]["Goals3"].sdt_trials()
     pass
