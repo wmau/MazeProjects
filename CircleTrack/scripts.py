@@ -759,7 +759,7 @@ class ProjectAnalyses:
         trend_strs = ["no trend", "decreasing", "increasing"]
         for i, mouse in enumerate(self.meta["mice"]):
             for j, session_type in enumerate(session_types):
-                assembly_trends = self.find_assembly_trends(mouse, session_type)
+                assembly_trends = self.find_assembly_trends(mouse, session_type)[0]
 
                 for h, trend in enumerate(trend_strs):
                     assembly_trend_arr[h, i, j] = assembly_trends[trend]
@@ -797,8 +797,40 @@ class ProjectAnalyses:
 
         return assembly_trends, assembly_counts
 
-    def plot_behavior(self, mouse):
-        pass
+    def plot_behavior(self, mouse, window=8, strides=2, show_plot=True, ax=None):
+        categories = ['hits', 'CRs', 'd_prime']
+        sdt = {key: [] for key in categories}
+        sdt['session_borders'] = [0]
+        sdt['n_trial_blocks'] = [0]
+        for session_type in self.meta['session_types']:
+            session = self.data[mouse][session_type].behavior
+            session.sdt_trials(rolling_window=window, trial_interval=strides, plot=False)
+            for key in categories:
+                sdt[key].extend(self.data[mouse][session_type].behavior.sdt[key])
+
+            sdt['n_trial_blocks'].append(len(session.sdt['hits']))
+            sdt['session_borders'].append(sdt['session_borders'][-1] + sdt['n_trial_blocks'][-1])
+
+        if show_plot:
+            if ax is None:
+                fig, ax = plt.subplots()
+
+            for key, c in zip(categories[:-1], ['g', 'b']):
+                ax.plot(sdt[key], color=c, alpha=0.3)
+            ax2 = ax.twinx()
+            ax2.plot(sdt['d_prime'], color='k')
+            ax2.set_ylabel("d'", rotation=-90)
+
+            for session in sdt['session_borders'][1:]:
+                ax.axvline(x=session, color='k')
+            ax.set_xticks(sdt['session_borders'])
+            ax.set_xticklabels(sdt['n_trial_blocks'])
+
+            ax.set_ylabel('Performance')
+            ax.set_xlabel('Trial blocks')
+            ax.legend(("Hits", "Correct rejections", "d'"))
+
+        return sdt, ax
 
 
 if __name__ == "__main__":
@@ -842,7 +874,7 @@ if __name__ == "__main__":
             'Oberon_aged',
             'Puck_aged'
         ],
-        project_name='RemoteReversal'
+        project_name='RemoteReversal', behavior_only=True
     )
     RR.data["Fornax"]["Goals3"].sdt_trials()
     pass
