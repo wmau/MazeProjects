@@ -41,7 +41,7 @@ session_types = {
         "CircleTrackReversal2",
         "CircleTrackRecall",
     ],
-    "RemoteReversal": ["Goals1", "Goals2", "Goals3", "Goals4", "RecentReversal"],
+    "RemoteReversal": ["Goals1", "Goals2", "Goals3", "Goals4", "Reversal"],
 }
 
 
@@ -798,19 +798,49 @@ class ProjectAnalyses:
         return assembly_trends, assembly_counts
 
     def plot_behavior(self, mouse, window=8, strides=2, show_plot=True, ax=None):
+        """
+        Plot behavioral performance (hits, correct rejections, d') for
+        one mouse.
+
+        :parameters
+        ---
+        mouse: str
+            Name of the mouse.
+
+        window: int
+            Number of trials to calculate hit rate, correct rejection rate,
+            d' over.
+
+        strides: int
+            Number of overlapping trials between windows.
+
+        show_plot: bool
+            Whether or not to plot the individual mouse data.
+
+        ax: Axes object
+        """
+        # Preallocate dict.
         categories = ['hits', 'CRs', 'd_prime']
         sdt = {key: [] for key in categories}
         sdt['session_borders'] = [0]
         sdt['n_trial_blocks'] = [0]
+
+        # For each session, get performance and append it to an array
+        # to put in one plot.
         for session_type in self.meta['session_types']:
             session = self.data[mouse][session_type].behavior
             session.sdt_trials(rolling_window=window, trial_interval=strides, plot=False)
             for key in categories:
                 sdt[key].extend(self.data[mouse][session_type].behavior.sdt[key])
 
+            # Length of this session (depends on window and strides).
             sdt['n_trial_blocks'].append(len(session.sdt['hits']))
+
+            # Session border, for plotting a line to separate
+            # sessions.
             sdt['session_borders'].append(sdt['session_borders'][-1] + sdt['n_trial_blocks'][-1])
 
+        # Plot.
         if show_plot:
             if ax is None:
                 fig, ax = plt.subplots()
@@ -819,8 +849,8 @@ class ProjectAnalyses:
                 ax.plot(sdt[key], color=c, alpha=0.3)
             ax2 = ax.twinx()
             ax2.plot(sdt['d_prime'], color='k')
-            ax2.set_ylabel("d'", rotation=-90)
 
+            ax2.set_ylabel("d'", rotation=-90)
             for session in sdt['session_borders'][1:]:
                 ax.axvline(x=session, color='k')
             ax.set_xticks(sdt['session_borders'])
@@ -831,6 +861,9 @@ class ProjectAnalyses:
             ax.legend(("Hits", "Correct rejections", "d'"))
 
         return sdt, ax
+
+    def plot_all_behavior(self, window=8, strides=2, ax=None):
+        pass
 
 
 if __name__ == "__main__":
@@ -871,8 +904,8 @@ if __name__ == "__main__":
             'Lyra',
             'Miranda',
             'Naiad',
-            'Oberon_aged',
-            'Puck_aged'
+            'Oberon',
+            'Puck'
         ],
         project_name='RemoteReversal', behavior_only=True
     )

@@ -1,7 +1,5 @@
 from CircleTrack.BehaviorFunctions import BehaviorSession
 from CircleTrack.MiniscopeFunctions import CalciumSession
-from util import Metadata_CSV
-import numpy as np
 from CaImaging.CellReg import CellRegObj
 from CircleTrack.sql import Database
 import os

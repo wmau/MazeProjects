@@ -894,3 +894,10 @@ class SessionStitcherV4:
 if __name__ == "__main__":
     folder = r"Z:\Will\Drift\Data\Encedalus_Scope14\10_16_2020_CircleTrackRecall"
     #SessionStitcherV4(folder)
+
+
+def get_equivalent_local_path(folder, local_base=r'D:\Projects', depth=2):
+    folder = os.path.normpath(folder)
+    split_tree = folder.split(os.sep)
+
+    return os.path.join(local_base, *split_tree[depth:])

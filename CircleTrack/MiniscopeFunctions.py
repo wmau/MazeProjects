@@ -13,8 +13,9 @@ import holoviews as hv
 import os
 import pickle as pkl
 from CaImaging.Assemblies import find_assemblies, preprocess_multiple_sessions, membership_sort, plot_assemblies
-from CircleTrack.utils import sync
+from CircleTrack.utils import sync, get_equivalent_local_path
 from CircleTrack.Assemblies import write_assembly_triggered_movie, plot_assembly
+
 
 hv.extension("bokeh")
 from bokeh.plotting import show
@@ -35,6 +36,7 @@ class CalciumSession:
         overwrite_placefields=False,
         overwrite_placefield_trials=False,
         overwrite_assemblies=False,
+        local=True,
     ):
         """
         Single session analyses and plots for miniscope data.
@@ -43,17 +45,19 @@ class CalciumSession:
         session_folder: str
             Session minian_folder.
         """
-        # Get the behavioral data.
+        # Get the metadata.
         self.meta = {
             "folder": session_folder,
             "spatial_bin_size": spatial_bin_size_radians,
             "S_std_thresh": S_std_thresh,
             "velocity_threshold": velocity_threshold,
+            "local": local
         }
 
             #############################################
         # Get the synced behavior and calcium imaging data.
-        fpath = os.path.join(self.meta["folder"], "SyncedData.pkl")
+        fpath = self.get_pkl_path("SyncedData.pkl")
+
         try:
             if overwrite_synced_data:
                 print(f"Overwriting {fpath}.")
@@ -97,7 +101,7 @@ class CalciumSession:
 
             #############################################
         # Get place fields.
-        fpath = os.path.join(self.meta["folder"], "Placefields.pkl")
+        fpath = self.get_pkl_path("Placefields.pkl")
         try:
             if overwrite_placefields:
                 print(f"Overwriting {fpath}.")
@@ -135,7 +139,7 @@ class CalciumSession:
 
             #############################################
         # Get spatial activity by trial.
-        fpath = os.path.join(session_folder, "PlacefieldTrials.pkl")
+        fpath = self.get_pkl_path("PlacefieldTrials.pkl")
         try:
             if overwrite_placefield_trials:
                 print(f"Overwriting {fpath}")
@@ -163,7 +167,7 @@ class CalciumSession:
 
             #############################################
         # Get assemblies.
-        fpath = os.path.join(session_folder, "Assemblies.pkl")
+        fpath = self.get_pkl_path("Assemblies.pkl")
         try:
             if overwrite_assemblies:
                 print(f"Overwriting {fpath}")
@@ -182,6 +186,15 @@ class CalciumSession:
 
             with open(fpath, "wb") as file:
                 pkl.dump(self.assemblies, file)
+
+    def get_pkl_path(self, fname):
+        if self.meta["local"]:
+            local_path = get_equivalent_local_path(self.meta["folder"])
+            fpath = os.path.join(local_path, fname)
+        else:
+            fpath = os.path.join(self.meta["folder"], fname)
+
+        return fpath
 
     def nan_bad_frames(self):
         miniscope_folder = self.meta['paths']['minian']
