@@ -9,7 +9,7 @@ from CaImaging.util import (
     ScrollPlot,
     contiguous_regions,
 )
-from CaImaging.plotting import errorfill
+from CaImaging.plotting import errorfill, beautify_ax
 from scipy.stats import spearmanr
 from CircleTrack.SessionCollation import MultiAnimal
 from CaImaging.CellReg import rearrange_neurons, trim_map, scrollplot_footprints
@@ -44,6 +44,12 @@ session_types = {
     "RemoteReversal": ["Goals1", "Goals2", "Goals3", "Goals4", "Reversal"],
 }
 
+aged_mice = [
+    "Gemini",
+    "Oberon",
+    "Puck",
+]
+
 
 class ProjectAnalyses:
     def __init__(self, mice, project_name="RemoteReversal", behavior_only=False):
@@ -63,6 +69,10 @@ class ProjectAnalyses:
             session_type.replace("CircleTrack", "")
             for session_type in self.meta["session_types"]
         ]
+
+        self.meta["age"] = {mouse: 'young' for mouse in self.meta["mice"]}
+        for mouse in aged_mice:
+            self.meta["age"][mouse] = 'aged'
 
         # for mouse in mice:
         #     S_list = [self.data[mouse][session].data['imaging']['S']
@@ -765,6 +775,7 @@ class ProjectAnalyses:
                     assembly_trend_arr[h, i, j] = assembly_trends[trend]
                     assembly_counts_arr[h, i, j] = len(assembly_trends[trend])
 
+        # To extract these values, use tolist()
         assembly_trends = xr.DataArray(
             assembly_trend_arr,
             dims=("trend", "mouse", "session"),
@@ -820,50 +831,134 @@ class ProjectAnalyses:
         ax: Axes object
         """
         # Preallocate dict.
-        categories = ['hits', 'CRs', 'd_prime']
+        categories = ["hits", "CRs", "d_prime"]
         sdt = {key: [] for key in categories}
-        sdt['session_borders'] = [0]
-        sdt['n_trial_blocks'] = [0]
+        sdt["session_borders"] = [0]
+        sdt["n_trial_blocks"] = [0]
 
         # For each session, get performance and append it to an array
         # to put in one plot.
-        for session_type in self.meta['session_types']:
+        for session_type in self.meta["session_types"]:
             session = self.data[mouse][session_type].behavior
-            session.sdt_trials(rolling_window=window, trial_interval=strides, plot=False)
+            session.sdt_trials(
+                rolling_window=window, trial_interval=strides, plot=False
+            )
             for key in categories:
-                sdt[key].extend(self.data[mouse][session_type].behavior.sdt[key])
+                sdt[key].extend(session.sdt[key])
 
             # Length of this session (depends on window and strides).
-            sdt['n_trial_blocks'].append(len(session.sdt['hits']))
+            sdt["n_trial_blocks"].append(len(session.sdt["hits"]))
 
-            # Session border, for plotting a line to separate
-            # sessions.
-            sdt['session_borders'].append(sdt['session_borders'][-1] + sdt['n_trial_blocks'][-1])
+        # Session border, for plotting a line to separate
+        # sessions.
+        sdt["session_borders"] = np.cumsum(sdt["n_trial_blocks"])
 
         # Plot.
         if show_plot:
             if ax is None:
                 fig, ax = plt.subplots()
 
-            for key, c in zip(categories[:-1], ['g', 'b']):
-                ax.plot(sdt[key], color=c, alpha=0.3)
             ax2 = ax.twinx()
-            ax2.plot(sdt['d_prime'], color='k')
+            ax.plot(sdt["d_prime"], color="k", label="d'")
+            for key, c in zip(categories[:-1], ["g", "b"]):
+                ax2.plot(sdt[key], color=c, alpha=0.3, label=key)
 
-            ax2.set_ylabel("d'", rotation=-90)
-            for session in sdt['session_borders'][1:]:
-                ax.axvline(x=session, color='k')
-            ax.set_xticks(sdt['session_borders'])
-            ax.set_xticklabels(sdt['n_trial_blocks'])
+            ax.set_ylabel("d'")
+            for session in sdt["session_borders"][1:]:
+                ax.axvline(x=session, color="k")
+            ax.set_xticks(sdt["session_borders"])
+            ax.set_xticklabels(sdt["n_trial_blocks"])
 
-            ax.set_ylabel('Performance')
-            ax.set_xlabel('Trial blocks')
-            ax.legend(("Hits", "Correct rejections", "d'"))
+            ax2.set_ylabel("Hit/Correct rejection rate", rotation=270, labelpad=10)
+            ax.set_xlabel("Trial blocks")
+            fig.legend()
 
         return sdt, ax
 
     def plot_all_behavior(self, window=8, strides=2, ax=None):
-        pass
+        # Preallocate array.
+        behavioral_performance_arr = np.zeros(
+            (3, len(self.meta["mice"]), len(self.meta["session_types"])),
+            dtype=object,
+        )
+        categories = ["hits", "CRs", "d_prime"]
+
+        # Fill array with hits/CRs/d' x mouse x session data.
+        for j, mouse in enumerate(self.meta["mice"]):
+            for k, session_type in enumerate(self.meta["session_types"]):
+                session = self.data[mouse][session_type].behavior
+                session.sdt_trials(
+                    rolling_window=window, trial_interval=strides, plot=False
+                )
+
+                for i, key in enumerate(categories):
+                    behavioral_performance_arr[i, j, k] = session.sdt[key]
+
+        # Place into xarray.
+        behavioral_performance = xr.DataArray(
+            behavioral_performance_arr,
+            dims=("metric", "mouse", "session"),
+            coords={
+                "metric": categories,
+                "mouse": self.meta["mice"],
+                "session": self.meta["session_types"],
+            },
+        )
+
+        # Make awkward array of all mice and sessions. Begin by
+        # finding the longest session for each mouse and session.
+        longest_sessions = [
+            max(
+                [
+                    len(i)
+                    for i in behavioral_performance.sel(
+                        metric="d_prime", session=session
+                    ).values.tolist()
+                ]
+            )
+            for session in self.meta["session_types"]
+        ]
+        # This will tell us where to draw session borders.
+        borders = np.cumsum(longest_sessions)
+        borders = np.insert(borders, 0, 0)
+
+        # Get dimensions of new arrays.
+        n_aged = sum([i == 'aged' for i in self.meta["age"].values()])
+        dims = {
+            "aged": (n_aged, sum(longest_sessions)),
+            "young": (len(self.meta["mice"]) - n_aged, sum(longest_sessions)),
+        }
+        d_primes = {key: nan_array(dims[key]) for key in ["aged", "young"]}
+
+        row_counters = {'aged': 0, 'young': 0}
+        for mouse in self.meta['mice']:
+            age = self.meta['age'][mouse]
+            for border, session in zip(borders, self.meta['session_types']):
+                d_prime_this_session = behavioral_performance.sel(metric='d_prime',
+                                                                  mouse=mouse,
+                                                                  session=session).values.tolist()
+                length = len(d_prime_this_session)
+                d_primes[age][row_counters[age],border:border+length] = d_prime_this_session
+
+            row_counters[age] += 1
+
+        if ax is None:
+            fig, ax = plt.subplots()
+        for age, c in zip(['young', 'aged'], ['k', 'r']):
+            ax.plot(d_primes[age].T, color=c, alpha=0.3)
+            errorfill(range(d_primes[age].shape[1]), np.nanmean(d_primes[age], axis=0),
+                      sem(d_primes[age], axis=0), ax=ax, color=c, label=age)
+
+        for session in borders[1:]:
+            ax.axvline(x=session, color='k')
+        ax.set_xticks(borders)
+        ax.set_xticklabels(np.insert(longest_sessions, 0, 0))
+        ax.set_ylabel("d'")
+        ax.set_xlabel('Trial blocks')
+        ax = beautify_ax(ax)
+        fig.legend()
+
+        return behavioral_performance, d_primes
 
 
 if __name__ == "__main__":
@@ -898,16 +993,17 @@ if __name__ == "__main__":
     RR = ProjectAnalyses(
         [
             "Fornax",
-            'Gemini_aged',
-            'Io',
-            'Janus',
-            'Lyra',
-            'Miranda',
-            'Naiad',
-            'Oberon',
-            'Puck'
+            "Gemini_aged",
+            "Io",
+            "Janus",
+            "Lyra",
+            "Miranda",
+            "Naiad",
+            "Oberon",
+            "Puck",
         ],
-        project_name='RemoteReversal', behavior_only=True
+        project_name="RemoteReversal",
+        behavior_only=True,
     )
     RR.data["Fornax"]["Goals3"].sdt_trials()
     pass
