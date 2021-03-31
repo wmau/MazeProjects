@@ -1,5 +1,3 @@
-from CircleTrack.BehaviorFunctions import BehaviorSession
-from CircleTrack.MiniscopeFunctions import CalciumSession
 import matplotlib.pyplot as plt
 from CaImaging.util import (
     sem,
@@ -14,10 +12,8 @@ from scipy.stats import spearmanr
 from CircleTrack.SessionCollation import MultiAnimal
 from CaImaging.CellReg import rearrange_neurons, trim_map, scrollplot_footprints
 from sklearn.naive_bayes import BernoulliNB
-from sklearn.linear_model import LinearRegression
-from scipy.stats import circmean
 import numpy as np
-from scipy.stats import mode, zscore
+from scipy.stats import zscore
 import os
 from CircleTrack.plotting import plot_daily_rasters
 from CaImaging.Assemblies import preprocess_multiple_sessions, lapsed_activation
@@ -25,6 +21,11 @@ from CircleTrack.Assemblies import plot_assembly
 from itertools import product
 import xarray as xr
 import pymannkendall as mk
+from sklearn.metrics.pairwise import cosine_similarity
+from itertools import product
+
+from CircleTrack.utils import get_circular_error, \
+    format_spatial_location_for_decoder
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -125,9 +126,12 @@ class ProjectAnalyses:
         )[0]
 
         # Get calcium activity from each session for this mouse.
-        activity_list = [
-            sessions[session].imaging[data_type] for session in session_types
-        ]
+        if data_type == 'patterns':
+            activity_list = [sessions[session].assemblies[data_type].T for session in session_types]
+        else:
+            activity_list = [
+                sessions[session].imaging[data_type] for session in session_types
+            ]
 
         # Rearrange the neurons.
         rearranged = rearrange_neurons(trimmed_map, activity_list)
@@ -425,7 +429,8 @@ class ProjectAnalyses:
         outcome_data = dict()
         for session, train_test_label in zip(sessions, ["train", "test"]):
             lin_position = session.behavior.data["df"]["lin_position"].values
-            outcome_data[train_test_label] = self.format_spatial_location_for_decoder(
+            outcome_data[train_test_label] = format_spatial_location_for_decoder(
+
                 lin_position,
                 n_spatial_bins=n_spatial_bins,
                 time_bin_size=time_bin_size,
@@ -524,7 +529,7 @@ class ProjectAnalyses:
             show_plot=False,
         )
 
-        d = self.get_circular_error(
+        d = get_circular_error(
             y_predicted, outcome_data["test"], n_spatial_bins=n_spatial_bins
         )
 
@@ -539,77 +544,6 @@ class ProjectAnalyses:
             ax.errorbar(time_bins, mean_errors, yerr=sem_errors)
 
         return binned_d
-
-    def get_circular_error(self, y_predicted, y_real, n_spatial_bins):
-        """
-        Error is not linear here, it's circular because for example,
-        spatial bin 1 is right next to spatial bin 36. Take the
-        circular distance here.
-
-        :parameters
-        ---
-        y_predicted: array-like of ints
-            Predicted spatially binned locations.
-
-        y_real: array-like of ints
-            Real spatially binned locations.
-
-        n_spatial_bins: int
-            Number of spatial bins (needed for modulo function).
-        """
-        i = (y_predicted - y_real) % n_spatial_bins
-        j = (y_real - y_predicted) % n_spatial_bins
-
-        d = np.min(np.vstack((i, j)), axis=0)
-
-        return d
-
-    def format_spatial_location_for_decoder(
-        self,
-        lin_position,
-        n_spatial_bins=36,
-        time_bin_size=1,
-        fps=15,
-        classifier=BernoulliNB(),
-    ):
-        """
-        Naive Bayes classifiers only take integers as outcomes.
-        Bin spatial locations both spatially and temporally.
-
-        :parameters
-        ---
-        lin_position: array-like of floats
-            Linearized position (in radians, from behavioral DataFrame).
-
-        n_spatial_bins: int
-            Number of spatial bins.
-
-        decoder_time_bin_size: float
-            Size of temporal bin in seconds.
-
-        fps: int
-            Frames per second of the acquired data.
-        """
-        # Find the appropriate bin edges given number of spatial bins.
-        # Then do spatial bin.
-        dont_bin_space = True if isinstance(classifier, (LinearRegression)) else False
-        if dont_bin_space:
-            binned_position = np.cos(lin_position)
-        else:
-            bins = np.histogram(lin_position, bins=n_spatial_bins)[1]
-            binned_position = np.digitize(lin_position, bins)
-
-        # Do the same for temporal binning.
-        bins = make_bins(binned_position, fps * time_bin_size, axis=0)
-        binned_position = np.split(binned_position, bins, axis=0)
-
-        # Get the most occupied spatial bin within each temporal bin.
-        if dont_bin_space:
-            position = np.array([circmean(time_bin) for time_bin in binned_position])
-        else:
-            position = np.array([mode(time_bin)[0][0] for time_bin in binned_position])
-
-        return position
 
     def get_cellreg_mappings(
         self, mouse, session_types, detected="everyday", neurons_from_session1=None

@@ -1,6 +1,12 @@
 import os
+
+import numpy
+from scipy.stats import circmean, mode
+from sklearn.linear_model import LinearRegression
+from sklearn.naive_bayes import BernoulliNB
+
 from CaImaging.util import concat_avis, sync_data, find_closest, \
-    search_for_folders, search_for_files
+    search_for_folders, search_for_files, make_bins
 import numpy as np
 import tkinter as tk
 
@@ -901,3 +907,75 @@ def get_equivalent_local_path(folder, local_base=r'D:\Projects', depth=2):
     split_tree = folder.split(os.sep)
 
     return os.path.join(local_base, *split_tree[depth:])
+
+
+def get_circular_error(y_predicted, y_real, n_spatial_bins):
+    """
+    Error is not linear here, it's circular because for example,
+    spatial bin 1 is right next to spatial bin 36. Take the
+    circular distance here.
+
+    :parameters
+    ---
+    y_predicted: array-like of ints
+        Predicted spatially binned locations.
+
+    y_real: array-like of ints
+        Real spatially binned locations.
+
+    n_spatial_bins: int
+        Number of spatial bins (needed for modulo function).
+    """
+    i = (y_predicted - y_real) % n_spatial_bins
+    j = (y_real - y_predicted) % n_spatial_bins
+
+    d = np.min(np.vstack((i, j)), axis=0)
+
+    return d
+
+
+def format_spatial_location_for_decoder(
+        lin_position,
+    n_spatial_bins=36,
+    time_bin_size=1,
+    fps=15,
+    classifier=BernoulliNB(),
+):
+    """
+    Naive Bayes classifiers only take integers as outcomes.
+    Bin spatial locations both spatially and temporally.
+
+    :parameters
+    ---
+    lin_position: array-like of floats
+        Linearized position (in radians, from behavioral DataFrame).
+
+    n_spatial_bins: int
+        Number of spatial bins.
+
+    decoder_time_bin_size: float
+        Size of temporal bin in seconds.
+
+    fps: int
+        Frames per second of the acquired data.
+    """
+    # Find the appropriate bin edges given number of spatial bins.
+    # Then do spatial bin.
+    dont_bin_space = True if isinstance(classifier, (LinearRegression)) else False
+    if dont_bin_space:
+        binned_position = np.cos(lin_position)
+    else:
+        bins = np.histogram(lin_position, bins=n_spatial_bins)[1]
+        binned_position = np.digitize(lin_position, bins)
+
+    # Do the same for temporal binning.
+    bins = make_bins(binned_position, fps * time_bin_size, axis=0)
+    binned_position = np.split(binned_position, bins, axis=0)
+
+    # Get the most occupied spatial bin within each temporal bin.
+    if dont_bin_space:
+        position = np.array([circmean(time_bin) for time_bin in binned_position])
+    else:
+        position = np.array([mode(time_bin)[0][0] for time_bin in binned_position])
+
+    return position
