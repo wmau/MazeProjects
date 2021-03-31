@@ -448,9 +448,8 @@ def nan_corrupted_frames(miniscope_folder, C, S, frames):
 
 
 if __name__ == "__main__":
-    folder = (
-        r'Z:\Will\Drift\Data\Encedalus_Scope14\10_14_2020_CircleTrackReversal1\14_00_11'
-    )
+    folder = r'Z:\Will\RemoteReversal\Data\Fornax\2021_02_25_Reversal\10_04_05',
+
     S = CalciumSession(folder)
     pvals = S.spatial["placefield_class"].data["spatial_info_pvals"]
     S.scrollplot_rasters(neurons=np.where(np.asarray(pvals) < 0.01)[0], binary=True)

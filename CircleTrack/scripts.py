@@ -70,9 +70,10 @@ class ProjectAnalyses:
             for session_type in self.meta["session_types"]
         ]
 
-        self.meta["age"] = {mouse: 'young' for mouse in self.meta["mice"]}
-        for mouse in aged_mice:
-            self.meta["age"][mouse] = 'aged'
+        self.meta["grouped_mice"] = {
+            "aged": [mouse for mouse in self.meta["mice"] if mouse in aged_mice],
+            "young": [mouse for mouse in self.meta["mice"] if mouse not in aged_mice],
+        }
 
         # for mouse in mice:
         #     S_list = [self.data[mouse][session].data['imaging']['S']
@@ -232,8 +233,8 @@ class ProjectAnalyses:
         return corrs
 
     def plot_goals_vs_reversal_stability(self):
-        goals = ("CircleTrackGoals1", "CircleTrackGoals2")
-        reversal = ("CircleTrackGoals2", "CircleTrackReversal1")
+        goals = ("Goals3", "Goals4")
+        reversal = ("Goals4", "Reversal")
 
         median_r = np.zeros((len(self.meta["mice"]), 2))
         fig, ax = plt.subplots()
@@ -249,8 +250,8 @@ class ProjectAnalyses:
 
     def correlate_stability_to_reversal(
         self,
-        corr_sessions=("CircleTrackGoals1", "CircleTrackGoals2"),
-        criterion_session="CircleTrackReversal1",
+        corr_sessions=("Goals3", "Goals4"),
+        criterion_session="Reversal",
     ):
         median_r = []
         criterion = []
@@ -270,8 +271,8 @@ class ProjectAnalyses:
     def get_placefield_distribution_comparisons(
         self,
         session_pairs=(
-            ("CircleTrackGoals1", "CircleTrackGoals2"),
-            ("CircleTrackGoals2", "CircleTrackReversal1"),
+            ("Goals3", "Goals4"),
+            ("Goals4", "Reversal"),
         ),
     ):
         r = {key: [] for key in session_pairs}
@@ -462,7 +463,7 @@ class ProjectAnalyses:
     ):
         goals_to_goals_decoding_error = self.find_decoding_error(
             mouse,
-            ("CircleTrackGoals1", "CircleTrackGoals2"),
+            ("Goals3", "Goals4"),
             classifier=classifier,
             decoder_time_bin_size=decoder_time_bin_size,
             n_spatial_bins=n_spatial_bins,
@@ -472,7 +473,7 @@ class ProjectAnalyses:
 
         goals_to_reversal_decoding_error = self.find_decoding_error(
             mouse,
-            ("CircleTrackGoals2", "CircleTrackReversal1"),
+            ("Goals4", "Reversal"),
             classifier=classifier,
             decoder_time_bin_size=decoder_time_bin_size,
             n_spatial_bins=n_spatial_bins,
@@ -753,7 +754,7 @@ class ProjectAnalyses:
 
         return assembly_trends, binned_activations
 
-    def plot_assembly_trends(self, show_plot=True):
+    def plot_assembly_trends(self, x="time", x_bin_size=60, show_plot=True):
         session_types = self.meta["session_types"]
         session_labels = self.meta["session_labels"]
         assembly_trend_arr = np.zeros(
@@ -769,7 +770,9 @@ class ProjectAnalyses:
         trend_strs = ["no trend", "decreasing", "increasing"]
         for i, mouse in enumerate(self.meta["mice"]):
             for j, session_type in enumerate(session_types):
-                assembly_trends = self.find_assembly_trends(mouse, session_type)[0]
+                assembly_trends = self.find_assembly_trends(
+                    mouse, session_type, x=x, x_bin_size=x_bin_size
+                )[0]
 
                 for h, trend in enumerate(trend_strs):
                     assembly_trend_arr[h, i, j] = assembly_trends[trend]
@@ -802,11 +805,27 @@ class ProjectAnalyses:
                 trend="decreasing"
             ) / assembly_counts.sum(dim="trend")
 
-            ax.plot(session_labels, p_decreasing.T)
+            for c, age in zip(["r", "k"], ["aged", "young"]):
+                ax.plot(
+                    session_labels,
+                    p_decreasing.sel(mouse=self.meta["grouped_mice"][age]).T,
+                    color=c,
+                )
             ax.set_ylabel("Proportion ensembles with decreasing activity over session")
             plt.setp(ax.get_xticklabels(), rotation=45)
 
         return assembly_trends, assembly_counts
+
+    def plot_assembly_by_trend(
+        self, mouse, session_type, trend, x="time", x_bin_size=60
+    ):
+        assembly_trends, binned_activations = self.find_assembly_trends(
+            mouse, session_type, x=x, x_bin_size=x_bin_size
+        )
+
+        session = self.data[mouse][session_type]
+        for assembly_number in assembly_trends[trend]:
+            session.plot_assembly(assembly_number)
 
     def plot_behavior(self, mouse, window=8, strides=2, show_plot=True, ax=None):
         """
@@ -923,38 +942,40 @@ class ProjectAnalyses:
         borders = np.insert(borders, 0, 0)
 
         # Get dimensions of new arrays.
-        n_aged = sum([i == 'aged' for i in self.meta["age"].values()])
         dims = {
-            "aged": (n_aged, sum(longest_sessions)),
-            "young": (len(self.meta["mice"]) - n_aged, sum(longest_sessions)),
+            age: (len(self.meta["grouped_mice"][age]), sum(longest_sessions))
+            for age in ["aged", "young"]
         }
         d_primes = {key: nan_array(dims[key]) for key in ["aged", "young"]}
 
-        row_counters = {'aged': 0, 'young': 0}
-        for mouse in self.meta['mice']:
-            age = self.meta['age'][mouse]
-            for border, session in zip(borders, self.meta['session_types']):
-                d_prime_this_session = behavioral_performance.sel(metric='d_prime',
-                                                                  mouse=mouse,
-                                                                  session=session).values.tolist()
-                length = len(d_prime_this_session)
-                d_primes[age][row_counters[age],border:border+length] = d_prime_this_session
-
-            row_counters[age] += 1
+        for age in ["aged", "young"]:
+            for row, mouse in enumerate(self.meta["grouped_mice"][age]):
+                for border, session in zip(borders, self.meta["session_types"]):
+                    d_prime_this_session = behavioral_performance.sel(
+                        metric="d_prime", mouse=mouse, session=session
+                    ).values.tolist()
+                    length = len(d_prime_this_session)
+                    d_primes[age][row, border : border + length] = d_prime_this_session
 
         if ax is None:
             fig, ax = plt.subplots()
-        for age, c in zip(['young', 'aged'], ['k', 'r']):
+        for age, c in zip(["young", "aged"], ["k", "r"]):
             ax.plot(d_primes[age].T, color=c, alpha=0.3)
-            errorfill(range(d_primes[age].shape[1]), np.nanmean(d_primes[age], axis=0),
-                      sem(d_primes[age], axis=0), ax=ax, color=c, label=age)
+            errorfill(
+                range(d_primes[age].shape[1]),
+                np.nanmean(d_primes[age], axis=0),
+                sem(d_primes[age], axis=0),
+                ax=ax,
+                color=c,
+                label=age,
+            )
 
         for session in borders[1:]:
-            ax.axvline(x=session, color='k')
+            ax.axvline(x=session, color="k")
         ax.set_xticks(borders)
         ax.set_xticklabels(np.insert(longest_sessions, 0, 0))
         ax.set_ylabel("d'")
-        ax.set_xlabel('Trial blocks')
+        ax.set_xlabel("Trial blocks")
         ax = beautify_ax(ax)
         fig.legend()
 
@@ -993,7 +1014,7 @@ if __name__ == "__main__":
     RR = ProjectAnalyses(
         [
             "Fornax",
-            "Gemini_aged",
+            "Gemini",
             "Io",
             "Janus",
             "Lyra",
