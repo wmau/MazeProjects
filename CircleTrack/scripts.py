@@ -24,8 +24,7 @@ import pymannkendall as mk
 from sklearn.metrics.pairwise import cosine_similarity
 from itertools import product
 
-from CircleTrack.utils import get_circular_error, \
-    format_spatial_location_for_decoder
+from CircleTrack.utils import get_circular_error, format_spatial_location_for_decoder
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -126,8 +125,10 @@ class ProjectAnalyses:
         )[0]
 
         # Get calcium activity from each session for this mouse.
-        if data_type == 'patterns':
-            activity_list = [sessions[session].assemblies[data_type].T for session in session_types]
+        if data_type == "patterns":
+            activity_list = [
+                sessions[session].assemblies[data_type].T for session in session_types
+            ]
         else:
             activity_list = [
                 sessions[session].imaging[data_type] for session in session_types
@@ -430,7 +431,6 @@ class ProjectAnalyses:
         for session, train_test_label in zip(sessions, ["train", "test"]):
             lin_position = session.behavior.data["df"]["lin_position"].values
             outcome_data[train_test_label] = format_spatial_location_for_decoder(
-
                 lin_position,
                 n_spatial_bins=n_spatial_bins,
                 time_bin_size=time_bin_size,
@@ -914,6 +914,67 @@ class ProjectAnalyses:
         fig.legend()
 
         return behavioral_performance, d_primes
+
+    def compare_assemblies(self, mouse, session_types: tuple):
+        # Get the patterns from each session, matching the neurons.
+        rearranged_patterns = self.rearrange_neurons(
+            mouse, session_types, data_type="patterns", detected="everyday"
+        )
+
+        # To keep consistent with its other outputs, self.rearrange_neurons()
+        # gives a neuron x something (in this use case, assemblies) matrix.
+        # We actually want to iterate over assemblies here, so transpose.
+        iterable_patterns = [
+            session_patterns.T for session_patterns in rearranged_patterns
+        ]
+
+        # For each assembly in session 1, compute its cosine similarity
+        # to every other assembly in session 2. Place this in a dict
+        # with keys corresponding to assembly pairs (as tuples).
+        assembly_numbers = [range(pattern.shape[0]) for pattern in iterable_patterns]
+        similarities = dict()
+        for combination, pattern_pair in zip(
+            product(*assembly_numbers), product(*iterable_patterns)
+        ):
+            similarities[combination] = cosine_similarity(
+                np.abs(pattern_pair[0].reshape(1, -1)),
+                np.abs(pattern_pair[1].reshape(1, -1)),
+            )[0][0]
+
+        # Now, for each assembly, find its best match (i.e., argmax the cosine similarity).
+        n_assemblies_first_session = rearranged_patterns[0].shape[1]
+        assembly_matches = np.zeros(n_assemblies_first_session, dtype=int)
+        for assembly_number in range(n_assemblies_first_session):
+            # Get relevant assembly pairs.
+            assembly_pair_keys = [
+                assembly_pair
+                for assembly_pair in similarities.keys()
+                if assembly_pair[0] == assembly_number
+            ]
+            similarities_this_assembly = [
+                similarities[key] for key in assembly_pair_keys
+            ]
+
+            assembly_matches[assembly_number] = assembly_pair_keys[
+                np.argmax(similarities_this_assembly)
+            ][1]
+
+        return similarities, assembly_matches, iterable_patterns
+
+    def plot_similar_assemblies(self, mouse, session_types: tuple):
+        similarities, assembly_matches, patterns = self.compare_assemblies(
+            mouse, session_types
+        )
+        registered_spike_times = self.rearrange_neurons(mouse, session_types, 'spike_times', detected='everyday')
+
+        for assembly_number in range(patterns[0].shape[0]):
+            assemblies_to_plot = [assembly_number, assembly_matches[assembly_number]]
+            activations = [self.data[mouse][session_type].assemblies['activations'][assembly]
+                           for session_type, assembly in zip(session_types, assemblies_to_plot)]
+            order = np.argsort(np.abs(patterns[0][assembly_number]))
+            fig, axs = plt.subplots(2,1)
+            for ax, activation, spike_times in zip(axs, activations, registered_spike_times):
+                plot_assembly(0, activation, spike_times, sort_by_contribution=False, order=order, ax=ax)
 
 
 if __name__ == "__main__":
