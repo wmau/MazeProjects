@@ -1046,18 +1046,28 @@ class ProjectAnalyses:
     def pattern_similarity_matrix(self, mouse):
         n_sessions = len(self.meta['session_types'])
         best_similarities = np.zeros((n_sessions, n_sessions), dtype=object)
-        best_similarities_mean =  nan_array((n_sessions, n_sessions))
+        best_similarities_median =  nan_array((n_sessions, n_sessions))
         for i, s1 in zip(range(n_sessions), self.meta['session_types']):
             for j, s2 in zip(range(n_sessions), self.meta['session_types']):
                 if i != j:
                     best_similarities_this_pair = self.compare_assemblies(mouse, (s1, s2))[2]
                     best_similarities[i,j] = best_similarities_this_pair
-                    best_similarities_mean[i,j] = np.nanmean(best_similarities_this_pair)
+                    best_similarities_median[i,j] = np.nanmedian(best_similarities_this_pair)
 
-        return best_similarities, best_similarities_mean
+        return best_similarities, best_similarities_median
 
 
     def plot_pattern_similarity_matrix(self):
+        """
+        For each assembly in a given session, for another given session, find the assembly with the most similar
+        pattern, assessed through cosine similarity. Do this for each assembly and each session pair. Take the median
+        across assemblies for each session pair. Now you have a session x session matrix where each entry is the median
+        cosine similarity of the best-matched assembly patterns across those two sessions. This could represent general
+        similarity of assembly participation amongst cells. Do this for each mouse and then take the median across those
+        medians. Also split into young versus aged.
+
+        :return:
+        """
         n_sessions = len(self.meta['session_types'])
         best_similarities = {age: nan_array((len(self.meta['grouped_mice'][age]), n_sessions, n_sessions))
                              for age in ['young', 'aged']}
@@ -1068,7 +1078,7 @@ class ProjectAnalyses:
         vmin = min([np.nanmin(np.nanmedian(best_similarities[age], axis=0)) for age in ['aged', 'young']])
         vmax = max([np.nanmax(np.nanmedian(best_similarities[age], axis=0))for age in ['aged', 'young']])
 
-        fig, axs = plt.subplots(1,2)
+        fig, axs = plt.subplots(1,2,figsize=(12.6, 6.5))
         for ax, age in zip(axs, ['young', 'aged']):
             ax.imshow(np.nanmedian(best_similarities[age], axis=0), vmin=vmin, vmax=vmax, origin='lower')
             ax.set_title(age)
