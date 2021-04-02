@@ -1,4 +1,4 @@
-from CircleTrack.BehaviorFunctions import BehaviorSession, spiral_plot
+from CircleTrack.BehaviorFunctions import BehaviorSession
 import matplotlib.pyplot as plt
 import numpy as np
 from CaImaging.util import sync_data, nan_array
@@ -6,7 +6,7 @@ from CaImaging.Miniscope import get_transient_timestamps
 from util import Session_Metadata
 from CircleTrack.BehaviorFunctions import linearize_trajectory
 from CaImaging.util import ScrollPlot
-from CircleTrack.plotting import plot_spiral, plot_raster
+from CircleTrack.plotting import plot_spiral, plot_raster, spiral_plot
 from CaImaging.PlaceFields import PlaceFields
 from CaImaging.Behavior import spatial_bin
 import holoviews as hv

@@ -1,5 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import pyplot as plt
+
 from CaImaging.util import check_attrs
 
 
@@ -99,3 +101,43 @@ def plot_daily_rasters(ScrollObj):
         ax[1].set_ylim([min(ymin), max(ymax)])
 
     ScrollObj.last_position = rasters[0].shape[0] - 1
+
+
+def spiral_plot(t, lin_position, markers, ax=None, marker_legend="Licks"):
+    """
+    Plot trajectory of the mouse over time in a circular (polar) axis. Theta
+    corresponds to the animal's position while the radius (distance from center)
+    is time. Also plot events of interest (e.g., licks or calcium activity).
+
+    :parameters
+    ---
+    t: array
+        Time vector, usually np.asarray(behavior_df.frame).
+
+    lin_position: array
+        Vector of polar coordinates (angles) for each time point t.
+
+    markers: array
+        Something that indexes lin_position. These locations will be
+        marked as "events" on the spiral plot.
+
+    marker_legend: str
+        Label for whatever you are highlighting
+    """
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection="polar")
+    ax.plot(lin_position, t)
+    ax.plot(lin_position[markers], t[markers], "ro", markersize=2)
+    ax.legend(["Trajectory", marker_legend])
+
+    # Clean up axes.
+    ax.spines["polar"].set_visible(False)
+    ax.set_xticklabels([])
+    # ax.set_xticks([])
+    ax.set_yticklabels([])
+    ax.set_theta_zero_location("N")  # Make 12 o'clock "0 degrees".
+    ax.set_theta_direction(-1)  # Polar coordinates go counterclockwise.
+    # ax.set_yticklabels(t_labels)
+
+    return ax

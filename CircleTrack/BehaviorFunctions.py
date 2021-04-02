@@ -21,6 +21,8 @@ import matplotlib.pyplot as plt
 import cv2
 
 from numpy.lib.stride_tricks import sliding_window_view
+
+from CircleTrack.plotting import spiral_plot
 from CircleTrack.utils import circle_sizes, cart2pol
 from util import grab_paths, Session_Metadata, find_timestamp_file
 import tkinter as tk
@@ -539,45 +541,6 @@ def get_trials(behavior_df, counterclockwise=False):
     #     plt.plot(position[trials == trial])
 
     return trials.astype(int)
-
-
-def spiral_plot(t, lin_position, markers, marker_legend="Licks"):
-    """
-    Plot trajectory of the mouse over time in a circular (polar) axis. Theta
-    corresponds to the animal's position while the radius (distance from center)
-    is time. Also plot events of interest (e.g., licks or calcium activity).
-
-    :parameters
-    ---
-    t: array
-        Time vector, usually np.asarray(behavior_df.frame).
-
-    lin_position: array
-        Vector of polar coordinates (angles) for each time point t.
-
-    markers: array
-        Something that indexes lin_position. These locations will be
-        marked as "events" on the spiral plot.
-
-    marker_legend: str
-        Label for whatever you are highlighting
-    """
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection="polar")
-    ax.plot(lin_position, t)
-    ax.plot(lin_position[markers], t[markers], "ro", markersize=2)
-    ax.legend(["Trajectory", marker_legend])
-
-    # Clean up axes.
-    ax.spines["polar"].set_visible(False)
-    ax.set_xticklabels([])
-    # ax.set_xticks([])
-    ax.set_yticklabels([])
-    ax.set_theta_zero_location("N")  # Make 12 o'clock "0 degrees".
-    ax.set_theta_direction(-1)  # Polar coordinates go counterclockwise.
-    # ax.set_yticklabels(t_labels)
-
-    return fig, ax
 
 
 def approach_speed(
@@ -1113,7 +1076,7 @@ class BehaviorSession:
         """
         lin_position = np.asarray(linearize_trajectory(self.data["df"])[0])
         t = np.asarray(self.data["df"].frame)
-        fig, ax = spiral_plot(t, lin_position, self.data["df"]["lick_port"] > -1)
+        ax = spiral_plot(t, lin_position, self.data["df"]["lick_port"] > -1)
 
         for port in self.data["lin_ports"]:
             ax.axvline(x=port, color="g")
@@ -1263,32 +1226,18 @@ class BehaviorSession:
             FA_rate = incorrect_licks / nogo_trials
             CR_rate = (nogo_trials - incorrect_licks) / nogo_trials
 
+            # To correct d' of infinity or -infinity refer to Stanislaw & Todorov (1999):
+            # http://www.jessicagrahn.com/uploads/6/0/8/5/6085172/stanislawtodorovdprim1999.pdf
+
+            #hit_rate = hit_rate / (hit_rate + miss_rate)
+            hit_for_dprime = (correct_licks+0.5) / (go_trials+1)
+            FA_for_dprime = (incorrect_licks+0.5) / (nogo_trials+1)
+
             sdt["hits"].append(hit_rate)
             sdt["misses"].append(miss_rate)
             sdt["FAs"].append(FA_rate)
             sdt["CRs"].append(CR_rate)
-
-            #Also calculate d'
-            # One way to prevent d' infinity.
-            # half_hit = 0.5 / (hits + misses)
-            # half_fa = 0.5 / (fas + crs)
-
-            correction = 1 / (2*ntrials)
-            hit_rate = hit_rate / (hit_rate + miss_rate)
-            if hit_rate == 1:
-                hit_rate= 1 - correction
-                # hit_rate = 1 - half_hit
-            # if hit_rate == 0:
-            # hit_rate = half_hit
-
-            FA_rate = FA_rate / (FA_rate + CR_rate)
-            # if fa_rate == 1:
-            # fa_rate = 1 - half_fa
-            if FA_rate == 0:
-                # fa_rate = half_fa
-                FA_rate = correction
-
-            sdt["d_prime"].append(Z(hit_rate) - Z(FA_rate))
+            sdt["d_prime"].append(Z(hit_for_dprime) - Z(FA_for_dprime))
 
         if plot:
             fig, ax = plt.subplots()
