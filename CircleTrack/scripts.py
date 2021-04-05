@@ -15,7 +15,7 @@ from sklearn.naive_bayes import BernoulliNB
 import numpy as np
 from scipy.stats import zscore
 import os
-from CircleTrack.plotting import plot_daily_rasters, spiral_plot
+from CircleTrack.plotting import plot_daily_rasters, spiral_plot, highlight_column
 from CaImaging.Assemblies import preprocess_multiple_sessions, lapsed_activation
 from CircleTrack.Assemblies import plot_assembly
 import xarray as xr
@@ -257,6 +257,30 @@ class ProjectAnalyses:
             )
 
             ax.plot(median_r[i], "o-")
+
+    def plot_aged_pf_correlation(self, session_types=('Goals3', 'Goals4')):
+
+        r_values = dict()
+        for age in ['young', 'aged']:
+            r_values[age] = []
+            for mouse in self.meta['grouped_mice'][age]:
+                rs_this_mouse = np.asarray(self.correlate_fields(mouse, session_types, show_histogram=False)['r'])
+                rs = rs_this_mouse[~np.isnan(rs_this_mouse)]
+
+                r_values[age].append(rs)
+
+        fig, axs = plt.subplots(1,2,sharey=True)
+        fig.subplots_adjust(wspace=0)
+
+        for ax, age in zip(axs, ['young', 'aged']):
+            ax.boxplot(r_values[age])
+            ax.set_title(age)
+            ax.set_xticklabels(self.meta['grouped_mice'][age], rotation=45)
+
+        return r_values
+
+
+
 
     def correlate_stability_to_reversal(
         self,
@@ -766,6 +790,14 @@ class ProjectAnalyses:
         for assembly_number in assembly_trends[trend]:
             session.plot_assembly(assembly_number)
 
+    def plot_licks(self, mouse, session_type):
+        ax = self.data[mouse][session_type].behavior.get_licks(plot=True)[1]
+        if session_type == 'Reversal':
+            [highlight_column(rewarded, ax, linewidth=5, color='orange', alpha=0.6)
+             for rewarded in np.where(self.data[mouse]['Goals4'].behavior.data['rewarded_ports'])[0]]
+        ax.set_title(f'{mouse}, {session_type} session')
+        plt.tight_layout()
+
     def plot_behavior(self, mouse, window=8, strides=2, show_plot=True, ax=None):
         """
         Plot behavioral performance (hits, correct rejections, d') for
@@ -920,7 +952,29 @@ class ProjectAnalyses:
 
         return behavioral_performance, metrics
 
-    def compare_assemblies(self, mouse, session_types: tuple):
+    def match_assemblies(self, mouse, session_types: tuple, absolute_value=True):
+        """
+        Match assemblies across two sessions. For each assembly in the first session of the session_types tuple,
+        find the corresponding assembly in the second session by taking the highest cosine similarity between two
+        assembly patterns.
+
+        :parameters
+        ---
+        mouse: str
+            Mouse name.
+
+        session_types: tuple
+            Two session names (e.g. (Goals1, Goals2))
+
+        absolute_value: boolean
+            Whether to take the absolute value of the pattern similarity matrix.
+
+        :returns
+        ---
+        similarities: {assembly_pair: cosine similarity} dict
+            Cosine similarities for every assembly combination.
+
+        """
         # Get the patterns from each session, matching the neurons.
         rearranged_patterns = self.rearrange_neurons(
             mouse, session_types, data_type="patterns", detected="everyday"
@@ -929,47 +983,36 @@ class ProjectAnalyses:
         # To keep consistent with its other outputs, self.rearrange_neurons()
         # gives a neuron x something (in this use case, assemblies) matrix.
         # We actually want to iterate over assemblies here, so transpose.
-        iterable_patterns = [
+        patterns_iterable = [
             session_patterns.T for session_patterns in rearranged_patterns
         ]
 
         # For each assembly in session 1, compute its cosine similarity
         # to every other assembly in session 2. Place this in a dict
         # with keys corresponding to assembly pairs (as tuples).
-        assembly_numbers = [range(pattern.shape[0]) for pattern in iterable_patterns]
-        similarities = dict()
+        assembly_numbers = [range(pattern.shape[0]) for pattern in patterns_iterable]
+        similarities = np.zeros([pattern.shape[0] for pattern in patterns_iterable])
         for combination, pattern_pair in zip(
-            product(*assembly_numbers), product(*iterable_patterns)
+            product(*assembly_numbers), product(*patterns_iterable)
         ):
-            similarities[combination] = cosine_similarity(
-                np.abs(pattern_pair[0].reshape(1, -1)),
-                np.abs(pattern_pair[1].reshape(1, -1)),
-            )[0][0]
+            if absolute_value:
+                patterns = [np.abs(pattern.reshape(1,-1)) for pattern in pattern_pair]
+            else:
+                patterns = [pattern.reshape(1,-1) for pattern in pattern_pair]
+            similarities[combination[0], combination[1]] = cosine_similarity(*patterns)[0][0]
 
         # Now, for each assembly, find its best match (i.e., argmax the cosine similarity).
         n_assemblies_first_session = rearranged_patterns[0].shape[1]
         assembly_matches = np.zeros(n_assemblies_first_session, dtype=int)
         best_similarities = nan_array(assembly_matches.shape)
-        for assembly_number in range(n_assemblies_first_session):
-            # Get relevant assembly pairs.
-            assembly_pair_keys = [
-                assembly_pair
-                for assembly_pair in similarities.keys()
-                if assembly_pair[0] == assembly_number
-            ]
-            similarities_this_assembly = [
-                similarities[key] for key in assembly_pair_keys
-            ]
+        for assembly_number, possible_matches in enumerate(similarities):
+            best_similarities[assembly_number] = np.max(possible_matches)
+            assembly_matches[assembly_number] = np.argmax(possible_matches)
 
-            best_similarities[assembly_number] = np.max(similarities_this_assembly)
-            assembly_matches[assembly_number] = assembly_pair_keys[
-                np.argmax(similarities_this_assembly)
-            ][1]
-
-        return similarities, assembly_matches, best_similarities, iterable_patterns
+        return similarities, assembly_matches, best_similarities, patterns_iterable
 
     def plot_similar_assemblies(self, mouse, session_types: tuple):
-        similarities, assembly_matches, best_similarities, patterns = self.compare_assemblies(
+        similarities, assembly_matches, best_similarities, patterns = self.match_assemblies(
             mouse, session_types
         )
         n_assemblies = patterns[0].shape[0]
@@ -1000,7 +1043,7 @@ class ProjectAnalyses:
 
     def spiralplot_similar_assemblies(self, mouse, session_types: tuple, thresh=2.58):
         # Match assemblies.
-        similarities, assembly_matches, best_similarities, patterns = self.compare_assemblies(
+        similarities, assembly_matches, best_similarities, patterns = self.match_assemblies(
             mouse, session_types
         )
         n_assemblies = patterns[0].shape[0]
@@ -1050,7 +1093,7 @@ class ProjectAnalyses:
         for i, s1 in zip(range(n_sessions), self.meta['session_types']):
             for j, s2 in zip(range(n_sessions), self.meta['session_types']):
                 if i != j:
-                    best_similarities_this_pair = self.compare_assemblies(mouse, (s1, s2))[2]
+                    best_similarities_this_pair = self.match_assemblies(mouse, (s1, s2))[2]
                     best_similarities[i,j] = best_similarities_this_pair
                     best_similarities_median[i,j] = np.nanmedian(best_similarities_this_pair)
 
@@ -1122,7 +1165,7 @@ if __name__ == "__main__":
         [
             "Fornax",
             "Gemini",
-            "Io",
+            #"Io",
             "Janus",
             "Lyra",
             "Miranda",

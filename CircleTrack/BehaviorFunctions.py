@@ -22,7 +22,7 @@ import cv2
 
 from numpy.lib.stride_tricks import sliding_window_view
 
-from CircleTrack.plotting import spiral_plot
+from CircleTrack.plotting import spiral_plot, highlight_column
 from CircleTrack.utils import circle_sizes, cart2pol
 from util import grab_paths, Session_Metadata, find_timestamp_file
 import tkinter as tk
@@ -1020,7 +1020,7 @@ class BehaviorSession:
         self.data["rewarded_ports"][rewarded_ports] = True
         self.data["n_rewarded_ports"] = np.sum(self.data["rewarded_ports"])
 
-        self.data["all_licks"] = self.get_licks(plot=False)
+        self.data["all_licks"] = self.get_licks(plot=False)[0]
         self.data["n_drinks"] = self.count_drinks()
 
         self.data["learning"] = dict()
@@ -1169,14 +1169,18 @@ class BehaviorSession:
         if plot:
             fig, ax = plt.subplots(figsize=(4.35, 5))
             ax.imshow(all_licks)
+            [highlight_column(rewarded, ax, linewidth=5, color='lime', alpha=0.6)
+             for rewarded in np.where(self.data['rewarded_ports'])[0]]
             ax.axis("tight")
             ax.set_xlabel("Water port #")
             ax.set_ylabel("Trial")
             fig.tight_layout()
+        else:
+            ax = None
 
         all_licks = np.asarray(all_licks)
 
-        return all_licks
+        return all_licks, ax
 
     def plot_licks(self):
         """

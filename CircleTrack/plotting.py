@@ -141,3 +141,10 @@ def spiral_plot(t, lin_position, markers, ax=None, marker_legend="Licks"):
     # ax.set_yticklabels(t_labels)
 
     return ax
+
+def highlight_column(column, ax, **kwargs):
+    ylims = ax.get_ylim()
+    rect = plt.Rectangle((column-0.5, ylims[1]), 1, np.abs(np.diff(ylims)), fill=False, **kwargs)
+    ax.add_patch(rect)
+
+    return rect
