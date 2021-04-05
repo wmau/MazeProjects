@@ -25,6 +25,7 @@ from itertools import product, permutations
 import multiprocessing as mp
 from joblib import Parallel, delayed
 from tqdm import tqdm
+import matplotlib.patches as mpatches
 
 from CircleTrack.utils import get_circular_error, format_spatial_location_for_decoder
 
@@ -77,8 +78,9 @@ class ProjectAnalyses:
             "young": [mouse for mouse in self.meta["mice"] if mouse not in aged_mice],
         }
 
-        self.meta['aged'] = {mouse: True if mouse in aged_mice else False for mouse in self.meta['mice']}
-
+        self.meta["aged"] = {
+            mouse: True if mouse in aged_mice else False for mouse in self.meta["mice"]
+        }
 
         # for mouse in mice:
         #     S_list = [self.data[mouse][session].data['imaging']['S']
@@ -99,7 +101,8 @@ class ProjectAnalyses:
 
         fig, ax = plt.subplots()
         for n, mouse in zip(n_ensembles, self.meta["mice"]):
-            ax.plot(self.meta["session_labels"], n)
+            color = "k" if mouse in self.meta["grouped_mice"]["young"] else "r"
+            ax.plot(self.meta["session_labels"], n, color=color)
             ax.annotate(mouse, (0.1, n[0] + 1))
 
         ax.set_ylabel("# of ensembles")
@@ -258,29 +261,34 @@ class ProjectAnalyses:
 
             ax.plot(median_r[i], "o-")
 
-    def plot_aged_pf_correlation(self, session_types=('Goals3', 'Goals4')):
+    def plot_aged_pf_correlation(self, session_types=("Goals3", "Goals4")):
 
         r_values = dict()
-        for age in ['young', 'aged']:
+        for age in ["young", "aged"]:
             r_values[age] = []
-            for mouse in self.meta['grouped_mice'][age]:
-                rs_this_mouse = np.asarray(self.correlate_fields(mouse, session_types, show_histogram=False)['r'])
+            for mouse in self.meta["grouped_mice"][age]:
+                rs_this_mouse = np.asarray(
+                    self.correlate_fields(mouse, session_types, show_histogram=False)[
+                        "r"
+                    ]
+                )
                 rs = rs_this_mouse[~np.isnan(rs_this_mouse)]
 
                 r_values[age].append(rs)
 
-        fig, axs = plt.subplots(1,2,sharey=True)
+        fig, axs = plt.subplots(1, 2, sharey=True)
         fig.subplots_adjust(wspace=0)
 
-        for ax, age in zip(axs, ['young', 'aged']):
-            ax.boxplot(r_values[age])
+        for ax, age in zip(axs, ["young", "aged"]):
+            ax.violinplot(r_values[age], showmedians=True, showextrema=False)
             ax.set_title(age)
-            ax.set_xticklabels(self.meta['grouped_mice'][age], rotation=45)
+            ax.set_xticks(np.arange(1, len(self.meta["grouped_mice"][age]) + 1))
+            ax.set_xticklabels(self.meta["grouped_mice"][age], rotation=45)
+
+            if age == "young":
+                ax.set_ylabel("Place field correlations [r]")
 
         return r_values
-
-
-
 
     def correlate_stability_to_reversal(
         self,
@@ -805,10 +813,14 @@ class ProjectAnalyses:
 
         """
         ax = self.data[mouse][session_type].behavior.get_licks(plot=True)[1]
-        if session_type == 'Reversal':
-            [highlight_column(rewarded, ax, linewidth=5, color='orange', alpha=0.6)
-             for rewarded in np.where(self.data[mouse]['Goals4'].behavior.data['rewarded_ports'])[0]]
-        ax.set_title(f'{mouse}, {session_type} session')
+        if session_type == "Reversal":
+            [
+                highlight_column(rewarded, ax, linewidth=5, color="orange", alpha=0.6)
+                for rewarded in np.where(
+                    self.data[mouse]["Goals4"].behavior.data["rewarded_ports"]
+                )[0]
+            ]
+        ax.set_title(f"{mouse}, {session_type} session")
         plt.tight_layout()
 
         return ax
@@ -880,7 +892,9 @@ class ProjectAnalyses:
 
         return sdt, ax
 
-    def plot_all_behavior(self, window=8, strides=2, ax=None, performance_metric='d_prime'):
+    def plot_all_behavior(
+        self, window=8, strides=2, ax=None, performance_metric="d_prime", show_plot=True
+    ):
         # Preallocate array.
         behavioral_performance_arr = np.zeros(
             (3, len(self.meta["mice"]), len(self.meta["session_types"])),
@@ -943,29 +957,77 @@ class ProjectAnalyses:
                     length = len(metric_this_session)
                     metrics[age][row, border : border + length] = metric_this_session
 
-        if ax is None:
-            fig, ax = plt.subplots()
-        for age, c in zip(["young", "aged"], ["k", "r"]):
-            ax.plot(metrics[age].T, color=c, alpha=0.3)
-            errorfill(
-                range(metrics[age].shape[1]),
-                np.nanmean(metrics[age], axis=0),
-                sem(metrics[age], axis=0),
-                ax=ax,
-                color=c,
-                label=age,
-            )
+        if show_plot:
+            if ax is None:
+                fig, ax = plt.subplots()
+            for age, c in zip(["young", "aged"], ["k", "r"]):
+                ax.plot(metrics[age].T, color=c, alpha=0.3)
+                errorfill(
+                    range(metrics[age].shape[1]),
+                    np.nanmean(metrics[age], axis=0),
+                    sem(metrics[age], axis=0),
+                    ax=ax,
+                    color=c,
+                    label=age,
+                )
 
-        for session in borders[1:]:
-            ax.axvline(x=session, color="k")
-        ax.set_xticks(borders)
-        ax.set_xticklabels(np.insert(longest_sessions, 0, 0))
-        ax.set_ylabel(performance_metric)
-        ax.set_xlabel("Trial blocks")
-        ax = beautify_ax(ax)
-        fig.legend()
+            for session in borders[1:]:
+                ax.axvline(x=session, color="k")
+            ax.set_xticks(borders)
+            ax.set_xticklabels(np.insert(longest_sessions, 0, 0))
+            ax.set_ylabel(performance_metric)
+            ax.set_xlabel("Trial blocks")
+            ax = beautify_ax(ax)
+            fig.legend()
 
         return behavioral_performance, metrics
+
+    def plot_best_performance(self, session_type, ax=None, window=8):
+        behavioral_performance = self.plot_all_behavior(show_plot=False, window=window)[0]
+
+        best_d = dict()
+        for age in ["young", "aged"]:
+            best_d[age] = []
+            for mouse in self.meta["grouped_mice"][age]:
+                best_d[age].append(
+                    np.nanmax(
+                        behavioral_performance.sel(
+                            mouse=mouse, metric="d_prime", session=session_type
+                        ).values.tolist()
+                    )
+                )
+
+        label_axes = True
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(3, 4.75))
+        else:
+            label_axes = False
+        box = ax.boxplot([best_d[age] for age in ["young", "aged"]], labels=['young','aged'], patch_artist=True)
+        for patch, med, color in zip(box['boxes'], box['medians'], ['w', 'r']):
+            patch.set_facecolor(color)
+            med.set(color='k')
+
+        if label_axes:
+            ax.set_xticks([1,2])
+            ax.set_xticklabels(['Young', 'Aged'])
+            ax.set_ylabel("Best d'")
+            ax = beautify_ax(ax)
+            plt.tight_layout()
+
+        return best_d
+
+    def plot_best_performance_all_sessions(self, window=None):
+        fig, axs = plt.subplots(1, len(self.meta['session_types']), sharey=True)
+        fig.subplots_adjust(wspace=0)
+        for ax, session in zip(axs, self.meta['session_types']):
+            self.plot_best_performance(session_type=session, ax=ax, window=window)
+            ax.set_xticks([])
+            ax.set_title(f'{session}')
+            if session == 'Goals1':
+                ax.set_ylabel("d' (per mouse)")
+
+        patches = [mpatches.Patch(color=c, label=label) for c, label in zip(['w', 'r'], ['Young', 'Aged'])]
+        fig.legend(handles=patches, loc='lower right')
 
     def match_assemblies(self, mouse, session_types: tuple, absolute_value=True):
         """
@@ -1011,10 +1073,12 @@ class ProjectAnalyses:
             product(*assembly_numbers), product(*patterns_iterable)
         ):
             if absolute_value:
-                patterns = [np.abs(pattern.reshape(1,-1)) for pattern in pattern_pair]
+                patterns = [np.abs(pattern.reshape(1, -1)) for pattern in pattern_pair]
             else:
-                patterns = [pattern.reshape(1,-1) for pattern in pattern_pair]
-            similarities[combination[0], combination[1]] = cosine_similarity(*patterns)[0][0]
+                patterns = [pattern.reshape(1, -1) for pattern in pattern_pair]
+            similarities[combination[0], combination[1]] = cosine_similarity(*patterns)[
+                0
+            ][0]
 
         # Now, for each assembly, find its best match (i.e., argmax the cosine similarity).
         n_assemblies_first_session = rearranged_patterns[0].shape[1]
@@ -1027,9 +1091,12 @@ class ProjectAnalyses:
         return similarities, assembly_matches, best_similarities, patterns_iterable
 
     def plot_similar_assemblies(self, mouse, session_types: tuple):
-        similarities, assembly_matches, best_similarities, patterns = self.match_assemblies(
-            mouse, session_types
-        )
+        (
+            similarities,
+            assembly_matches,
+            best_similarities,
+            patterns,
+        ) = self.match_assemblies(mouse, session_types)
         n_assemblies = patterns[0].shape[0]
         registered_spike_times = self.rearrange_neurons(
             mouse, session_types, "spike_times", detected="everyday"
@@ -1058,9 +1125,12 @@ class ProjectAnalyses:
 
     def spiralplot_similar_assemblies(self, mouse, session_types: tuple, thresh=2.58):
         # Match assemblies.
-        similarities, assembly_matches, best_similarities, patterns = self.match_assemblies(
-            mouse, session_types
-        )
+        (
+            similarities,
+            assembly_matches,
+            best_similarities,
+            patterns,
+        ) = self.match_assemblies(mouse, session_types)
         n_assemblies = patterns[0].shape[0]
 
         # Get timestamps and linearized position.
@@ -1085,7 +1155,12 @@ class ProjectAnalyses:
             # Make a figure with 2 subplots, one for each session.
             fig, axs = plt.subplots(2, 1, subplot_kw=dict(polar=True))
             for ax, activation, t_, lin_pos, assembly_number, session_type in zip(
-                axs, activations, t, linearized_position, [s1_assembly, s2_assembly], session_types
+                axs,
+                activations,
+                t,
+                linearized_position,
+                [s1_assembly, s2_assembly],
+                session_types,
             ):
 
                 # Find activation threshold and plot location of assembly activation.
@@ -1097,23 +1172,26 @@ class ProjectAnalyses:
                     ax=ax,
                     marker_legend="Assembly activation",
                 )
-                ax.set_title(f'Assembly #{assembly_number} in session {session_type}')
+                ax.set_title(f"Assembly #{assembly_number} in session {session_type}")
 
         return similarities, assembly_matches, patterns
 
     def pattern_similarity_matrix(self, mouse):
-        n_sessions = len(self.meta['session_types'])
+        n_sessions = len(self.meta["session_types"])
         best_similarities = np.zeros((n_sessions, n_sessions), dtype=object)
-        best_similarities_median =  nan_array((n_sessions, n_sessions))
-        for i, s1 in zip(range(n_sessions), self.meta['session_types']):
-            for j, s2 in zip(range(n_sessions), self.meta['session_types']):
+        best_similarities_median = nan_array((n_sessions, n_sessions))
+        for i, s1 in zip(range(n_sessions), self.meta["session_types"]):
+            for j, s2 in zip(range(n_sessions), self.meta["session_types"]):
                 if i != j:
-                    best_similarities_this_pair = self.match_assemblies(mouse, (s1, s2))[2]
-                    best_similarities[i,j] = best_similarities_this_pair
-                    best_similarities_median[i,j] = np.nanmedian(best_similarities_this_pair)
+                    best_similarities_this_pair = self.match_assemblies(
+                        mouse, (s1, s2)
+                    )[2]
+                    best_similarities[i, j] = best_similarities_this_pair
+                    best_similarities_median[i, j] = np.nanmedian(
+                        best_similarities_this_pair
+                    )
 
         return best_similarities, best_similarities_median
-
 
     def plot_pattern_similarity_matrix(self):
         """
@@ -1126,25 +1204,43 @@ class ProjectAnalyses:
 
         :return:
         """
-        n_sessions = len(self.meta['session_types'])
-        best_similarities = {age: nan_array((len(self.meta['grouped_mice'][age]), n_sessions, n_sessions))
-                             for age in ['young', 'aged']}
-        for age in ['young', 'aged']:
-            for i, mouse in tqdm(enumerate(self.meta['grouped_mice'][age])):
+        n_sessions = len(self.meta["session_types"])
+        best_similarities = {
+            age: nan_array(
+                (len(self.meta["grouped_mice"][age]), n_sessions, n_sessions)
+            )
+            for age in ["young", "aged"]
+        }
+        for age in ["young", "aged"]:
+            for i, mouse in tqdm(enumerate(self.meta["grouped_mice"][age])):
                 best_similarities[age][i] = self.pattern_similarity_matrix(mouse)[1]
 
-        vmin = min([np.nanmin(np.nanmedian(best_similarities[age], axis=0)) for age in ['aged', 'young']])
-        vmax = max([np.nanmax(np.nanmedian(best_similarities[age], axis=0))for age in ['aged', 'young']])
+        vmin = min(
+            [
+                np.nanmin(np.nanmedian(best_similarities[age], axis=0))
+                for age in ["aged", "young"]
+            ]
+        )
+        vmax = max(
+            [
+                np.nanmax(np.nanmedian(best_similarities[age], axis=0))
+                for age in ["aged", "young"]
+            ]
+        )
 
-        fig, axs = plt.subplots(1,2,figsize=(12.6, 6.5))
-        for ax, age in zip(axs, ['young', 'aged']):
-            ax.imshow(np.nanmedian(best_similarities[age], axis=0), vmin=vmin, vmax=vmax, origin='lower')
+        fig, axs = plt.subplots(1, 2, figsize=(12.6, 6.5))
+        for ax, age in zip(axs, ["young", "aged"]):
+            ax.imshow(
+                np.nanmedian(best_similarities[age], axis=0),
+                vmin=vmin,
+                vmax=vmax,
+                origin="lower",
+            )
             ax.set_title(age)
             ax.set_xticks(range(n_sessions))
             ax.set_yticks(range(n_sessions))
-            ax.set_xticklabels(self.meta['session_types'], rotation=45)
-            ax.set_yticklabels(self.meta['session_types'])
-
+            ax.set_xticklabels(self.meta["session_types"], rotation=45)
+            ax.set_yticklabels(self.meta["session_types"])
 
 
 if __name__ == "__main__":
@@ -1180,7 +1276,7 @@ if __name__ == "__main__":
         [
             "Fornax",
             "Gemini",
-            #"Io",
+            # "Io",
             "Janus",
             "Lyra",
             "Miranda",
