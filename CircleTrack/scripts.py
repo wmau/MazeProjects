@@ -791,12 +791,27 @@ class ProjectAnalyses:
             session.plot_assembly(assembly_number)
 
     def plot_licks(self, mouse, session_type):
+        """
+        Plot the lick matrix (laps x port) for a given mouse and session. Highlight the correct reward location in green.
+        If the session is Reversal, also highlight Goals4 reward location in orange.
+
+        :parameters
+        ---
+        mouse: str
+            Mouse name.
+
+        session_type: str
+            Session name (e.g. 'Goals4').
+
+        """
         ax = self.data[mouse][session_type].behavior.get_licks(plot=True)[1]
         if session_type == 'Reversal':
             [highlight_column(rewarded, ax, linewidth=5, color='orange', alpha=0.6)
              for rewarded in np.where(self.data[mouse]['Goals4'].behavior.data['rewarded_ports'])[0]]
         ax.set_title(f'{mouse}, {session_type} session')
         plt.tight_layout()
+
+        return ax
 
     def plot_behavior(self, mouse, window=8, strides=2, show_plot=True, ax=None):
         """
