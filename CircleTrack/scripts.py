@@ -1123,7 +1123,7 @@ class ProjectAnalyses:
                     ax=ax,
                 )
 
-    def spiralplot_similar_assemblies(self, mouse, session_types: tuple, thresh=2.58):
+    def spiralplot_similar_assemblies(self, mouse, session_types: tuple, thresh=1):
         # Match assemblies.
         (
             similarities,
@@ -1164,7 +1164,8 @@ class ProjectAnalyses:
             ):
 
                 # Find activation threshold and plot location of assembly activation.
-                above_thresh = activation > thresh
+                z_activations = zscore(activation)
+                above_thresh = z_activations > thresh
                 ax = spiral_plot(
                     t_,
                     lin_pos,
