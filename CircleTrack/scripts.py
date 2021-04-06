@@ -26,6 +26,7 @@ import multiprocessing as mp
 from joblib import Parallel, delayed
 from tqdm import tqdm
 import matplotlib.patches as mpatches
+import matplotlib.gridspec as gridspec
 
 from CircleTrack.utils import get_circular_error, format_spatial_location_for_decoder
 
@@ -1090,7 +1091,7 @@ class ProjectAnalyses:
 
         return similarities, assembly_matches, best_similarities, patterns_iterable
 
-    def plot_similar_assemblies(self, mouse, session_types: tuple):
+    def plot_matched_assemblies(self, mouse, session_types: tuple):
         (
             similarities,
             assembly_matches,
@@ -1102,6 +1103,7 @@ class ProjectAnalyses:
             mouse, session_types, "spike_times", detected="everyday"
         )
 
+        # For each assembly in session 1, take its match in session 2.
         for s1_assembly, s2_assembly in zip(range(n_assemblies), assembly_matches):
             activations = [
                 self.data[mouse][session_type].assemblies["activations"][assembly]
@@ -1109,11 +1111,19 @@ class ProjectAnalyses:
                     session_types, [s1_assembly, s2_assembly]
                 )
             ]
+
+            patterns_to_plot = [pattern[session] for pattern, session in zip(patterns, [s1_assembly, s2_assembly])]
             order = np.argsort(np.abs(patterns[0][s1_assembly]))
-            fig, axs = plt.subplots(2, 1)
-            for ax, activation, spike_times in zip(
-                axs, activations, registered_spike_times
+
+            fig = plt.figure(figsize=(19.2, 10.69))
+            spec = gridspec.GridSpec(ncols=2, nrows=2, figure=fig)
+            assembly_axs = [fig.add_subplot(spec[i, 0]) for i in range(2)]
+            pattern_ax = fig.add_subplot(spec[:, 1])
+
+            for ax, activation, spike_times, pattern, c, session in zip(
+                assembly_axs, activations, registered_spike_times, patterns_to_plot, ['k', 'r'], session_types
             ):
+                # Plot assembly activation.
                 plot_assembly(
                     0,
                     activation,
@@ -1122,8 +1132,21 @@ class ProjectAnalyses:
                     order=order,
                     ax=ax,
                 )
+                ax.set_title(session)
 
-    def spiralplot_similar_assemblies(self, mouse, session_types: tuple, thresh=1):
+                # Plot the patterns.
+                markerline, stemlines, baseline = pattern_ax.stem(range(len(pattern)),
+                                                                  np.abs(pattern), c, markerfmt=c+'o', basefmt=' ')
+                plt.setp(markerline, alpha=0.5)
+                plt.setp(stemlines, alpha=0.5)
+
+            # Label the patterns.
+            pattern_ax.set_ylabel('Weight [a.u.]')
+            pattern_ax.set_xlabel('Neurons')
+            pattern_ax.legend(session_types)
+            pattern_ax = beautify_ax(pattern_ax)
+
+    def spiralplot_matched_assemblies(self, mouse, session_types: tuple, thresh=1):
         # Match assemblies.
         (
             similarities,
