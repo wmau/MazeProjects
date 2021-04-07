@@ -13,7 +13,7 @@ from CircleTrack.SessionCollation import MultiAnimal
 from CaImaging.CellReg import rearrange_neurons, trim_map, scrollplot_footprints
 from sklearn.naive_bayes import BernoulliNB
 import numpy as np
-from scipy.stats import zscore
+from scipy.stats import zscore, circmean
 import os
 from CircleTrack.plotting import plot_daily_rasters, spiral_plot, highlight_column
 from CaImaging.Assemblies import preprocess_multiple_sessions, lapsed_activation
@@ -1030,7 +1030,7 @@ class ProjectAnalyses:
         patches = [mpatches.Patch(color=c, label=label) for c, label in zip(['w', 'r'], ['Young', 'Aged'])]
         fig.legend(handles=patches, loc='lower right')
 
-    def match_assemblies(self, mouse, session_types: tuple, absolute_value=True):
+    def match_assemblies(self, mouse, session_types: tuple, absolute_value=False):
         """
         Match assemblies across two sessions. For each assembly in the first session of the session_types tuple,
         find the corresponding assembly in the second session by taking the highest cosine similarity between two
@@ -1045,7 +1045,8 @@ class ProjectAnalyses:
             Two session names (e.g. (Goals1, Goals2))
 
         absolute_value: boolean
-            Whether to take the absolute value of the pattern similarity matrix.
+            Whether to take the absolute value of the pattern similarity matrix. Otherwise, try negating the pattern
+            and take the larger value of the two resulting cosine similarities.
 
         :returns
         ---
@@ -1066,28 +1067,58 @@ class ProjectAnalyses:
         ]
 
         # For each assembly in session 1, compute its cosine similarity
-        # to every other assembly in session 2. Place this in a dict
-        # with keys corresponding to assembly pairs (as tuples).
+        # to every other assembly in session 2. Place this in a matrix.
         assembly_numbers = [range(pattern.shape[0]) for pattern in patterns_iterable]
-        similarities = np.zeros([pattern.shape[0] for pattern in patterns_iterable])
+
+        similarity_matrix_shape = [pattern.shape[0] for pattern in patterns_iterable]
+        if not absolute_value:
+            similarity_matrix_shape.insert(0, 2)
+        similarities = np.zeros(similarity_matrix_shape)
         for combination, pattern_pair in zip(
             product(*assembly_numbers), product(*patterns_iterable)
         ):
             if absolute_value:
                 patterns = [np.abs(pattern.reshape(1, -1)) for pattern in pattern_pair]
+                similarities[combination[0], combination[1]] = cosine_similarity(*patterns)[0,0]
+
+            # Try both negating and not negating patterns. Store both.
             else:
                 patterns = [pattern.reshape(1, -1) for pattern in pattern_pair]
-            similarities[combination[0], combination[1]] = cosine_similarity(*patterns)[
-                0
-            ][0]
+                similarities[0, combination[0], combination[1]] = cosine_similarity(*patterns)[0,0]
+
+                negated_comparison = [patterns[0], -patterns[1]]
+                similarities[1, combination[0], combination[1]] = cosine_similarity(*negated_comparison)[0,0]
+
 
         # Now, for each assembly, find its best match (i.e., argmax the cosine similarity).
         n_assemblies_first_session = rearranged_patterns[0].shape[1]
         assembly_matches = np.zeros(n_assemblies_first_session, dtype=int)
         best_similarities = nan_array(assembly_matches.shape)
-        for assembly_number, possible_matches in enumerate(similarities):
+
+        # Taking the absolute value gave us a assemblies session 1 x assemblies session 2 matrix.
+        # The other appproach gave us a 2 x assemblies session x assemblies session 2 matrix.
+        if not absolute_value:
+            sim_matrix = similarities[0]
+        else:
+            sim_matrix = similarities
+
+        # For each assembly comparison, find the highest cosine similarity and the corresponding assembly index.
+        for assembly_number, possible_matches in enumerate(sim_matrix):
             best_similarities[assembly_number] = np.max(possible_matches)
             assembly_matches[assembly_number] = np.argmax(possible_matches)
+
+        # If we also negated the patterns, check if any of those were better.
+        if not absolute_value:
+            for assembly_number, possible_matches in enumerate(similarities[1]):
+                best_similarity_negated = np.max(possible_matches)
+
+                # If so, replace the similarity value with the higher one, replace the assembly index, and negate the
+                # pattern.
+                if best_similarity_negated > best_similarities[assembly_number]:
+                    best_similarities[assembly_number] = best_similarity_negated
+                    match = np.argmax(possible_matches)
+                    assembly_matches[assembly_number] = match
+                    patterns_iterable[1][match] = -patterns_iterable[1][match]
 
         return similarities, assembly_matches, best_similarities, patterns_iterable
 
@@ -1104,7 +1135,7 @@ class ProjectAnalyses:
         )
 
         # For each assembly in session 1, take its match in session 2.
-        for s1_assembly, s2_assembly in zip(range(n_assemblies), assembly_matches):
+        for s1_assembly, s2_assembly, similarity in zip(range(n_assemblies), assembly_matches, best_similarities):
             activations = [
                 self.data[mouse][session_type].assemblies["activations"][assembly]
                 for session_type, assembly in zip(
@@ -1136,7 +1167,7 @@ class ProjectAnalyses:
 
                 # Plot the patterns.
                 markerline, stemlines, baseline = pattern_ax.stem(range(len(pattern)),
-                                                                  np.abs(pattern), c, markerfmt=c+'o', basefmt=' ')
+                                                                  pattern, c, markerfmt=c+'o', basefmt=' ')
                 plt.setp(markerline, alpha=0.5)
                 plt.setp(stemlines, alpha=0.5)
 
@@ -1144,6 +1175,7 @@ class ProjectAnalyses:
             pattern_ax.set_ylabel('Weight [a.u.]')
             pattern_ax.set_xlabel('Neurons')
             pattern_ax.legend(session_types)
+            pattern_ax.set_title(f'Cosine similarity: {np.round(similarity, 3)}')
             pattern_ax = beautify_ax(pattern_ax)
 
     def spiralplot_matched_assemblies(self, mouse, session_types: tuple, thresh=1):
@@ -1167,7 +1199,7 @@ class ProjectAnalyses:
         ]
 
         # For each assembly in session 1 and its corresponding match in session 2, get their activation profiles.
-        for s1_assembly, s2_assembly in zip(range(n_assemblies), assembly_matches):
+        for s1_assembly, s2_assembly in enumerate(assembly_matches):
             activations = [
                 self.data[mouse][session_type].assemblies["activations"][assembly]
                 for session_type, assembly in zip(
@@ -1200,12 +1232,133 @@ class ProjectAnalyses:
 
         return similarities, assembly_matches, patterns
 
+    def plot_pattern_cosine_similarities(self, session_pair: tuple, show_plot=True):
+        """
+        For a given session pair, plot the distributions of cosine similarities of assemblies for each mouse,
+        separated into young versus aged.
+
+        :param session_pair:
+        :param show_plot:
+        :return:
+        """
+        similarities = dict()
+        for age in ['young', 'aged']:
+            similarities[age] = []
+            for mouse in self.meta['grouped_mice'][age]:
+                similarities[age].append(self.match_assemblies(mouse, session_pair)[2])
+
+        if show_plot:
+            fig, axs = plt.subplots(1,2,figsize=(7,6))
+            fig.subplots_adjust(wspace=0)
+            for age, color, ax in zip(['young','aged'], ['w', 'r'], axs):
+                mice = self.meta['grouped_mice'][age]
+                boxes = ax.boxplot(similarities[age], patch_artist=True)
+                for patch, med in zip(boxes['boxes'], boxes['medians']):
+                    patch.set_facecolor(color)
+                    med.set(color='k')
+
+                if age == 'aged':
+                    ax.set_yticks([])
+                else:
+                    ax.set_ylabel('Cosine similarity of matched assemblies')
+                ax.set_xticklabels(mice, rotation=45)
+
+        return similarities
+
+
+    def plot_pattern_cosine_similarity_comparisons(self, session_pair1, session_pair2):
+        """
+        For two given session pairs, plot the distribution of cosine similarities for each mouse and the two session
+        pairs side by side. This is good for assessing pattern similarity across Goals3 vs Goals4 and Goals4 vs Reversal.
+
+        :param session_pair1:
+        :param session_pair2:
+        :return:
+        """
+        similarities = dict()
+        for session_pair in [session_pair1, session_pair2]:
+            similarities[session_pair] = self.plot_pattern_cosine_similarities(session_pair, show_plot=False)
+
+        fig, axs = plt.subplots(1,2)
+        fig.subplots_adjust(wspace=0)
+
+        for age, ax, color in zip(['young', 'aged'], axs, ['w', 'r']):
+            mice = self.meta['grouped_mice'][age]
+            positions = [np.arange(start, start + 3*len(mice), 3) for start in [-0.5, 0.5]]
+            label_positions = np.arange(0, 3*len(mice), 3)
+
+            for session_pair, position in zip([session_pair1, session_pair2], positions):
+                boxes = ax.boxplot(similarities[session_pair][age], positions=position, patch_artist=True)
+                for patch, med in zip(boxes['boxes'], boxes['medians']):
+                    patch.set_facecolor(color)
+                    med.set(color='k')
+
+            if age == 'aged':
+                ax.set_yticks([])
+            else:
+                ax.set_ylabel('Cosine similarity of matched assemblies')
+            ax.set_xticks(label_positions)
+            ax.set_xticklabels(mice, rotation=45)
+
+        return similarities
+
+
+    def correlate_activation_location_to_cosine_similarity(self, session_pair, activation_thresh=1):
+        """
+        For a given session pair and for each assembly, plot the cosine similarity against the displacement of the location
+        where the assembly usually activates across the two sessions. This is good for assessing whether the pattern
+        similarity is related to stability of the location of activation. 
+
+        :param session_pair:
+        :param activation_thresh:
+        :return:
+        """
+        assembly_matches = dict()
+        best_similarities = dict()
+        activation_locations = dict()
+        activation_distances = dict()
+
+        for mouse in self.meta['mice']:
+            _, assembly_matches[mouse], best_similarities[mouse], _ = \
+                self.match_assemblies(mouse, session_pair)
+
+            lin_positions = [self.data[mouse][session].behavior.data['df']['lin_position']
+                             for session in session_pair]
+
+            activation_locations[mouse] = np.zeros((2, len(assembly_matches[mouse])))
+
+            activations = [self.data[mouse][session].assemblies['activations']
+                           for session in session_pair]
+
+            for s1_assembly, s2_assembly in enumerate(assembly_matches[mouse]):
+                above_threshold = zscore(activations[0][s1_assembly]) > activation_thresh
+                activation_locations[mouse][0, s1_assembly] = circmean(lin_positions[0][above_threshold])
+
+                above_threshold = zscore(activations[1][s2_assembly]) > activation_thresh
+                activation_locations[mouse][1, s1_assembly] = circmean(lin_positions[1][above_threshold])
+
+            activation_distances[mouse] = get_circular_error(activation_locations[mouse][0],
+                                                            activation_locations[mouse][1],
+                                                            np.pi*2)
+
+        fig, ax = plt.subplots()
+        for c, age in zip(['k', 'r'], ['young', 'aged']):
+            for mouse in self.meta['grouped_mice'][age]:
+                ax.scatter(best_similarities[mouse], activation_distances[mouse], color=c)
+        ax.set_xlabel('Cosine similarity')
+        ax.set_ylabel('COM distance across sessions')
+        ax = beautify_ax(ax)
+
+        return assembly_matches, best_similarities, activation_locations, activation_distances
+
+
+
     def pattern_similarity_matrix(self, mouse):
         n_sessions = len(self.meta["session_types"])
         best_similarities = np.zeros((n_sessions, n_sessions), dtype=object)
         best_similarities_median = nan_array((n_sessions, n_sessions))
-        for i, s1 in zip(range(n_sessions), self.meta["session_types"]):
-            for j, s2 in zip(range(n_sessions), self.meta["session_types"]):
+        for i, s1 in enumerate(self.meta["session_types"]):
+            for j, s2 in enumerate(self.meta["session_types"]):
                 if i != j:
                     best_similarities_this_pair = self.match_assemblies(
                         mouse, (s1, s2)
