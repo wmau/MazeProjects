@@ -1307,7 +1307,7 @@ class ProjectAnalyses:
         """
         For a given session pair and for each assembly, plot the cosine similarity against the displacement of the location
         where the assembly usually activates across the two sessions. This is good for assessing whether the pattern
-        similarity is related to stability of the location of activation. 
+        similarity is related to stability of the location of activation.
 
         :param session_pair:
         :param activation_thresh:
