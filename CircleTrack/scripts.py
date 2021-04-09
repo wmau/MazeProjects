@@ -1176,7 +1176,9 @@ class ProjectAnalyses:
             pattern_ax.set_xlabel('Neurons')
             pattern_ax.legend(session_types)
             pattern_ax.set_title(f'Cosine similarity: {np.round(similarity, 3)}')
+            pattern_ax.set_xticks([0, patterns[0].shape[0]])
             pattern_ax = beautify_ax(pattern_ax)
+            plt.gcf().tight_layout()
 
     def spiralplot_matched_assemblies(self, mouse, session_types: tuple, thresh=1):
         # Match assemblies.

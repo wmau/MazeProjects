@@ -64,6 +64,7 @@ def plot_assembly(
     activation_ax.set_xlabel("Frame #")
     spikes_ax.eventplot(sorted_spike_times, color="k")
     spikes_ax.set_ylabel("Neurons", rotation=-90)
+    spikes_ax.set_yticks([0, len(sorted_spike_times)])
 
     return activation_ax, spikes_ax
 
