@@ -88,7 +88,12 @@ def plot_daily_rasters(ScrollObj):
 
     for day, (raster, tuning_curve) in enumerate(zip(rasters, tuning_curves)):
         axs[day, 0].imshow(raster[ScrollObj.current_position], cmap='gray', aspect='auto')
+        axs[day, 0].set_ylabel('Laps')
         axs[day, 1].plot(tuning_curve[ScrollObj.current_position])
+        axs[day, 1].set_ylabel('Transient\nrate')
+    axs[day, 0].set_xlabel('Linearized position')
+    axs[day, 1].set_xlabel('Linearized position')
+    plt.tight_layout()
 
     ymax = []
     ymin = []
