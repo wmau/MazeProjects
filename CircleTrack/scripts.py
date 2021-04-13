@@ -1123,7 +1123,7 @@ class ProjectAnalyses:
 
         # If any assembly doesn't have a single match whose z-scored similarity is above 2.58 (p<0.01), it's not a true
         # match. Exclude it.
-        registered_patterns = {
+        registered_ensembles = {
             "similarities": similarities,
             "matches": assembly_matches,
             "best_similarities": best_similarities,
@@ -1132,7 +1132,7 @@ class ProjectAnalyses:
             "poor_matches": ~np.any(z_similarities > 2.58, axis=1)
         }
 
-        return registered_patterns
+        return registered_ensembles
 
     def plot_matched_assemblies(self, mouse, session_types: tuple):
         registered_patterns = self.match_assemblies(mouse, session_types)
@@ -1200,16 +1200,14 @@ class ProjectAnalyses:
             title = f"Cosine similarity: {np.round(similarity, 3)}"
             if poor_match:
                 title += ' NON-SIG MATCH!'
-            pattern_ax.set_title(f"Cosine similarity: {np.round(similarity, 3)}")
+            pattern_ax.set_title(title)
             pattern_ax.set_xticks([0, patterns[0].shape[0]])
             pattern_ax = beautify_ax(pattern_ax)
             plt.gcf().tight_layout()
 
     def spiralplot_matched_assemblies(self, mouse, session_types: tuple, thresh=1):
         # Match assemblies.
-        registered_patterns = self.match_assemblies(mouse, session_types)
-        patterns = registered_patterns["patterns"]
-        n_assemblies = patterns[0].shape[0]
+        registered_ensembles = self.match_assemblies(mouse, session_types)
 
         # Get timestamps and linearized position.
         t = [
@@ -1222,7 +1220,7 @@ class ProjectAnalyses:
         ]
 
         # For each assembly in session 1 and its corresponding match in session 2, get their activation profiles.
-        for s1_assembly, s2_assembly in enumerate(registered_patterns["matches"]):
+        for s1_assembly, s2_assembly in enumerate(registered_ensembles["matches"]):
             activations = [
                 self.data[mouse][session_type].assemblies["activations"][assembly]
                 for session_type, assembly in zip(
@@ -1253,7 +1251,7 @@ class ProjectAnalyses:
                 )
                 ax.set_title(f"Assembly #{assembly_number} in session {session_type}")
 
-        return registered_patterns
+        return registered_ensembles
 
     def plot_pattern_cosine_similarities(self, session_pair: tuple, show_plot=True):
         """
@@ -1268,9 +1266,8 @@ class ProjectAnalyses:
         for age in ["young", "aged"]:
             similarities[age] = []
             for mouse in self.meta["grouped_mice"][age]:
-                similarities[age].append(
-                    self.match_assemblies(mouse, session_pair)["best_similarities"]
-                )
+                registered_ensembles = self.match_assemblies(mouse, session_pair)
+                similarities[age].append(registered_ensembles['best_similarities'][~registered_ensembles['poor_matches']])
 
         if show_plot:
             fig, axs = plt.subplots(1, 2, figsize=(7, 6))
@@ -1289,6 +1286,37 @@ class ProjectAnalyses:
                 ax.set_xticklabels(mice, rotation=45)
 
         return similarities
+
+    def percent_matched_ensembles(self, session_pair1, session_pair2):
+        percent_matches = dict()
+        for age in ['young', 'aged']:
+            percent_matches[age] = dict()
+
+            for session_pair in [session_pair1, session_pair2]:
+                percent_matches[age][session_pair] = []
+                for mouse in self.meta['grouped_mice'][age]:
+                    poor_matches = self.match_assemblies(mouse, session_pair)['poor_matches']
+                    percent_matches[age][session_pair].append(np.sum(~poor_matches) / len(poor_matches))
+
+        fig, axs = plt.subplots(1, 2)
+        fig.subplots_adjust(wspace=0)
+
+        for age, ax, color in zip(["young", "aged"], axs, ["w", "r"]):
+            boxes = ax.boxplot(percent_matches[age].values(),
+                               patch_artist=True)
+            for patch, med in zip(boxes["boxes"], boxes["medians"]):
+                patch.set_facecolor(color)
+                med.set(color="k")
+
+            if age == 'aged':
+                ax.set_yticks([])
+            else:
+                ax.set_ylabel("Percent matched ensembles")
+            ax.set_xticklabels([session_pair1, session_pair2], rotation=45)
+            ax.set_title(age)
+        fig.tight_layout()
+
+        return percent_matches
 
     def plot_pattern_cosine_similarity_comparisons(self, session_pair1, session_pair2):
         """
