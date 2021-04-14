@@ -726,7 +726,7 @@ class ProjectAnalyses:
 
         return assembly_trends, binned_activations
 
-    def plot_assembly_trends(self, x="time", x_bin_size=60, show_plot=True):
+    def plot_assembly_trends(self, x="time", x_bin_size=60, z_threshold=2.58, show_plot=True):
         session_types = self.meta["session_types"]
         session_labels = self.meta["session_labels"]
         assembly_trend_arr = np.zeros(
@@ -743,7 +743,7 @@ class ProjectAnalyses:
         for i, mouse in enumerate(self.meta["mice"]):
             for j, session_type in enumerate(session_types):
                 assembly_trends = self.find_assembly_trends(
-                    mouse, session_type, x=x, x_bin_size=x_bin_size
+                    mouse, session_type, x=x, x_bin_size=x_bin_size, z_threshold=z_threshold,
                 )[0]
 
                 for h, trend in enumerate(trend_strs):
@@ -787,6 +787,30 @@ class ProjectAnalyses:
             plt.setp(ax.get_xticklabels(), rotation=45)
 
         return assembly_trends, assembly_counts
+
+    def plot_increase_in_fading_ensembles(self, x="time", x_bin_size=60, z_threshold=2.58, sessions=('Goals4', 'Reversal')):
+        ensemble_trends, ensemble_counts = self.plot_assembly_trends(x=x, x_bin_size=x_bin_size, z_threshold=z_threshold, show_plot=False)
+
+        fig, axs = plt.subplots(1, 2, figsize=(7,6), sharey=True)
+        fig.subplots_adjust(wspace=0)
+        p_decreasing = ensemble_counts.sel(trend='decreasing') / ensemble_counts.sum(dim='trend')
+
+        p_decreasing_split_by_age = dict()
+        for ax, age, color in zip(axs, ['young', 'aged'], ['w', 'r']):
+            p_decreasing_split_by_age[age] = [p_decreasing.sel(session=session, mouse=self.meta['grouped_mice'][age]) for session in sessions]
+            boxes = ax.boxplot(p_decreasing_split_by_age[age], patch_artist=True)
+            for patch, med in zip(boxes["boxes"], boxes["medians"]):
+                patch.set_facecolor(color)
+                med.set(color="k")
+
+            if age == "aged":
+                ax.tick_params(labelleft=False)
+            else:
+                ax.set_ylabel("Proportion fading ensembles")
+            ax.set_title(age)
+            ax.set_xticklabels(sessions, rotation=45)
+
+        return p_decreasing_split_by_age
 
     def plot_assembly_by_trend(
         self, mouse, session_type, trend, x="time", x_bin_size=60
@@ -1102,7 +1126,7 @@ class ProjectAnalyses:
         n_assemblies_first_session = rearranged_patterns[0].shape[1]
         assembly_matches = np.zeros(n_assemblies_first_session, dtype=int)
         best_similarities = nan_array(assembly_matches.shape)
-        z_similarities = zscore(np.max(similarities, axis=0), axis=1)
+        z_similarities = zscore(np.max(similarities, axis=0), axis=0)
 
         # For each assembly comparison, find the highest cosine similarity and the corresponding assembly index.
         for assembly_number, possible_matches in enumerate(similarities[0]):
