@@ -12,7 +12,7 @@ from CaImaging.util import (
     nan_array,
     round_up_to_odd,
     contiguous_regions,
-    sync_cameras_v4,
+    sync_cameras_v4, cart2pol,
 )
 from CaImaging.Behavior import read_eztrack, convert_dlc_to_eztrack
 from scipy.stats import zscore, norm
@@ -23,7 +23,7 @@ import cv2
 from numpy.lib.stride_tricks import sliding_window_view
 
 from CircleTrack.plotting import spiral_plot, highlight_column
-from CircleTrack.utils import circle_sizes, cart2pol
+from CircleTrack.utils import circle_sizes
 from util import grab_paths, Session_Metadata, find_timestamp_file
 import tkinter as tk
 

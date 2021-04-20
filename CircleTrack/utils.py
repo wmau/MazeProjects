@@ -1,6 +1,5 @@
 import os
 
-import numpy
 from scipy.stats import circmean, mode
 from sklearn.linear_model import LinearRegression
 from sklearn.naive_bayes import BernoulliNB
@@ -15,7 +14,7 @@ tkroot.withdraw()
 from pathlib import Path
 import pandas as pd
 from natsort import natsorted
-from shutil import copyfile, copytree
+from shutil import copyfile
 import cv2
 import re
 from skimage.feature import register_translation
@@ -44,26 +43,6 @@ def circle_sizes(x, y):
     center = [np.mean(x_extrema), np.mean(y_extrema)]
 
     return (width, height, radius, center)
-
-
-def cart2pol(x, y):
-    """
-    Cartesian to polar coordinates. For linearizing circular trajectory.
-
-    :parameters
-    ---
-    x, y: array-like
-        x, y coordinates
-
-    :return
-    ---
-    (phi, rho): tuple
-        Angle (linearized distance) and radius (distance from center).
-    """
-    rho = np.sqrt(x ** 2 + y ** 2)
-    phi = np.arctan2(y, x)
-
-    return (phi, rho)
 
 
 def batch_concat_avis(mouse_folder):

@@ -30,8 +30,7 @@ class CalciumSession:
         session_folder,
         spatial_bin_size_radians=0.05,
         S_std_thresh=1,
-        circle_radius=38.1,
-        velocity_threshold=10,
+        velocity_threshold=7,
         overwrite_synced_data=False,
         overwrite_placefields=False,
         overwrite_placefield_trials=False,
@@ -102,6 +101,7 @@ class CalciumSession:
             #############################################
         # Get place fields.
         fpath = self.get_pkl_path("Placefields.pkl")
+        rerun_placefield_trials = False
         try:
             if overwrite_placefields:
                 print(f"Overwriting {fpath}.")
@@ -112,24 +112,23 @@ class CalciumSession:
 
             parameters_match = [
                 self.spatial.meta["bin_size"] == spatial_bin_size_radians,
-                self.spatial.meta["circle_radius"] == circle_radius,
                 self.spatial.meta["velocity_threshold"] == velocity_threshold,
             ]
 
             if not all(parameters_match):
                 print("A placefield parameter does not match saved data, rerunning.")
+                rerun_placefield_trials = True
                 raise Exception
 
         except:
             self.spatial = PlaceFields(
                 np.asarray(self.behavior.data["df"]["t"]),
-                np.asarray(self.behavior.data["df"]["lin_position"]),
-                np.zeros_like(self.behavior.data["df"]["lin_position"]),
+                np.asarray(self.behavior.data["df"]["x"]),
+                np.asarray(self.behavior.data["df"]["y"]),
                 self.imaging["S"],
                 bin_size=self.meta["spatial_bin_size"],
                 circular=True,
                 fps=self.behavior.meta["fps"],
-                circle_radius=circle_radius,
                 shuffle_test=True,
                 velocity_threshold=velocity_threshold,
             )
@@ -141,7 +140,7 @@ class CalciumSession:
         # Get spatial activity by trial.
         fpath = self.get_pkl_path("PlacefieldTrials.pkl")
         try:
-            if overwrite_placefield_trials:
+            if overwrite_placefield_trials or rerun_placefield_trials:
                 print(f"Overwriting {fpath}")
                 raise Exception
 
