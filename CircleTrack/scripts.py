@@ -1101,39 +1101,46 @@ class ProjectAnalyses:
             session_patterns.T for session_patterns in rearranged_patterns
         ]
 
+        activations = [self.data[mouse][session].assemblies['activations'] for session in session_types]
+
         # For each assembly in session 1, compute its cosine similarity
         # to every other assembly in session 2. Place this in a matrix.
         assembly_numbers = [range(pattern.shape[0]) for pattern in patterns_iterable]
         similarity_matrix_shape = [pattern.shape[0] for pattern in patterns_iterable]
 
         similarities = np.zeros(
-            (2, similarity_matrix_shape[0], similarity_matrix_shape[1])
+            (2, *similarity_matrix_shape)
         )
         for combination, pattern_pair in zip(
             product(*assembly_numbers), product(*patterns_iterable)
         ):
 
-            # Try both negating and not negating patterns. Store both.
-            patterns = [pattern.reshape(1, -1) for pattern in pattern_pair]
+            # Compute cosine similarity.
             similarities[0, combination[0], combination[1]] = cosine_similarity(
-                *patterns
+                *[pattern.reshape(1, -1) for pattern in pattern_pair]
             )[0, 0]
 
-            negated_comparison = [patterns[0], -patterns[1]]
-            similarities[1, combination[0], combination[1]] = cosine_similarity(
-                *negated_comparison
-            )[0, 0]
+        # The cosine similarity of the negated pattern is simply the negated cosine similarity of
+        # the non-negated pattern.
+        similarities[1] = -similarities[0]
 
         # Now, for each assembly, find its best match (i.e., argmax the cosine similarity).
         n_assemblies_first_session = rearranged_patterns[0].shape[1]
-        assembly_matches = np.zeros(n_assemblies_first_session, dtype=int)
-        best_similarities = nan_array(assembly_matches.shape)
-        z_similarities = zscore(np.max(similarities, axis=0), axis=0)
+        assembly_matches = np.zeros(n_assemblies_first_session, dtype=int)  # (assemblies,) - index of session 2 match
+        best_similarities = nan_array(assembly_matches.shape)               # (assemblies,) - best similarity for each assembly
+        z_similarities = zscore(np.max(similarities, axis=0), axis=0)       # (assemblies, assemblies) - z-scored similarities
+
+        matched_patterns = np.zeros((2, *patterns_iterable[0].shape))       # (2, assemblies, neurons)
+        matched_patterns[0] = patterns_iterable[0]
+        matched_activations = [activations[0], np.zeros((n_assemblies_first_session, activations[1].shape[1]))]   # (2, assemblies, time)
 
         # For each assembly comparison, find the highest cosine similarity and the corresponding assembly index.
         for assembly_number, possible_matches in enumerate(similarities[0]):
             best_similarities[assembly_number] = np.max(possible_matches)
-            assembly_matches[assembly_number] = np.argmax(possible_matches)
+            match = np.argmax(possible_matches)
+            assembly_matches[assembly_number] = match
+            matched_patterns[1, assembly_number] = patterns_iterable[1][match]
+            matched_activations[1][assembly_number] = activations[1][match]
 
         # If we also negated the patterns, check if any of those were better.
         for assembly_number, possible_matches in enumerate(similarities[1]):
@@ -1145,15 +1152,18 @@ class ProjectAnalyses:
                 best_similarities[assembly_number] = best_similarity_negated
                 match = np.argmax(possible_matches)
                 assembly_matches[assembly_number] = match
-                patterns_iterable[1][match] = -patterns_iterable[1][match]
+                matched_patterns[1, assembly_number] = -patterns_iterable[1][match]
+                matched_activations[1][assembly_number] = activations[1][match]
 
-        # If any assembly doesn't have a single match whose z-scored similarity is above 2.58 (p<0.01), it's not a true
+    # If any assembly doesn't have a single match whose z-scored similarity is above 2.58 (p<0.01), it's not a true
         # match. Exclude it.
         registered_ensembles = {
             "similarities": similarities,
             "matches": assembly_matches,
             "best_similarities": best_similarities,
             "patterns": patterns_iterable,
+            "matched_patterns": matched_patterns,
+            "matched_activations": matched_activations,
             "z_similarities": z_similarities,
             "poor_matches": ~np.any(z_similarities > 2.58, axis=1)
         }
@@ -1162,44 +1172,32 @@ class ProjectAnalyses:
 
     def plot_matched_assemblies(self, mouse, session_types: tuple):
         registered_patterns = self.match_assemblies(mouse, session_types)
-        patterns = registered_patterns["patterns"]
-        n_assemblies = patterns[0].shape[0]
+        matched_patterns = registered_patterns["matched_patterns"]
+        n_assemblies = matched_patterns[0].shape[0]
         registered_spike_times = self.rearrange_neurons(
             mouse, session_types, "spike_times", detected="everyday"
         )
 
-        # For each assembly in session 1, take its match in session 2.
-        for s1_assembly, s2_assembly, similarity, poor_match in zip(
-            range(n_assemblies),
-            registered_patterns["matches"],
-            registered_patterns["best_similarities"],
-            registered_patterns["poor_matches"],
-        ):
-            activations = [
-                self.data[mouse][session_type].assemblies["activations"][assembly]
-                for session_type, assembly in zip(
-                    session_types, [s1_assembly, s2_assembly]
-                )
-            ]
+        for s1_activation, s2_activation, s1_pattern, s2_pattern, poor_match, similarity in zip(registered_patterns["matched_activations"][0],
+                                                                        registered_patterns["matched_activations"][1],
+                                                                        registered_patterns["matched_patterns"][0],
+                                                                        registered_patterns["matched_patterns"][1],
+                                                                        registered_patterns["poor_matches"],
+                                                                        registered_patterns["best_similarities"]):
+            order = np.argsort(np.abs(s1_pattern))
 
-            patterns_to_plot = [
-                pattern[session]
-                for pattern, session in zip(patterns, [s1_assembly, s2_assembly])
-            ]
-            order = np.argsort(np.abs(patterns[0][s1_assembly]))
-
-            fig = plt.figure(figsize=(19.2, 10.69))
+            fig = plt.figure(figsize=(19.2, 10.7))
             spec = gridspec.GridSpec(ncols=2, nrows=2, figure=fig)
             assembly_axs = [fig.add_subplot(spec[i, 0]) for i in range(2)]
             pattern_ax = fig.add_subplot(spec[:, 1])
 
             for ax, activation, spike_times, pattern, c, session in zip(
-                assembly_axs,
-                activations,
-                registered_spike_times,
-                patterns_to_plot,
-                ["k", "r"],
-                session_types,
+                    assembly_axs,
+                    [s1_activation, s2_activation],
+                    registered_spike_times,
+                    [s1_pattern, s2_pattern],
+                    ["k", "r"],
+                    session_types,
             ):
                 # Plot assembly activation.
                 plot_assembly(
@@ -1227,9 +1225,10 @@ class ProjectAnalyses:
             if poor_match:
                 title += ' NON-SIG MATCH!'
             pattern_ax.set_title(title)
-            pattern_ax.set_xticks([0, patterns[0].shape[0]])
+            pattern_ax.set_xticks([0, matched_patterns[0].shape[0]])
             pattern_ax = beautify_ax(pattern_ax)
             plt.gcf().tight_layout()
+
 
     def spiralplot_matched_assemblies(self, mouse, session_types: tuple, thresh=1):
         # Match assemblies.
