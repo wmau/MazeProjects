@@ -4,8 +4,14 @@ from scipy.stats import circmean, mode
 from sklearn.linear_model import LinearRegression
 from sklearn.naive_bayes import BernoulliNB
 
-from CaImaging.util import concat_avis, sync_data, find_closest, \
-    search_for_folders, search_for_files, make_bins
+from CaImaging.util import (
+    concat_avis,
+    sync_data,
+    find_closest,
+    search_for_folders,
+    search_for_files,
+    make_bins,
+)
 import numpy as np
 import tkinter as tk
 
@@ -131,7 +137,11 @@ def sync(
     """
     # Sync data by downsampling behavior.
     postsync_behavior, minian, presync_behavior = sync_data(
-        behavior_data, minian_folder, timestamp_path, miniscope_cam=miniscope_cam, behav_cam=behav_cam
+        behavior_data,
+        minian_folder,
+        timestamp_path,
+        miniscope_cam=miniscope_cam,
+        behav_cam=behav_cam,
     )
 
     # Find all water delivery frames and relocate them to the
@@ -878,10 +888,10 @@ class SessionStitcherV4:
 
 if __name__ == "__main__":
     folder = r"Z:\Will\Drift\Data\Encedalus_Scope14\10_16_2020_CircleTrackRecall"
-    #SessionStitcherV4(folder)
+    # SessionStitcherV4(folder)
 
 
-def get_equivalent_local_path(folder, local_base=r'D:\Projects', depth=2):
+def get_equivalent_local_path(folder, local_base=r"D:\Projects", depth=2):
     folder = os.path.normpath(folder)
     split_tree = folder.split(os.sep)
 
@@ -914,7 +924,7 @@ def get_circular_error(y_predicted, y_real, n_spatial_bins):
 
 
 def format_spatial_location_for_decoder(
-        lin_position,
+    lin_position,
     n_spatial_bins=36,
     time_bin_size=1,
     fps=15,

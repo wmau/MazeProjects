@@ -8,12 +8,11 @@ from CaImaging.util import (
     contiguous_regions,
 )
 from CaImaging.plotting import errorfill, beautify_ax
-from scipy.stats import spearmanr
+from scipy.stats import spearmanr, zscore, circmean
 from CircleTrack.SessionCollation import MultiAnimal
 from CaImaging.CellReg import rearrange_neurons, trim_map, scrollplot_footprints
 from sklearn.naive_bayes import BernoulliNB
 import numpy as np
-from scipy.stats import zscore, circmean
 import os
 from CircleTrack.plotting import plot_daily_rasters, spiral_plot, highlight_column
 from CaImaging.Assemblies import preprocess_multiple_sessions, lapsed_activation
@@ -27,6 +26,7 @@ from joblib import Parallel, delayed
 from tqdm import tqdm
 import matplotlib.patches as mpatches
 import matplotlib.gridspec as gridspec
+from scipy.signal import savgol_filter
 
 from CircleTrack.utils import get_circular_error, format_spatial_location_for_decoder
 
@@ -422,7 +422,6 @@ class ProjectAnalyses:
         mouse,
         training_and_test_sessions,
         classifier=BernoulliNB(),
-        time_bin_size=1,
         n_spatial_bins=36,
         show_plot=True,
     ):
@@ -458,20 +457,27 @@ class ProjectAnalyses:
         )
         fps = 15
 
+        running = [self.data[mouse][session].spatial.data['running']
+                   for session in training_and_test_sessions]
+
         # Separate neural data into training and test.
         predictor_data = {
-            train_test_label: bin_transients(S, time_bin_size, fps=fps).T
-            for S, train_test_label in zip(S_list, ["train", "test"])
+            train_test_label: S[:, isrunning].T
+            for S, train_test_label, isrunning in zip(S_list, ["train", "test"], running)
         }
+        # predictor_data = {
+        #     train_test_label: bin_transients(S, time_bin_size, fps=fps).T
+        #     for S, train_test_label in zip(S_list, ["train", "test"])
+        # }
 
         # Separate spatially binned location into training and test.
         outcome_data = dict()
-        for session, train_test_label in zip(sessions, ["train", "test"]):
-            lin_position = session.behavior.data["df"]["lin_position"].values
+        for session, train_test_label, isrunning in zip(sessions, ["train", "test"], running):
+            lin_position = session.behavior.data["df"]["lin_position"].values[isrunning]
             outcome_data[train_test_label] = format_spatial_location_for_decoder(
                 lin_position,
                 n_spatial_bins=n_spatial_bins,
-                time_bin_size=time_bin_size,
+                time_bin_size=1/fps,
                 fps=fps,
                 classifier=classifier,
             )
@@ -500,7 +506,6 @@ class ProjectAnalyses:
         self,
         mouse,
         classifier=BernoulliNB(),
-        decoder_time_bin_size=1,
         n_spatial_bins=36,
         error_time_bin_size=300,
     ):
@@ -508,7 +513,6 @@ class ProjectAnalyses:
             mouse,
             ("Goals3", "Goals4"),
             classifier=classifier,
-            decoder_time_bin_size=decoder_time_bin_size,
             n_spatial_bins=n_spatial_bins,
             error_time_bin_size=error_time_bin_size,
             show_plot=False,
@@ -518,7 +522,6 @@ class ProjectAnalyses:
             mouse,
             ("Goals4", "Reversal"),
             classifier=classifier,
-            decoder_time_bin_size=decoder_time_bin_size,
             n_spatial_bins=n_spatial_bins,
             error_time_bin_size=error_time_bin_size,
             show_plot=False,
@@ -545,7 +548,6 @@ class ProjectAnalyses:
         mouse,
         training_and_test_sessions,
         classifier=BernoulliNB(),
-        decoder_time_bin_size=1,
         n_spatial_bins=36,
         show_plot=True,
         error_time_bin_size=300,
@@ -562,7 +564,6 @@ class ProjectAnalyses:
             mouse,
             training_and_test_sessions,
             classifier=classifier,
-            time_bin_size=decoder_time_bin_size,
             n_spatial_bins=n_spatial_bins,
             show_plot=False,
         )
@@ -798,7 +799,7 @@ class ProjectAnalyses:
         p_decreasing_split_by_age = dict()
         for ax, age, color in zip(axs, ['young', 'aged'], ['w', 'r']):
             p_decreasing_split_by_age[age] = [p_decreasing.sel(session=session, mouse=self.meta['grouped_mice'][age]) for session in sessions]
-            boxes = ax.boxplot(p_decreasing_split_by_age[age], patch_artist=True)
+            boxes = ax.boxplot(p_decreasing_split_by_age[age], patch_artist=True, widths=0.75)
             for patch, med in zip(boxes["boxes"], boxes["medians"]):
                 patch.set_facecolor(color)
                 med.set(color="k")
@@ -1033,6 +1034,7 @@ class ProjectAnalyses:
             [best_d[age] for age in ["young", "aged"]],
             labels=["young", "aged"],
             patch_artist=True,
+            widths=0.75
         )
         for patch, med, color in zip(box["boxes"], box["medians"], ["w", "r"]):
             patch.set_facecolor(color)
