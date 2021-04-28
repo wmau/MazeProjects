@@ -141,16 +141,18 @@ def find_members(patterns, filter_method='sd', thresh=2):
         # (positive or negative) are more plentiful.
         signs = np.argmax(np.sum(member_candidates, axis=2), axis=0)
 
-        # For each assembly,
+        # For each assembly, select the positive or negative signed weights.
         bool_members = np.zeros_like(patterns)
         corrected_patterns = patterns.copy()
         for assembly_i, assembly_sign in enumerate(signs):
             bool_members[assembly_i] = member_candidates[assembly_sign, assembly_i]
 
             # assembly_sign == 1 means the negative weights contain highly-contributing neurons.
+            # In this case, negate the pattern and store it.
             if assembly_sign == 1:
                 corrected_patterns[assembly_i] = -corrected_patterns[assembly_i]
 
+        # For each ensemble, get the index of bool_members.
         member_idx_ = [np.where(members)[0] for members in bool_members]
 
     elif filter_method == 'z':
@@ -163,7 +165,7 @@ def find_members(patterns, filter_method='sd', thresh=2):
 
     # Sort neurons by their weight.
     member_idx = []
-    sort_orders = np.argsort(np.abs(corrected_patterns), axis=1)
+    sort_orders = np.argsort(corrected_patterns, axis=1)
     for i, order in enumerate(sort_orders):
         corrected_patterns[i] = corrected_patterns[i, order]
         member_idx.append([neuron for neuron in order if neuron in member_idx_[i]])

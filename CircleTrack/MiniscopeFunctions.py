@@ -12,9 +12,19 @@ from CaImaging.Behavior import spatial_bin
 import holoviews as hv
 import os
 import pickle as pkl
-from CaImaging.Assemblies import find_assemblies, preprocess_multiple_sessions, membership_sort, plot_assemblies
+from matplotlib import gridspec
+from CaImaging.Assemblies import (
+    find_assemblies,
+    preprocess_multiple_sessions,
+    membership_sort,
+    plot_assemblies,
+)
 from CircleTrack.utils import sync, get_equivalent_local_path
-from CircleTrack.Assemblies import write_assembly_triggered_movie, plot_assembly, find_members
+from CircleTrack.Assemblies import (
+    write_assembly_triggered_movie,
+    plot_assembly,
+    find_members,
+)
 
 
 hv.extension("bokeh")
@@ -50,10 +60,10 @@ class CalciumSession:
             "spatial_bin_size": spatial_bin_size_radians,
             "S_std_thresh": S_std_thresh,
             "velocity_threshold": velocity_threshold,
-            "local": local
+            "local": local,
         }
 
-            #############################################
+        #############################################
         # Get the synced behavior and calcium imaging data.
         fpath = self.get_pkl_path("SyncedData.pkl")
 
@@ -80,7 +90,7 @@ class CalciumSession:
                 self.meta["paths"]["minian"], self.behavior.data["df"], timestamp_paths
             )
 
-            self.imaging['C'], self.imaging['S'] = self.nan_bad_frames()
+            self.imaging["C"], self.imaging["S"] = self.nan_bad_frames()
 
             # Redo trial counting to account in case some frames got cut
             # from behavior (e.g. because a miniscope video got truncated).
@@ -98,7 +108,7 @@ class CalciumSession:
         # Get number of neurons.
         self.imaging["n_neurons"] = self.imaging["C"].shape[0]
 
-            #############################################
+        #############################################
         # Get place fields.
         fpath = self.get_pkl_path("Placefields.pkl")
         rerun_placefield_trials = False
@@ -175,10 +185,10 @@ class CalciumSession:
                 self.assemblies = pkl.load(file)
 
         except:
-            processed_for_assembly_detection = preprocess_multiple_sessions([self.imaging['S']],
-                                                                            smooth_factor=5,
-                                                                            use_bool=True)
-            data = processed_for_assembly_detection['processed'][0]
+            processed_for_assembly_detection = preprocess_multiple_sessions(
+                [self.imaging["S"]], smooth_factor=5, use_bool=True
+            )
+            data = processed_for_assembly_detection["processed"][0]
             self.assemblies = find_assemblies(
                 data, nullhyp="circ", plot=False, n_shuffles=500
             )
@@ -196,10 +206,10 @@ class CalciumSession:
         return fpath
 
     def nan_bad_frames(self):
-        miniscope_folder = self.meta['paths']['minian']
-        C = self.imaging['C']
-        S = self.imaging['S']
-        frames = self.imaging['frames']
+        miniscope_folder = self.meta["paths"]["minian"]
+        C = self.imaging["C"]
+        S = self.imaging["S"]
+        frames = self.imaging["frames"]
 
         corrected_C, corrected_S = nan_corrupted_frames(miniscope_folder, C, S, frames)
 
@@ -261,25 +271,27 @@ class CalciumSession:
 
         return self.raster_plot
 
-
     def spiral_scrollplot_assemblies(self, threshold=2.58):
         assemblies = self.assemblies
-        behavior_df = self.behavior.data['df']
+        behavior_df = self.behavior.data["df"]
 
-        z_activation = zscore(assemblies['activations'], axis=1)
+        z_activation = zscore(assemblies["activations"], axis=1)
         above_threshold = z_activation > threshold
 
-        titles = [f'Assembly #{n}' for n in range(assemblies['significance'].nassemblies)]
-        ScrollPlot(plot_spiral,
-                   t=behavior_df['t'],
-                   lin_position=behavior_df['lin_position'],
-                   markers=above_threshold,
-                   marker_legend='Assembly activation',
-                   subplot_kw={'projection': 'polar'},
-                   lin_ports=self.behavior.data['lin_ports'],
-                   rewarded=self.behavior.data['rewarded_ports'],
-                   titles=titles,
-                   )
+        titles = [
+            f"Assembly #{n}" for n in range(assemblies["significance"].nassemblies)
+        ]
+        ScrollPlot(
+            plot_spiral,
+            t=behavior_df["t"],
+            lin_position=behavior_df["lin_position"],
+            markers=above_threshold,
+            marker_legend="Assembly activation",
+            subplot_kw={"projection": "polar"},
+            lin_ports=self.behavior.data["lin_ports"],
+            rewarded=self.behavior.data["rewarded_ports"],
+            titles=titles,
+        )
 
     def spatial_activity_by_trial(self):
         """
@@ -406,22 +418,30 @@ class CalciumSession:
         return corr_matrix
 
     def write_assembly_activation_movie(self, assembly_number, threshold=2.58):
-        assembly_activations = self.assemblies['activations'][assembly_number]
-        behavior_frame_numbers = self.behavior.data['df']['frame'].to_numpy()
+        assembly_activations = self.assemblies["activations"][assembly_number]
+        behavior_frame_numbers = self.behavior.data["df"]["frame"].to_numpy()
         movie_fname = self.meta["paths"]["BehaviorVideo"]
 
-        fpath = os.path.join(self.meta['folder'], f'Assembly #{assembly_number}.avi')
-        write_assembly_triggered_movie(assembly_activations, behavior_frame_numbers, movie_fname, fpath=fpath, threshold=threshold)
+        fpath = os.path.join(self.meta["folder"], f"Assembly #{assembly_number}.avi")
+        write_assembly_triggered_movie(
+            assembly_activations,
+            behavior_frame_numbers,
+            movie_fname,
+            fpath=fpath,
+            threshold=threshold,
+        )
 
     def plot_assembly(self, assembly_number, neurons=None, get_members=True):
-        pattern = self.assemblies['patterns'][assembly_number]
+        pattern = self.assemblies["patterns"][assembly_number]
         n_neurons = len(pattern)
-        activation = self.assemblies['activations'][assembly_number]
-        spike_times_ = self.imaging['spike_times']
+        activation = self.assemblies["activations"][assembly_number]
+        spike_times_ = self.imaging["spike_times"]
 
         # This option lets you only plot the ensemble members.
         if get_members:
-            members, corrected_patterns = find_members(pattern, filter_method='sd', thresh=2)[1:]
+            members, corrected_pattern = find_members(
+                pattern, filter_method="sd", thresh=2
+            )[1:]
             sort_by_contribution = False
         else:
             members = np.arange(n_neurons)
@@ -440,29 +460,70 @@ class CalciumSession:
                 excluded_members = members[~in_neurons]
 
                 # If there are member neurons that were not in the neurons list, let me know.
-                print('Excluded ensemble members: ' + str(excluded_members))
+                print("Excluded ensemble members: " + str(excluded_members))
                 included_neurons = members[in_neurons]
 
+        fig = plt.figure()
+        spec = gridspec.GridSpec(nrows=1, ncols=6, figure=fig)
+        assembly_ax = fig.add_subplot(spec[:5])
+        pattern_ax = fig.add_subplot(spec[-1])
+        fig.subplots_adjust(wspace=1)
         spike_times = [spike_times_[neuron] for neuron in included_neurons]
-        activation_ax, spikes_ax = plot_assembly(pattern, activation, spike_times,
-                                                 sort_by_contribution=sort_by_contribution, order=None)
+        activation_ax, spikes_ax = plot_assembly(
+            pattern,
+            activation,
+            spike_times,
+            sort_by_contribution=sort_by_contribution,
+            order=None,
+            ax=assembly_ax,
+        )
+
+        if get_members:
+            n_members = len(members)
+            markerlines_members, stemlines_members = pattern_ax.stem(
+                range(n_members),
+                corrected_pattern[-n_members:][::-1],
+                "r",
+                orientation="horizontal",
+                basefmt=" ",
+                markerfmt="ro",
+            )[:2]
+            markerlines, stemlines = pattern_ax.stem(
+                np.arange(n_members, len(corrected_pattern)),
+                corrected_pattern[:-n_members][::-1],
+                "b",
+                orientation="horizontal",
+                basefmt=" ",
+                markerfmt="bo",
+            )[:2]
+            pattern_ax.invert_yaxis()
+            pattern_ax.axis("off")
+            plt.setp(stemlines_members, 'linewidth', 1)
+            plt.setp(markerlines_members, 'markersize', 1)
+            plt.setp(stemlines, 'linewidth', 1)
+            plt.setp(markerlines, 'markersize', 1)
+        else:
+            pattern_ax.stem(pattern, orientation="horizontal", basefmt=" ")
 
         return activation_ax, spikes_ax
 
     def plot_all_assemblies(self):
         sorted_spiking, sorted_colors = membership_sort(
-            self.assemblies['patterns'],
-            self.imaging['spike_times'])
-        plot_assemblies(self.assemblies['activations'],
-                        sorted_spiking, colors=sorted_colors)
+            self.assemblies["patterns"], self.imaging["spike_times"]
+        )
+        plot_assemblies(
+            self.assemblies["activations"], sorted_spiking, colors=sorted_colors
+        )
 
 
 def nan_corrupted_frames(miniscope_folder, C, S, frames):
-    bad_frames_folder = os.path.join(miniscope_folder, 'bad_frames')
+    bad_frames_folder = os.path.join(miniscope_folder, "bad_frames")
     if os.path.exists(bad_frames_folder):
-        bad_frames = [int(os.path.splitext(fname)[0]) for fname in os.listdir(bad_frames_folder)]
+        bad_frames = [
+            int(os.path.splitext(fname)[0]) for fname in os.listdir(bad_frames_folder)
+        ]
         n_frames = len(bad_frames)
-        print(f'{n_frames} bad frames found. Correcting...')
+        print(f"{n_frames} bad frames found. Correcting...")
 
         match = np.asarray([x in bad_frames for x in frames])
         C[:, match] = np.nan
@@ -474,7 +535,7 @@ def nan_corrupted_frames(miniscope_folder, C, S, frames):
 
 
 if __name__ == "__main__":
-    folder = r'Z:\Will\RemoteReversal\Data\Fornax\2021_02_25_Reversal\10_04_05',
+    folder = (r"Z:\Will\RemoteReversal\Data\Fornax\2021_02_25_Reversal\10_04_05",)
 
     S = CalciumSession(folder)
     pvals = S.spatial["placefield_class"].data["spatial_info_pvals"]
