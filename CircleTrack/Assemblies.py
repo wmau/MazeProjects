@@ -11,7 +11,7 @@ def plot_assembly(
     pattern, activation, spike_times, sort_by_contribution=True, order=None, ax=None
 ):
     """
-    Plots single assemblies. This plot contains the activation profile (activatio over time)
+    Plots single assemblies. This plot contains the activation profile (activation over time)
     in addition to a raster in the background. There is an option to sort neurons on the raster
     according to their contribution.
 
@@ -59,10 +59,10 @@ def plot_assembly(
     else:
         sorted_spike_times = spike_times
 
-    activation_ax.plot(activation)
+    activation_ax.plot(activation, linewidth=2, color='r')
     activation_ax.set_ylabel("Activation strength [a.u.]")
     activation_ax.set_xlabel("Frame #")
-    spikes_ax.eventplot(sorted_spike_times, color="k")
+    spikes_ax.eventplot(sorted_spike_times, color="k", alpha=0.2)
     spikes_ax.set_ylabel("Neurons", rotation=-90)
     spikes_ax.set_yticks([0, len(sorted_spike_times)])
 
@@ -101,3 +101,76 @@ def write_assembly_triggered_movie(
 
     writeFile.release()
     cap.release()
+
+
+def find_members(patterns, filter_method='sd', thresh=2):
+    """
+    Find the members of an ensemble defined by high weights exceeding some threshold.
+
+    :parameters
+    ---
+    patterns: (assembly, neuron) array
+        Patterns to find members from.
+
+    filter_method: str ('sd' or 'z')
+        Determines the method for finding members. If 'sd', looks for neurons above x standard deviations above or below
+        the mean, determined by thresh.
+
+    thresh: float
+        Threshold for calling a neuron an ensemble member. If filter_method is 'sd', denotes the number of standard
+        deviations above or below the mean. If filter method is 'z', denotes the z-score (positive or negative).
+
+    :return
+    ---
+
+    """
+    if patterns.ndim == 1:
+        patterns = patterns[np.newaxis,:]
+    n_patterns, n_neurons = patterns.shape
+
+    member_candidates = np.zeros((2, *patterns.shape))
+    if filter_method == 'sd':
+        # Take the mean and standard deviation to find high neuron weights.
+        pattern_mean = np.mean(patterns, axis=1)
+        pattern_stds = np.std(patterns, axis=1)
+        member_candidates[0] = patterns > np.tile(pattern_mean + thresh*pattern_stds, (n_neurons, 1)).T
+        member_candidates[1] = patterns < np.tile(pattern_mean - thresh*pattern_stds, (n_neurons, 1)).T
+
+        # Determine if the weight vectors have negative or positive values for ensemble members.
+        # Do this by counting number of highly contributing neurons in both negative and positive and finding which
+        # (positive or negative) are more plentiful.
+        signs = np.argmax(np.sum(member_candidates, axis=2), axis=0)
+
+        # For each assembly,
+        bool_members = np.zeros_like(patterns)
+        corrected_patterns = patterns.copy()
+        for assembly_i, assembly_sign in enumerate(signs):
+            bool_members[assembly_i] = member_candidates[assembly_sign, assembly_i]
+
+            # assembly_sign == 1 means the negative weights contain highly-contributing neurons.
+            if assembly_sign == 1:
+                corrected_patterns[assembly_i] = -corrected_patterns[assembly_i]
+
+        member_idx_ = [np.where(members)[0] for members in bool_members]
+
+    elif filter_method == 'z':
+        raise ValueError('z method not done yet')
+        # bool_members = patterns > thresh
+        # member_idx = [np.where(members)[0] for members in bool_members]
+
+    else:
+        raise ValueError('Unaccepted filter_method.')
+
+    # Sort neurons by their weight.
+    member_idx = []
+    sort_orders = np.argsort(np.abs(corrected_patterns), axis=1)
+    for i, order in enumerate(sort_orders):
+        corrected_patterns[i] = corrected_patterns[i, order]
+        member_idx.append([neuron for neuron in order if neuron in member_idx_[i]])
+
+    # If there was only one pattern in the input, just take the first row/list entry.
+    if n_patterns == 1:
+        member_idx = member_idx[0]
+        corrected_patterns = np.squeeze(corrected_patterns)
+
+    return bool_members, member_idx, corrected_patterns

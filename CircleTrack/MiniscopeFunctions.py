@@ -14,7 +14,7 @@ import os
 import pickle as pkl
 from CaImaging.Assemblies import find_assemblies, preprocess_multiple_sessions, membership_sort, plot_assemblies
 from CircleTrack.utils import sync, get_equivalent_local_path
-from CircleTrack.Assemblies import write_assembly_triggered_movie, plot_assembly
+from CircleTrack.Assemblies import write_assembly_triggered_movie, plot_assembly, find_members
 
 
 hv.extension("bokeh")
@@ -413,12 +413,39 @@ class CalciumSession:
         fpath = os.path.join(self.meta['folder'], f'Assembly #{assembly_number}.avi')
         write_assembly_triggered_movie(assembly_activations, behavior_frame_numbers, movie_fname, fpath=fpath, threshold=threshold)
 
-    def plot_assembly(self, assembly_number):
+    def plot_assembly(self, assembly_number, neurons=None, get_members=True):
         pattern = self.assemblies['patterns'][assembly_number]
+        n_neurons = len(pattern)
         activation = self.assemblies['activations'][assembly_number]
-        spike_times = self.imaging['spike_times']
+        spike_times_ = self.imaging['spike_times']
 
-        activation_ax, spikes_ax = plot_assembly(pattern, activation, spike_times)
+        # This option lets you only plot the ensemble members.
+        if get_members:
+            members, corrected_patterns = find_members(pattern, filter_method='sd', thresh=2)[1:]
+            sort_by_contribution = False
+        else:
+            members = np.arange(n_neurons)
+            sort_by_contribution = True
+
+        if neurons is None:
+            if get_members:
+                included_neurons = members
+            else:
+                included_neurons = np.arange(n_neurons)
+        else:
+            if not get_members:
+                included_neurons = neurons
+            else:
+                in_neurons = np.isin(members, neurons)
+                excluded_members = members[~in_neurons]
+
+                # If there are member neurons that were not in the neurons list, let me know.
+                print('Excluded ensemble members: ' + str(excluded_members))
+                included_neurons = members[in_neurons]
+
+        spike_times = [spike_times_[neuron] for neuron in included_neurons]
+        activation_ax, spikes_ax = plot_assembly(pattern, activation, spike_times,
+                                                 sort_by_contribution=sort_by_contribution, order=None)
 
         return activation_ax, spikes_ax
 
