@@ -437,13 +437,17 @@ class ProjectAnalyses:
         )
         fps = 15
 
-        running = [self.data[mouse][session].spatial.data['running']
-                   for session in training_and_test_sessions]
+        running = [
+            self.data[mouse][session].spatial.data["running"]
+            for session in training_and_test_sessions
+        ]
 
         # Separate neural data into training and test.
         predictor_data = {
             train_test_label: S[:, isrunning].T
-            for S, train_test_label, isrunning in zip(S_list, ["train", "test"], running)
+            for S, train_test_label, isrunning in zip(
+                S_list, ["train", "test"], running
+            )
         }
         # predictor_data = {
         #     train_test_label: bin_transients(S, time_bin_size, fps=fps).T
@@ -452,12 +456,14 @@ class ProjectAnalyses:
 
         # Separate spatially binned location into training and test.
         outcome_data = dict()
-        for session, train_test_label, isrunning in zip(sessions, ["train", "test"], running):
+        for session, train_test_label, isrunning in zip(
+            sessions, ["train", "test"], running
+        ):
             lin_position = session.behavior.data["df"]["lin_position"].values[isrunning]
             outcome_data[train_test_label] = format_spatial_location_for_decoder(
                 lin_position,
                 n_spatial_bins=n_spatial_bins,
-                time_bin_size=1/fps,
+                time_bin_size=1 / fps,
                 fps=fps,
                 classifier=classifier,
             )
@@ -707,7 +713,9 @@ class ProjectAnalyses:
 
         return assembly_trends, binned_activations
 
-    def plot_assembly_trends(self, x="time", x_bin_size=60, z_threshold=2.58, show_plot=True):
+    def plot_assembly_trends(
+        self, x="time", x_bin_size=60, z_threshold=2.58, show_plot=True
+    ):
         session_types = self.meta["session_types"]
         session_labels = self.meta["session_labels"]
         assembly_trend_arr = np.zeros(
@@ -724,7 +732,11 @@ class ProjectAnalyses:
         for i, mouse in enumerate(self.meta["mice"]):
             for j, session_type in enumerate(session_types):
                 assembly_trends = self.find_assembly_trends(
-                    mouse, session_type, x=x, x_bin_size=x_bin_size, z_threshold=z_threshold,
+                    mouse,
+                    session_type,
+                    x=x,
+                    x_bin_size=x_bin_size,
+                    z_threshold=z_threshold,
                 )[0]
 
                 for h, trend in enumerate(trend_strs):
@@ -769,17 +781,28 @@ class ProjectAnalyses:
 
         return assembly_trends, assembly_counts
 
-    def plot_increase_in_fading_ensembles(self, x="time", x_bin_size=60, z_threshold=2.58, sessions=('Goals4', 'Reversal')):
-        ensemble_trends, ensemble_counts = self.plot_assembly_trends(x=x, x_bin_size=x_bin_size, z_threshold=z_threshold, show_plot=False)
+    def plot_increase_in_fading_ensembles(
+        self, x="time", x_bin_size=60, z_threshold=2.58, sessions=("Goals4", "Reversal")
+    ):
+        ensemble_trends, ensemble_counts = self.plot_assembly_trends(
+            x=x, x_bin_size=x_bin_size, z_threshold=z_threshold, show_plot=False
+        )
 
-        fig, axs = plt.subplots(1, 2, figsize=(7,6), sharey=True)
+        fig, axs = plt.subplots(1, 2, figsize=(7, 6), sharey=True)
         fig.subplots_adjust(wspace=0)
-        p_decreasing = ensemble_counts.sel(trend='decreasing') / ensemble_counts.sum(dim='trend')
+        p_decreasing = ensemble_counts.sel(trend="decreasing") / ensemble_counts.sum(
+            dim="trend"
+        )
 
         p_decreasing_split_by_age = dict()
-        for ax, age, color in zip(axs, ['young', 'aged'], ['w', 'r']):
-            p_decreasing_split_by_age[age] = [p_decreasing.sel(session=session, mouse=self.meta['grouped_mice'][age]) for session in sessions]
-            boxes = ax.boxplot(p_decreasing_split_by_age[age], patch_artist=True, widths=0.75)
+        for ax, age, color in zip(axs, ["young", "aged"], ["w", "r"]):
+            p_decreasing_split_by_age[age] = [
+                p_decreasing.sel(session=session, mouse=self.meta["grouped_mice"][age])
+                for session in sessions
+            ]
+            boxes = ax.boxplot(
+                p_decreasing_split_by_age[age], patch_artist=True, widths=0.75
+            )
             for patch, med in zip(boxes["boxes"], boxes["medians"]):
                 patch.set_facecolor(color)
                 med.set(color="k")
@@ -1014,7 +1037,7 @@ class ProjectAnalyses:
             [best_d[age] for age in ["young", "aged"]],
             labels=["young", "aged"],
             patch_artist=True,
-            widths=0.75
+            widths=0.75,
         )
         for patch, med, color in zip(box["boxes"], box["medians"], ["w", "r"]):
             patch.set_facecolor(color)
@@ -1081,16 +1104,17 @@ class ProjectAnalyses:
             session_patterns.T for session_patterns in rearranged_patterns
         ]
 
-        activations = [self.data[mouse][session].assemblies['activations'] for session in session_types]
+        activations = [
+            self.data[mouse][session].assemblies["activations"]
+            for session in session_types
+        ]
 
         # For each assembly in session 1, compute its cosine similarity
         # to every other assembly in session 2. Place this in a matrix.
         assembly_numbers = [range(pattern.shape[0]) for pattern in patterns_iterable]
         similarity_matrix_shape = [pattern.shape[0] for pattern in patterns_iterable]
 
-        similarities = np.zeros(
-            (2, *similarity_matrix_shape)
-        )
+        similarities = np.zeros((2, *similarity_matrix_shape))
         for combination, pattern_pair in zip(
             product(*assembly_numbers), product(*patterns_iterable)
         ):
@@ -1106,13 +1130,24 @@ class ProjectAnalyses:
 
         # Now, for each assembly, find its best match (i.e., argmax the cosine similarity).
         n_assemblies_first_session = rearranged_patterns[0].shape[1]
-        assembly_matches = np.zeros(n_assemblies_first_session, dtype=int)  # (assemblies,) - index of session 2 match
-        best_similarities = nan_array(assembly_matches.shape)               # (assemblies,) - best similarity for each assembly
-        z_similarities = zscore(np.max(similarities, axis=0), axis=0)       # (assemblies, assemblies) - z-scored similarities
+        assembly_matches = np.zeros(
+            n_assemblies_first_session, dtype=int
+        )  # (assemblies,) - index of session 2 match
+        best_similarities = nan_array(
+            assembly_matches.shape
+        )  # (assemblies,) - best similarity for each assembly
+        z_similarities = zscore(
+            np.max(similarities, axis=0), axis=0
+        )  # (assemblies, assemblies) - z-scored similarities
 
-        matched_patterns = np.zeros((2, *patterns_iterable[0].shape))       # (2, assemblies, neurons)
+        matched_patterns = np.zeros(
+            (2, *patterns_iterable[0].shape)
+        )  # (2, assemblies, neurons)
         matched_patterns[0] = patterns_iterable[0]
-        matched_activations = [activations[0], np.zeros((n_assemblies_first_session, activations[1].shape[1]))]   # (2, assemblies, time)
+        matched_activations = [
+            activations[0],
+            np.zeros((n_assemblies_first_session, activations[1].shape[1])),
+        ]  # (2, assemblies, time)
 
         # For each assembly comparison, find the highest cosine similarity and the corresponding assembly index.
         for assembly_number, possible_matches in enumerate(similarities[0]):
@@ -1135,7 +1170,7 @@ class ProjectAnalyses:
                 matched_patterns[1, assembly_number] = -patterns_iterable[1][match]
                 matched_activations[1][assembly_number] = activations[1][match]
 
-    # If any assembly doesn't have a single match whose z-scored similarity is above 2.58 (p<0.01), it's not a true
+        # If any assembly doesn't have a single match whose z-scored similarity is above 2.58 (p<0.01), it's not a true
         # match. Exclude it.
         registered_ensembles = {
             "similarities": similarities,
@@ -1145,7 +1180,7 @@ class ProjectAnalyses:
             "matched_patterns": matched_patterns,
             "matched_activations": matched_activations,
             "z_similarities": z_similarities,
-            "poor_matches": ~np.any(z_similarities > 2.58, axis=1)
+            "poor_matches": ~np.any(z_similarities > 2.58, axis=1),
         }
 
         return registered_ensembles
@@ -1158,12 +1193,21 @@ class ProjectAnalyses:
             mouse, session_types, "spike_times", detected="everyday"
         )
 
-        for s1_activation, s2_activation, s1_pattern, s2_pattern, poor_match, similarity in zip(registered_patterns["matched_activations"][0],
-                                                                        registered_patterns["matched_activations"][1],
-                                                                        registered_patterns["matched_patterns"][0],
-                                                                        registered_patterns["matched_patterns"][1],
-                                                                        registered_patterns["poor_matches"],
-                                                                        registered_patterns["best_similarities"]):
+        for (
+            s1_activation,
+            s2_activation,
+            s1_pattern,
+            s2_pattern,
+            poor_match,
+            similarity,
+        ) in zip(
+            registered_patterns["matched_activations"][0],
+            registered_patterns["matched_activations"][1],
+            registered_patterns["matched_patterns"][0],
+            registered_patterns["matched_patterns"][1],
+            registered_patterns["poor_matches"],
+            registered_patterns["best_similarities"],
+        ):
             order = np.argsort(np.abs(s1_pattern))
 
             fig = plt.figure(figsize=(19.2, 10.7))
@@ -1172,12 +1216,12 @@ class ProjectAnalyses:
             pattern_ax = fig.add_subplot(spec[:, 1])
 
             for ax, activation, spike_times, pattern, c, session in zip(
-                    assembly_axs,
-                    [s1_activation, s2_activation],
-                    registered_spike_times,
-                    [s1_pattern, s2_pattern],
-                    ["k", "r"],
-                    session_types,
+                assembly_axs,
+                [s1_activation, s2_activation],
+                registered_spike_times,
+                [s1_pattern, s2_pattern],
+                ["k", "r"],
+                session_types,
             ):
                 # Plot assembly activation.
                 plot_assembly(
@@ -1203,7 +1247,7 @@ class ProjectAnalyses:
             pattern_ax.legend(session_types)
             title = f"Cosine similarity: {np.round(similarity, 3)}"
             if poor_match:
-                title += ' NON-SIG MATCH!'
+                title += " NON-SIG MATCH!"
             pattern_ax.set_title(title)
             pattern_ax.set_xticks([0, matched_patterns[0].shape[0]])
             pattern_ax = beautify_ax(pattern_ax)
@@ -1271,7 +1315,11 @@ class ProjectAnalyses:
             similarities[age] = []
             for mouse in self.meta["grouped_mice"][age]:
                 registered_ensembles = self.match_assemblies(mouse, session_pair)
-                similarities[age].append(registered_ensembles['best_similarities'][~registered_ensembles['poor_matches']])
+                similarities[age].append(
+                    registered_ensembles["best_similarities"][
+                        ~registered_ensembles["poor_matches"]
+                    ]
+                )
 
         if show_plot:
             fig, axs = plt.subplots(1, 2, figsize=(7, 6))
@@ -1293,26 +1341,29 @@ class ProjectAnalyses:
 
     def percent_matched_ensembles(self, session_pair1, session_pair2):
         percent_matches = dict()
-        for age in ['young', 'aged']:
+        for age in ["young", "aged"]:
             percent_matches[age] = dict()
 
             for session_pair in [session_pair1, session_pair2]:
                 percent_matches[age][session_pair] = []
-                for mouse in self.meta['grouped_mice'][age]:
-                    poor_matches = self.match_assemblies(mouse, session_pair)['poor_matches']
-                    percent_matches[age][session_pair].append(np.sum(~poor_matches) / len(poor_matches))
+                for mouse in self.meta["grouped_mice"][age]:
+                    poor_matches = self.match_assemblies(mouse, session_pair)[
+                        "poor_matches"
+                    ]
+                    percent_matches[age][session_pair].append(
+                        np.sum(~poor_matches) / len(poor_matches)
+                    )
 
         fig, axs = plt.subplots(1, 2)
         fig.subplots_adjust(wspace=0)
 
         for age, ax, color in zip(["young", "aged"], axs, ["w", "r"]):
-            boxes = ax.boxplot(percent_matches[age].values(),
-                               patch_artist=True)
+            boxes = ax.boxplot(percent_matches[age].values(), patch_artist=True)
             for patch, med in zip(boxes["boxes"], boxes["medians"]):
                 patch.set_facecolor(color)
                 med.set(color="k")
 
-            if age == 'aged':
+            if age == "aged":
                 ax.set_yticks([])
             else:
                 ax.set_ylabel("Percent matched ensembles")
@@ -1506,8 +1557,16 @@ class ProjectAnalyses:
             ax.set_xticklabels(self.meta["session_types"], rotation=45)
             ax.set_yticklabels(self.meta["session_types"])
 
-    def snakeplot_ensembles(self, mouse, session_type, spatial_bin_size_radians=None, show_plot=True,
-                            ax=None, order=None, do_sort=True):
+    def snakeplot_ensembles(
+        self,
+        mouse,
+        session_type,
+        spatial_bin_size_radians=None,
+        show_plot=True,
+        ax=None,
+        order=None,
+        do_sort=True,
+    ):
         """
         Make a single Pastalkova (snake) plot depicting z-scored assembly activation strength as a function of spatial
         location.
@@ -1537,19 +1596,24 @@ class ProjectAnalyses:
             Whether to sort assembly order based on peak location.
         """
         ensembles = self.data[mouse][session_type].assemblies
-        lin_position = self.data[mouse][session_type].behavior.data['df']['lin_position']
+        behavior_data = self.data[mouse][session_type].behavior.data
+        lin_position = behavior_data["df"]["lin_position"]
+        port_locations = np.asarray(behavior_data["lin_ports"])[
+            behavior_data["rewarded_ports"]
+        ]
         placefield_data = self.data[mouse][session_type].spatial
 
         # Make sure spatial_bin_size_radians matches the one run with PlaceFields().
         if spatial_bin_size_radians is None:
-            spatial_bin_size_radians = placefield_data.meta['bin_size']
+            spatial_bin_size_radians = placefield_data.meta["bin_size"]
         else:
-            assert spatial_bin_size_radians == placefield_data.meta['bin_size'], \
-                'Currently only supports spatial_bin_size_radians that is the same value as the one run with PlaceFields().'
+            assert (
+                spatial_bin_size_radians == placefield_data.meta["bin_size"]
+            ), "Currently only supports spatial_bin_size_radians that is the same value as the one run with PlaceFields()."
 
         # Bin all the assembly activations in space.
         ensemble_fields = []
-        for assembly in zscore(ensembles['activations'], axis=1):
+        for assembly in zscore(ensembles["activations"], axis=1):
             assembly_field = spatial_bin(
                 lin_position,
                 np.zeros_like(lin_position),
@@ -1558,9 +1622,30 @@ class ProjectAnalyses:
                 weights=assembly,
                 one_dim=True,
             )[0]
-
-            ensemble_fields.append(assembly_field / self.data[mouse][session_type].spatial.data['occupancy_map'])
+            ensemble_fields.append(
+                assembly_field
+                / self.data[mouse][session_type].spatial.data["occupancy_map"]
+            )
         ensemble_fields = np.vstack(ensemble_fields)
+
+        # Convert port locations to bin #.
+        bins = spatial_bin(
+            lin_position,
+            np.zeros_like(lin_position),
+            bin_size_cm=spatial_bin_size_radians,
+            show_plot=False,
+            one_dim=True,
+        )[-1]
+        port_locations_bins = np.where(
+            spatial_bin(
+                port_locations,
+                np.zeros_like(port_locations),
+                bin_size_cm=spatial_bin_size_radians,
+                show_plot=False,
+                one_dim=True,
+                bins=bins,
+            )[0]
+        )[0]
 
         # Determine order of assemblies.
         if order is None and do_sort:
@@ -1573,9 +1658,12 @@ class ProjectAnalyses:
             if ax is None:
                 fig, ax = plt.subplots(figsize=(5, 5.5))
             ax.imshow(ensemble_fields[order])
-            ax.axis('tight')
-            ax.set_ylabel('Assembly #')
-            ax.set_xlabel('Location')
+            ax.axis("tight")
+            ax.set_ylabel("Assembly #")
+            ax.set_xlabel("Location")
+
+            for port in port_locations_bins:
+                ax.axvline(port, c="g")
 
         return ensemble_fields
 
