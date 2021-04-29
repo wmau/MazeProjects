@@ -22,7 +22,7 @@ import pymannkendall as mk
 from sklearn.metrics.pairwise import cosine_similarity
 from itertools import product, permutations
 import multiprocessing as mp
-from joblib import Parallel, delayed
+from CaImaging.PlaceFields import spatial_bin
 from tqdm import tqdm
 import matplotlib.patches as mpatches
 import matplotlib.gridspec as gridspec
@@ -290,26 +290,6 @@ class ProjectAnalyses:
                 ax.set_ylabel("Place field correlations [r]")
 
         return r_values
-
-    def correlate_stability_to_reversal(
-        self,
-        corr_sessions=("Goals3", "Goals4"),
-        criterion_session="Reversal",
-    ):
-        median_r = []
-        criterion = []
-        for mouse in self.meta["mice"]:
-            corrs = self.correlate_fields(mouse, corr_sessions, show_histogram=False)
-            median_r.append(np.nanmedian(corrs["r"]))
-            behavior = self.data[mouse][criterion_session].behavior
-            criterion.append(behavior.data["learning"]["criterion"])
-
-        fig, ax = plt.subplots()
-        ax.scatter(median_r, criterion)
-        ax.set_xlabel("Median place field correlation Goals1 vs Goals 2 [r]")
-        ax.set_ylabel("Trials to criterion Reversal1")
-
-        return median_r, criterion
 
     def get_placefield_distribution_comparisons(
         self,
@@ -1229,7 +1209,6 @@ class ProjectAnalyses:
             pattern_ax = beautify_ax(pattern_ax)
             plt.gcf().tight_layout()
 
-
     def spiralplot_matched_assemblies(self, mouse, session_types: tuple, thresh=1):
         # Match assemblies.
         registered_ensembles = self.match_assemblies(mouse, session_types)
@@ -1272,9 +1251,9 @@ class ProjectAnalyses:
                     lin_pos,
                     above_thresh,
                     ax=ax,
-                    marker_legend="Assembly activation",
+                    marker_legend="Ensemble activation",
                 )
-                ax.set_title(f"Assembly #{assembly_number} in session {session_type}")
+                ax.set_title(f"Ensemble #{assembly_number} in session {session_type}")
 
         return registered_ensembles
 
@@ -1526,6 +1505,99 @@ class ProjectAnalyses:
             ax.set_yticks(range(n_sessions))
             ax.set_xticklabels(self.meta["session_types"], rotation=45)
             ax.set_yticklabels(self.meta["session_types"])
+
+    def snakeplot_ensembles(self, mouse, session_type, spatial_bin_size_radians=None, show_plot=True,
+                            ax=None, order=None, do_sort=True):
+        """
+        Make a single Pastalkova (snake) plot depicting z-scored assembly activation strength as a function of spatial
+        location.
+
+        :parameters
+        ---
+        mouse: str
+            Mouse name.
+
+        session_type: str
+            Session name (Goals1, 2, 3, 4, or Reversal).
+
+        spatial_bin_size_radians: float
+            Spatial bin size in radians. Should be the same as the one run with PlaceFields() for consistency.
+
+        show_plot: bool
+            Whether to plot.
+
+        ax: Axis object.
+            Axis to plot on.
+
+        order: None or (assembly,) array
+            Order to plot assemblies in. If order is None and do_sort is False, leave it alone. If order has a value,
+            overrides do_sort.
+
+        do_sort: bool
+            Whether to sort assembly order based on peak location.
+        """
+        ensembles = self.data[mouse][session_type].assemblies
+        lin_position = self.data[mouse][session_type].behavior.data['df']['lin_position']
+        placefield_data = self.data[mouse][session_type].spatial
+
+        # Make sure spatial_bin_size_radians matches the one run with PlaceFields().
+        if spatial_bin_size_radians is None:
+            spatial_bin_size_radians = placefield_data.meta['bin_size']
+        else:
+            assert spatial_bin_size_radians == placefield_data.meta['bin_size'], \
+                'Currently only supports spatial_bin_size_radians that is the same value as the one run with PlaceFields().'
+
+        # Bin all the assembly activations in space.
+        ensemble_fields = []
+        for assembly in zscore(ensembles['activations'], axis=1):
+            assembly_field = spatial_bin(
+                lin_position,
+                np.zeros_like(lin_position),
+                bin_size_cm=spatial_bin_size_radians,
+                show_plot=False,
+                weights=assembly,
+                one_dim=True,
+            )[0]
+
+            ensemble_fields.append(assembly_field / self.data[mouse][session_type].spatial.data['occupancy_map'])
+        ensemble_fields = np.vstack(ensemble_fields)
+
+        # Determine order of assemblies.
+        if order is None and do_sort:
+            order = np.argsort(np.argmax(ensemble_fields, axis=1))
+        elif order is None and not do_sort:
+            order = range(ensemble_fields.shape[0])
+
+        # Plot assemblies.
+        if show_plot:
+            if ax is None:
+                fig, ax = plt.subplots(figsize=(5, 5.5))
+            ax.imshow(ensemble_fields[order])
+            ax.axis('tight')
+            ax.set_ylabel('Assembly #')
+            ax.set_xlabel('Location')
+
+        return ensemble_fields
+
+    # def correlate_stability_to_reversal(
+    #     self,
+    #     corr_sessions=("Goals3", "Goals4"),
+    #     criterion_session="Reversal",
+    # ):
+    #     median_r = []
+    #     criterion = []
+    #     for mouse in self.meta["mice"]:
+    #         corrs = self.correlate_fields(mouse, corr_sessions, show_histogram=False)
+    #         median_r.append(np.nanmedian(corrs["r"]))
+    #         behavior = self.data[mouse][criterion_session].behavior
+    #         criterion.append(behavior.data["learning"]["criterion"])
+    #
+    #     fig, ax = plt.subplots()
+    #     ax.scatter(median_r, criterion)
+    #     ax.set_xlabel("Median place field correlation Goals1 vs Goals 2 [r]")
+    #     ax.set_ylabel("Trials to criterion Reversal1")
+    #
+    #     return median_r, criterion
 
 
 if __name__ == "__main__":
