@@ -1068,7 +1068,7 @@ class ProjectAnalyses:
         ]
         fig.legend(handles=patches, loc="lower right")
 
-    def match_assemblies(self, mouse, session_types: tuple):
+    def match_ensembles(self, mouse, session_types: tuple):
         """
         Match assemblies across two sessions. For each assembly in the first session of the session_types tuple,
         find the corresponding assembly in the second session by taking the highest cosine similarity between two
@@ -1186,7 +1186,7 @@ class ProjectAnalyses:
         return registered_ensembles
 
     def plot_matched_assemblies(self, mouse, session_types: tuple):
-        registered_patterns = self.match_assemblies(mouse, session_types)
+        registered_patterns = self.match_ensembles(mouse, session_types)
         matched_patterns = registered_patterns["matched_patterns"]
         n_assemblies = matched_patterns[0].shape[0]
         registered_spike_times = self.rearrange_neurons(
@@ -1255,7 +1255,7 @@ class ProjectAnalyses:
 
     def spiralplot_matched_assemblies(self, mouse, session_types: tuple, thresh=1):
         # Match assemblies.
-        registered_ensembles = self.match_assemblies(mouse, session_types)
+        registered_ensembles = self.match_ensembles(mouse, session_types)
 
         # Get timestamps and linearized position.
         t = [
@@ -1314,7 +1314,7 @@ class ProjectAnalyses:
         for age in ["young", "aged"]:
             similarities[age] = []
             for mouse in self.meta["grouped_mice"][age]:
-                registered_ensembles = self.match_assemblies(mouse, session_pair)
+                registered_ensembles = self.match_ensembles(mouse, session_pair)
                 similarities[age].append(
                     registered_ensembles["best_similarities"][
                         ~registered_ensembles["poor_matches"]
@@ -1347,7 +1347,7 @@ class ProjectAnalyses:
             for session_pair in [session_pair1, session_pair2]:
                 percent_matches[age][session_pair] = []
                 for mouse in self.meta["grouped_mice"][age]:
-                    poor_matches = self.match_assemblies(mouse, session_pair)[
+                    poor_matches = self.match_ensembles(mouse, session_pair)[
                         "poor_matches"
                     ]
                     percent_matches[age][session_pair].append(
@@ -1437,7 +1437,7 @@ class ProjectAnalyses:
         activation_distances = dict()
 
         for mouse in self.meta["mice"]:
-            registered_patterns = self.match_assemblies(mouse, session_pair)
+            registered_patterns = self.match_ensembles(mouse, session_pair)
             assembly_matches[mouse] = registered_patterns["matches"]
             best_similarities[mouse] = registered_patterns["best_similarities"]
 
@@ -1498,7 +1498,7 @@ class ProjectAnalyses:
         for i, s1 in enumerate(self.meta["session_types"]):
             for j, s2 in enumerate(self.meta["session_types"]):
                 if i != j:
-                    best_similarities_this_pair = self.match_assemblies(
+                    best_similarities_this_pair = self.match_ensembles(
                         mouse, (s1, s2)
                     )["best_similarities"]
                     best_similarities[i, j] = best_similarities_this_pair
@@ -1557,6 +1557,30 @@ class ProjectAnalyses:
             ax.set_xticklabels(self.meta["session_types"], rotation=45)
             ax.set_yticklabels(self.meta["session_types"])
 
+    def spatial_bin_ensemble_activations(self, activations, lin_position, occupancy_normalization,
+                                         spatial_bin_size_radians=0.05, do_zscore=True):
+
+        # Bin all the assembly activations in space.
+        ensemble_fields = []
+        if do_zscore:
+            activations = zscore(activations, axis=1)
+        for assembly in activations:
+            assembly_field = spatial_bin(
+                lin_position,
+                np.zeros_like(lin_position),
+                bin_size_cm=spatial_bin_size_radians,
+                show_plot=False,
+                weights=assembly,
+                one_dim=True,
+            )[0]
+            ensemble_fields.append(
+                assembly_field
+                / occupancy_normalization
+            )
+        ensemble_fields = np.vstack(ensemble_fields)
+
+        return ensemble_fields
+
     def snakeplot_ensembles(
         self,
         mouse,
@@ -1611,22 +1635,10 @@ class ProjectAnalyses:
                 spatial_bin_size_radians == placefield_data.meta["bin_size"]
             ), "Currently only supports spatial_bin_size_radians that is the same value as the one run with PlaceFields()."
 
-        # Bin all the assembly activations in space.
-        ensemble_fields = []
-        for assembly in zscore(ensembles["activations"], axis=1):
-            assembly_field = spatial_bin(
-                lin_position,
-                np.zeros_like(lin_position),
-                bin_size_cm=spatial_bin_size_radians,
-                show_plot=False,
-                weights=assembly,
-                one_dim=True,
-            )[0]
-            ensemble_fields.append(
-                assembly_field
-                / self.data[mouse][session_type].spatial.data["occupancy_map"]
-            )
-        ensemble_fields = np.vstack(ensemble_fields)
+        ensemble_fields = self.spatial_bin_ensemble_activations(ensembles['activations'], lin_position,
+                                                                placefield_data.data['occupancy_map'],
+                                                                spatial_bin_size_radians=spatial_bin_size_radians,
+                                                                do_zscore=True)
 
         # Convert port locations to bin #.
         bins = spatial_bin(
@@ -1659,11 +1671,74 @@ class ProjectAnalyses:
                 fig, ax = plt.subplots(figsize=(5, 5.5))
             ax.imshow(ensemble_fields[order])
             ax.axis("tight")
-            ax.set_ylabel("Assembly #")
+            ax.set_ylabel("Ensemble #")
             ax.set_xlabel("Location")
 
             for port in port_locations_bins:
                 ax.axvline(port, c="g")
+
+        return ensemble_fields
+
+    def snakeplot_matched_ensembles(self, mouse, session_types, spatial_bin_size_radians=None,
+                                    show_plot=True, axs=None, sort_on=0):
+        # Register the ensembles.
+        registered_ensembles = self.match_ensembles(mouse, session_types)
+
+        # Get behavior and place field data structures (to shorthand).
+        behavior_data = [self.data[mouse][session].behavior.data for session in session_types]
+        placefield_data = [self.data[mouse][session].spatial for session in session_types]
+
+        # Get linearized positions, occupancies, port locations, spatial bin size in radians.
+        lin_positions = [session['df']['lin_position'] for session in behavior_data]
+        occupancies = [session.data['occupancy_map'] for session in placefield_data]
+        port_locations = [np.asarray(session["lin_ports"])[session["rewarded_ports"]] for session in behavior_data]
+        if spatial_bin_size_radians is None:
+            spatial_bin_size_radians = [session.meta['bin_size'] for session in placefield_data]
+            assert len(np.unique(spatial_bin_size_radians))==1, 'Different bin sizes in two sessions.'
+            spatial_bin_size_radians = spatial_bin_size_radians[0]
+
+        # Make the fields and omit the poor matches. 
+        ensemble_fields = [self.spatial_bin_ensemble_activations(activations, positions, occupancy,
+                                                                 spatial_bin_size_radians=spatial_bin_size_radians)
+                           for activations, positions, occupancy in zip(registered_ensembles['matched_activations'],
+                                                                        lin_positions, occupancies)]
+        ensemble_fields[1][registered_ensembles['poor_matches']] = np.nan
+
+        # Convert port locations to bin #.
+        bins = [spatial_bin(
+            position,
+            np.zeros_like(position),
+            bin_size_cm=spatial_bin_size_radians,
+            show_plot=False,
+            one_dim=True,
+        )[-1] for position in lin_positions]
+        port_locations_bins = [np.where(
+            spatial_bin(
+                port,
+                np.zeros_like(port),
+                bin_size_cm=spatial_bin_size_radians,
+                show_plot=False,
+                one_dim=True,
+                bins=bins_,
+            )[0]
+        )[0] for port, bins_ in zip(port_locations, bins)]
+
+        # Sort the fields.
+        order = np.argsort(np.argmax(ensemble_fields[sort_on], axis=1))
+
+        # Plot.
+        if show_plot:
+            if axs is None:
+                fig, axs = plt.subplots(1, len(session_types))
+
+            for ax, fields, ports in zip(axs, ensemble_fields, port_locations_bins):
+                ax.imshow(fields[order])
+                ax.axis('tight')
+                ax.set_ylabel('Ensemble #')
+                ax.set_xlabel('Location')
+
+                for port in ports:
+                    ax.axvline(port, c='r')
 
         return ensemble_fields
 
