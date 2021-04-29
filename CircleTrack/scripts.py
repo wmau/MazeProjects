@@ -1679,30 +1679,37 @@ class ProjectAnalyses:
 
         return ensemble_fields
 
-    def snakeplot_matched_ensembles(self, mouse, session_types, spatial_bin_size_radians=None,
-                                    show_plot=True, axs=None, sort_on=0):
+    def map_ensemble_fields(self, mouse, session_types, spatial_bin_size_radians=None):
         # Register the ensembles.
         registered_ensembles = self.match_ensembles(mouse, session_types)
 
-        # Get behavior and place field data structures (to shorthand).
-        behavior_data = [self.data[mouse][session].behavior.data for session in session_types]
-        placefield_data = [self.data[mouse][session].spatial for session in session_types]
-
         # Get linearized positions, occupancies, port locations, spatial bin size in radians.
-        lin_positions = [session['df']['lin_position'] for session in behavior_data]
-        occupancies = [session.data['occupancy_map'] for session in placefield_data]
-        port_locations = [np.asarray(session["lin_ports"])[session["rewarded_ports"]] for session in behavior_data]
+        lin_positions = [self.data[mouse][session].behavior.data['df']['lin_position'] for session in session_types]
+        occupancies = [self.data[mouse][session].spatial.data['occupancy_map'] for session in session_types]
         if spatial_bin_size_radians is None:
-            spatial_bin_size_radians = [session.meta['bin_size'] for session in placefield_data]
+            spatial_bin_size_radians = [self.data[mouse][session].spatial.meta['bin_size'] for session in session_types]
             assert len(np.unique(spatial_bin_size_radians))==1, 'Different bin sizes in two sessions.'
             spatial_bin_size_radians = spatial_bin_size_radians[0]
 
-        # Make the fields and omit the poor matches. 
+        # Make the fields and omit the poor matches.
         ensemble_fields = [self.spatial_bin_ensemble_activations(activations, positions, occupancy,
                                                                  spatial_bin_size_radians=spatial_bin_size_radians)
                            for activations, positions, occupancy in zip(registered_ensembles['matched_activations'],
                                                                         lin_positions, occupancies)]
         ensemble_fields[1][registered_ensembles['poor_matches']] = np.nan
+
+        return ensemble_fields
+
+    def snakeplot_matched_ensembles(self, mouse, session_types, spatial_bin_size_radians=None,
+                                    show_plot=True, axs=None, sort_on=0):
+        # Map the ensembles to each other.
+        ensemble_fields = self.map_ensemble_fields(mouse, session_types,
+                                                   spatial_bin_size_radians=spatial_bin_size_radians)
+
+        # Get linearized position and port locations.
+        lin_positions = [self.data[mouse][session].behavior.data['df']['lin_position'] for session in session_types]
+        port_locations = [np.asarray(self.data[mouse][session].behavior.data["lin_ports"])
+                          [self.data[mouse][session].behavior.data["rewarded_ports"]] for session in session_types]
 
         # Convert port locations to bin #.
         bins = [spatial_bin(
