@@ -431,7 +431,7 @@ class CalciumSession:
             threshold=threshold,
         )
 
-    def plot_assembly(self, assembly_number, neurons=None, get_members=True):
+    def plot_assembly(self, assembly_number, neurons=None, get_members=True, filter_method='sd', thresh=2):
         pattern = self.assemblies["patterns"][assembly_number]
         n_neurons = len(pattern)
         activation = self.assemblies["activations"][assembly_number]
@@ -440,7 +440,7 @@ class CalciumSession:
         # This option lets you only plot the ensemble members.
         if get_members:
             members, corrected_pattern = find_members(
-                pattern, filter_method="sd", thresh=2
+                pattern, filter_method=filter_method, thresh=thresh
             )[1:]
             sort_by_contribution = False
         else:
@@ -496,14 +496,23 @@ class CalciumSession:
                 basefmt=" ",
                 markerfmt="bo",
             )[:2]
-            pattern_ax.invert_yaxis()
-            pattern_ax.axis("off")
             plt.setp(stemlines_members, 'linewidth', 1)
             plt.setp(markerlines_members, 'markersize', 1)
             plt.setp(stemlines, 'linewidth', 1)
             plt.setp(markerlines, 'markersize', 1)
         else:
-            pattern_ax.stem(pattern, orientation="horizontal", basefmt=" ")
+            markerlines, stemlines = pattern_ax.stem(
+                pattern,
+                "b",
+                orientation="horizontal",
+                basefmt=" ",
+                markerfmt="bo",
+            )[:2]
+            plt.setp(stemlines, 'linewidth', 1)
+            plt.setp(markerlines, 'markersize', 1)
+
+        pattern_ax.invert_yaxis()
+        pattern_ax.axis("off")
 
         return activation_ax, spikes_ax
 
