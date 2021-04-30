@@ -22,11 +22,11 @@ import xarray as xr
 import pymannkendall as mk
 from sklearn.metrics.pairwise import cosine_similarity
 from itertools import product
-from CaImaging.PlaceFields import spatial_bin
+from CaImaging.PlaceFields import spatial_bin, PlaceFields
 from tqdm import tqdm
 import matplotlib.patches as mpatches
 import matplotlib.gridspec as gridspec
-
+import warnings
 from CircleTrack.utils import get_circular_error, format_spatial_location_for_decoder
 
 plt.rcParams["pdf.fonttype"] = 42
@@ -1555,7 +1555,8 @@ class ProjectAnalyses:
             ax.set_xticklabels(self.meta["session_types"], rotation=45)
             ax.set_yticklabels(self.meta["session_types"])
 
-    def make_ensemble_fields(self, mouse, session_type, spatial_bin_size_radians=0.05):
+    def make_ensemble_fields(self, mouse, session_type, spatial_bin_size_radians=0.05, running_only=False, std_thresh=2,
+                             get_zSI=False):
         """
 Make a single Pastalkova (snake) plot depicting z-scored assembly activation strength as a function of spatial
 location.
@@ -1586,25 +1587,38 @@ do_sort: bool
 """
         ensembles = self.data[mouse][session_type].assemblies
         behavior_data = self.data[mouse][session_type].behavior.data
-        lin_position = behavior_data["df"]["lin_position"]
-        placefield_data = self.data[mouse][session_type].spatial
 
-        # Make sure spatial_bin_size_radians matches the one run with PlaceFields().
-        if spatial_bin_size_radians is None:
-            spatial_bin_size_radians = placefield_data.meta["bin_size"]
+        if std_thresh is None:
+            activations = ensembles['activations']
         else:
-            assert (
-                    spatial_bin_size_radians == placefield_data.meta["bin_size"]
-            ), "Currently only supports spatial_bin_size_radians that is the same value as the one run with PlaceFields()."
+            stds = np.std(ensembles['activations'], axis=1)
+            means = np.mean(ensembles['activations'], axis=1)
+            thresh = means + std_thresh * stds
+            activations = ensembles['activations'].copy()
+            activations[activations < np.tile(thresh, [activations.shape[1], 1]).T] = 0
 
-        ensemble_fields = spatial_bin_ensemble_activations(ensembles['activations'], lin_position,
-                                                           placefield_data.data['occupancy_map'],
-                                                           spatial_bin_size_radians=spatial_bin_size_radians,
-                                                           do_zscore=True)
-        # Find the spatial bin where activity peaks.
-        peak_bins = np.argmax(ensemble_fields, axis=1)
+        placefield_bin_size = self.data[mouse][session_type].meta['spatial_bin_size']
+        if spatial_bin_size_radians != placefield_bin_size:
+            warnings.warn(f"Spatial bin size does not match PlaceField class's value of {placefield_bin_size}")
 
-        return ensemble_fields, peak_bins
+        if running_only:
+            velocity_threshold = self.data[mouse][session_type].meta['velocity_threshold']
+        else:
+            velocity_threshold = 0
+
+        ensemble_fields = PlaceFields(
+            np.asarray(behavior_data['df']['t']),
+            np.asarray(behavior_data['df']['x']),
+            np.asarray(behavior_data['df']['y']),
+            activations,
+            bin_size=spatial_bin_size_radians,
+            circular=True,
+            fps=self.data[mouse][session_type].behavior.meta['fps'],
+            shuffle_test=get_zSI,
+            velocity_threshold=velocity_threshold,
+        )
+
+        return ensemble_fields
 
     def snakeplot_ensembles(
         self,
@@ -1617,16 +1631,16 @@ do_sort: bool
         do_sort=True,
     ):
         # Get ensemble fields and relevant behavior data such as linearized position and port location.
-        ensemble_fields, peak_bins = self.make_ensemble_fields(mouse, session_type)
+        ensemble_fields = self.make_ensemble_fields(mouse, session_type, spatial_bin_size_radians=spatial_bin_size_radians)
         behavior_data = self.data[mouse][session_type].behavior.data
         lin_position = behavior_data['df']['lin_position']
         port_locations = np.asarray(behavior_data['lin_ports'])[behavior_data['rewarded_ports']]
 
         # Determine order of assemblies.
         if order is None and do_sort:
-            order = np.argsort(peak_bins)
+            order = np.argsort(ensemble_fields.data['placefield_centers'])
         elif order is None and not do_sort:
-            order = range(ensemble_fields.shape[0])
+            order = range(ensemble_fields.data['placefields'].shape[0])
 
         # Plot assemblies.
         if show_plot:
@@ -1642,7 +1656,7 @@ do_sort: bool
 
             if ax is None:
                 fig, ax = plt.subplots(figsize=(5, 5.5))
-            ax.imshow(ensemble_fields[order])
+            ax.imshow(ensemble_fields.data['placefields'][order])
             ax.axis("tight")
             ax.set_ylabel("Ensemble #")
             ax.set_xlabel("Location")
@@ -1652,31 +1666,26 @@ do_sort: bool
 
         return ensemble_fields
 
-    def map_ensemble_fields(self, mouse, session_types, spatial_bin_size_radians=None):
+    def map_ensemble_fields(self, mouse, session_types, spatial_bin_size_radians=0.05, running_only=False, std_thresh=2):
         # Register the ensembles.
         registered_ensembles = self.match_ensembles(mouse, session_types)
 
-        # Get linearized positions, occupancies, port locations, spatial bin size in radians.
-        lin_positions = [self.data[mouse][session].behavior.data['df']['lin_position'] for session in session_types]
-        occupancies = [self.data[mouse][session].spatial.data['occupancy_map'] for session in session_types]
-        if spatial_bin_size_radians is None:
-            spatial_bin_size_radians = [self.data[mouse][session].spatial.meta['bin_size'] for session in session_types]
-            assert len(np.unique(spatial_bin_size_radians))==1, 'Different bin sizes in two sessions.'
-            spatial_bin_size_radians = spatial_bin_size_radians[0]
+        ensemble_field_data = []
+        for i, session in enumerate(session_types):
+            ensemble_field_data.append(self.make_ensemble_fields(mouse, session, spatial_bin_size_radians=spatial_bin_size_radians,
+                                                        running_only=running_only, std_thresh=std_thresh, get_zSI=False))
 
-        # Make the fields and omit the poor matches.
+        # Get the spatial fields of the ensembles and reorder them.
         ensemble_fields = [
-            spatial_bin_ensemble_activations(activations, positions, occupancy,
-                                             spatial_bin_size_radians=spatial_bin_size_radians)
-            for activations, positions, occupancy in zip(registered_ensembles['matched_activations'],
-                                                         lin_positions,
-                                                         occupancies)]
+            ensemble_field_data[0].data['placefields'],
+            ensemble_field_data[1].data['placefields'][registered_ensembles['matches']]
+        ]
         ensemble_fields[1][registered_ensembles['poor_matches']] = np.nan
 
-        return ensemble_fields
+        return ensemble_fields, ensemble_field_data
 
-    def correlate_ensemble_fields(self, mouse, session_types, spatial_bin_size_radians=None):
-        ensemble_fields = self.map_ensemble_fields(mouse, session_types, spatial_bin_size_radians=spatial_bin_size_radians)
+    def correlate_ensemble_fields(self, mouse, session_types, spatial_bin_size_radians=0.05):
+        ensemble_fields = self.map_ensemble_fields(mouse, session_types, spatial_bin_size_radians=spatial_bin_size_radians)[0]
 
         rhos = [spearmanr(ensemble_day1, ensemble_day2)[0]
                 for ensemble_day1, ensemble_day2 in zip(ensemble_fields[0], ensemble_fields[1])]
@@ -1743,7 +1752,7 @@ do_sort: bool
                 if age == "aged":
                     ax.set_yticks([])
                 else:
-                    ax.set_ylabel("Cosine similarity of matched assemblies")
+                    ax.set_ylabel("Spatial correlation of matched assemblies")
                 ax.set_xticks(label_positions)
                 ax.set_xticklabels(mice, rotation=45)
 
@@ -1751,11 +1760,11 @@ do_sort: bool
 
     #def ensemble_
 
-    def snakeplot_matched_ensembles(self, mouse, session_types, spatial_bin_size_radians=None,
+    def snakeplot_matched_ensembles(self, mouse, session_types, spatial_bin_size_radians=0.05,
                                     show_plot=True, axs=None, sort_on=0):
         # Map the ensembles to each other.
         ensemble_fields = self.map_ensemble_fields(mouse, session_types,
-                                                   spatial_bin_size_radians=spatial_bin_size_radians)
+                                                   spatial_bin_size_radians=spatial_bin_size_radians)[0]
 
         # Get linearized position and port locations.
         lin_positions = [self.data[mouse][session].behavior.data['df']['lin_position'] for session in session_types]
