@@ -1,3 +1,4 @@
+import numpy
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
@@ -5,6 +6,7 @@ from scipy.stats import zscore
 import os
 from tqdm import tqdm
 from CaImaging import util
+from CaImaging.Behavior import spatial_bin
 
 
 def plot_assembly(
@@ -176,3 +178,28 @@ def find_members(patterns, filter_method='sd', thresh=2):
         corrected_patterns = np.squeeze(corrected_patterns)
 
     return bool_members, member_idx, corrected_patterns
+
+
+def spatial_bin_ensemble_activations(activations, lin_position, occupancy_normalization,
+                                     spatial_bin_size_radians=0.05, do_zscore=True):
+
+    # Bin all the assembly activations in space.
+    ensemble_fields = []
+    if do_zscore:
+        activations = zscore(activations, axis=1)
+    for assembly in activations:
+        assembly_field = spatial_bin(
+            lin_position,
+            np.zeros_like(lin_position),
+            bin_size_cm=spatial_bin_size_radians,
+            show_plot=False,
+            weights=assembly,
+            one_dim=True,
+        )[0]
+        ensemble_fields.append(
+            assembly_field
+            / occupancy_normalization
+        )
+    ensemble_fields = np.vstack(ensemble_fields)
+
+    return ensemble_fields
