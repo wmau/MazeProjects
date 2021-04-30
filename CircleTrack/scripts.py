@@ -1188,7 +1188,6 @@ class ProjectAnalyses:
     def plot_matched_assemblies(self, mouse, session_types: tuple):
         registered_patterns = self.match_ensembles(mouse, session_types)
         matched_patterns = registered_patterns["matched_patterns"]
-        n_assemblies = matched_patterns[0].shape[0]
         registered_spike_times = self.rearrange_neurons(
             mouse, session_types, "spike_times", detected="everyday"
         )
@@ -1700,6 +1699,80 @@ class ProjectAnalyses:
 
         return ensemble_fields
 
+    def correlate_ensemble_fields(self, mouse, session_types, spatial_bin_size_radians=None):
+        ensemble_fields = self.map_ensemble_fields(mouse, session_types, spatial_bin_size_radians=spatial_bin_size_radians)
+
+        rhos = [spearmanr(ensemble_day1, ensemble_day2)[0]
+                for ensemble_day1, ensemble_day2 in zip(ensemble_fields[0], ensemble_fields[1])]
+
+        return np.asarray(rhos)
+
+    def plot_ensemble_field_correlations(self, session_pair:tuple, show_plot=True):
+        ensemble_field_rhos = dict()
+        for age in ['young', 'aged']:
+            ensemble_field_rhos[age] = []
+
+            for mouse in self.meta['grouped_mice'][age]:
+                rhos = self.correlate_ensemble_fields(mouse, session_pair)
+                ensemble_field_rhos[age].append(rhos[~np.isnan(rhos)])
+
+        if show_plot:
+            fig, axs = plt.subplots(1, 2)
+            fig.subplots_adjust(wspace=0)
+
+            for age, color, ax in zip(['young', 'aged'], ['w', 'r'], axs):
+                boxes = ax.boxplot(ensemble_field_rhos[age], patch_artist=True)
+
+                for patch, med in zip(boxes['boxes'], boxes['medians']):
+                    patch.set_facecolor(color)
+                    med.set(color='k')
+
+                if age == 'aged':
+                    ax.set_yticks([])
+                else:
+                    ax.set_ylabel('Spearman rho of matched ensemble fields')
+                ax.set_xticklabels(self.meta['grouped_mice'][age], rotation=45)
+
+        return ensemble_field_rhos
+
+
+    def plot_ensemble_field_correlation_comparisons(self, session_pair1:tuple, session_pair2:tuple, show_plot=True):
+        ensemble_field_rhos = dict()
+        for session_pair in [session_pair1, session_pair2]:
+            ensemble_field_rhos[session_pair] = self.plot_ensemble_field_correlations(session_pair, show_plot=False)
+
+        if show_plot:
+            fig, axs = plt.subplots(1, 2)
+            fig.subplots_adjust(wspace=0)
+
+            for age, ax, color in zip(['young', 'aged'], axs, ['w', 'r']):
+                mice = self.meta["grouped_mice"][age]
+                positions = [
+                    np.arange(start, start + 3 * len(mice), 3) for start in [-0.5, 0.5]
+                ]
+                label_positions = np.arange(0, 3 * len(mice), 3)
+
+                for session_pair, position in zip(
+                        [session_pair1, session_pair2], positions
+                ):
+                    boxes = ax.boxplot(
+                        ensemble_field_rhos[session_pair][age],
+                        positions=position,
+                        patch_artist=True,
+                    )
+                    for patch, med in zip(boxes["boxes"], boxes["medians"]):
+                        patch.set_facecolor(color)
+                        med.set(color="k")
+
+                if age == "aged":
+                    ax.set_yticks([])
+                else:
+                    ax.set_ylabel("Cosine similarity of matched assemblies")
+                ax.set_xticks(label_positions)
+                ax.set_xticklabels(mice, rotation=45)
+
+        return ensemble_field_rhos
+
     def snakeplot_matched_ensembles(self, mouse, session_types, spatial_bin_size_radians=None,
                                     show_plot=True, axs=None, sort_on=0):
         # Map the ensembles to each other.
@@ -1710,6 +1783,11 @@ class ProjectAnalyses:
         lin_positions = [self.data[mouse][session].behavior.data['df']['lin_position'] for session in session_types]
         port_locations = [np.asarray(self.data[mouse][session].behavior.data["lin_ports"])
                           [self.data[mouse][session].behavior.data["rewarded_ports"]] for session in session_types]
+
+        if spatial_bin_size_radians is None:
+            spatial_bin_size_radians = [self.data[mouse][session].spatial.meta['bin_size'] for session in session_types]
+            assert len(np.unique(spatial_bin_size_radians))==1, 'Different bin sizes in two sessions.'
+            spatial_bin_size_radians = spatial_bin_size_radians[0]
 
         # Convert port locations to bin #.
         bins = [spatial_bin(
@@ -1745,7 +1823,7 @@ class ProjectAnalyses:
                 ax.set_xlabel('Location')
 
                 for port in ports:
-                    ax.axvline(port, c='r')
+                    ax.axvline(port, c='r', alpha=0.5)
 
         return ensemble_fields
 
