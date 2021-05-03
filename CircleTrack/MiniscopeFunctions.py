@@ -271,7 +271,7 @@ class CalciumSession:
 
         return self.raster_plot
 
-    def spiral_scrollplot_assemblies(self, threshold=2.58):
+    def spiral_scrollplot_assemblies(self, threshold=2):
         assemblies = self.assemblies
         behavior_df = self.behavior.data["df"]
 
@@ -292,6 +292,25 @@ class CalciumSession:
             rewarded=self.behavior.data["rewarded_ports"],
             titles=titles,
         )
+
+    def spiralplot_assembly(self, assembly_number, threshold=2, ax=None):
+        behavior_data = self.behavior.data
+        above_threshold = zscore(self.assemblies['activations'][assembly_number]) > threshold
+
+        if ax is None:
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection="polar")
+        ax = spiral_plot(t=behavior_data['df']['t'],
+                         lin_position=behavior_data['df']['lin_position'],
+                         markers=above_threshold,
+                         ax=ax,
+                         marker_legend='Ensemble activation')
+        ax.set_title(f"Ensemble {assembly_number}")
+        for rewarded, port in zip(behavior_data['rewarded_ports'], behavior_data['lin_ports']):
+            color = 'g' if rewarded else 'k'
+            ax.axvline(x=port, color=color)
+
+        return ax
 
     def spatial_activity_by_trial(self):
         """
@@ -417,7 +436,7 @@ class CalciumSession:
 
         return corr_matrix
 
-    def write_assembly_activation_movie(self, assembly_number, threshold=2.58):
+    def write_assembly_activation_movie(self, assembly_number, threshold=2):
         assembly_activations = self.assemblies["activations"][assembly_number]
         behavior_frame_numbers = self.behavior.data["df"]["frame"].to_numpy()
         movie_fname = self.meta["paths"]["BehaviorVideo"]
@@ -477,6 +496,7 @@ class CalciumSession:
             order=None,
             ax=assembly_ax,
         )
+        activation_ax.set_title(f'Ensemble # {assembly_number}')
 
         if get_members:
             n_members = len(members)

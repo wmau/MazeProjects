@@ -17,7 +17,7 @@ import os
 from CircleTrack.plotting import plot_daily_rasters, spiral_plot, highlight_column
 from CaImaging.Assemblies import preprocess_multiple_sessions, lapsed_activation
 from CircleTrack.Assemblies import plot_assembly, \
-    spatial_bin_ensemble_activations
+    spatial_bin_ensemble_activations, find_members, find_memberships
 import xarray as xr
 import pymannkendall as mk
 from sklearn.metrics.pairwise import cosine_similarity
@@ -53,6 +53,7 @@ aged_mice = [
     "Puck",
 ]
 
+ages = ['young', 'aged']
 
 class ProjectAnalyses:
     def __init__(self, mice, project_name="RemoteReversal", behavior_only=False):
@@ -113,7 +114,7 @@ class ProjectAnalyses:
             for session_type in self.meta['session_types']:
                 n_ensembles[session_type] = dict()
 
-                for age in ['young', 'aged']:
+                for age in ages:
                     n_ensembles[session_type][age] = []
 
                     for mouse in self.meta['grouped_mice'][age]:
@@ -131,8 +132,8 @@ class ProjectAnalyses:
 
             for i, (ax, session_type) in enumerate(zip(axs, self.meta['session_types'])):
                 box = ax.boxplot(
-                    [n_ensembles[session_type][age] for age in ['young', 'aged']],
-                    labels=['young', 'aged'],
+                    [n_ensembles[session_type][age] for age in ages],
+                    labels=ages,
                     patch_artist=True,
                     widths=0.75,
                 )
@@ -265,6 +266,91 @@ class ProjectAnalyses:
             ax.imshow(overlaps)
 
         return overlaps
+
+    def count_unique_ensemble_members(self, session_type, filter_method='sd', thresh=2):
+        proportion_unique_members = {age: [] for age in ages}
+        ensemble_size = {age: [] for age in ages}
+        for age in ages:
+            proportion_unique_members[age] = []
+
+            for mouse in self.meta['grouped_mice'][age]:
+                patterns = self.data[mouse][session_type].assemblies['patterns']
+                n_neurons = self.data[mouse][session_type].imaging['n_neurons']
+
+                members = find_members(patterns, filter_method=filter_method, thresh=thresh)[1]
+                ensemble_size[age].append(np.median([len(members_this_ensemble)
+                                                   for members_this_ensemble in members]) / n_neurons)
+                proportion_unique_members[age].append(len(np.unique(np.hstack(members))) / n_neurons)
+
+        return proportion_unique_members, ensemble_size
+
+    def find_promiscuous_neurons(self, session_type, filter_method='sd', thresh=2, p_ensemble_thresh=0.1):
+        p_promiscuous_neurons = {age: [] for age in ages}
+        for age in ages:
+            p_promiscuous_neurons[age] = []
+
+            for mouse in self.meta['grouped_mice'][age]:
+                patterns = self.data[mouse][session_type].assemblies['patterns']
+                n_ensembles, n_neurons = patterns.shape
+                memberships = find_memberships(patterns, filter_method=filter_method, thresh=thresh)
+
+                ensemble_threshold = p_ensemble_thresh * n_ensembles
+
+                p_promiscuous_neurons[age].append(sum(np.asarray([len(ensemble) for ensemble in memberships]) > ensemble_threshold) / n_neurons)
+
+        return p_promiscuous_neurons
+
+    def plot_ensemble_sizes(self, filter_method='sd', thresh=2, data_type='unique_members'):
+        """
+        Plots the relative size of an ensemble (defined by "members") for each session, grouped by age.
+
+        :parameters
+        ---
+        filter_method: str
+            'sd' or 'z' (not done yet).
+
+        thresh: float
+            If filter_method=='sd', the number of standard deviations above the mean neuronal weight to be considered
+            a member of that ensemble.
+
+        data_type: str
+            'unique_members' or 'ensemble_size'
+            If 'unique_members', counts all the neurons that are in any ensemble.
+            If 'ensemble_size', takes the median across all ensemble sizes (# of members).
+        """
+        proportion_unique_members = dict()
+        ensemble_size = dict()
+        for session_type in self.meta['session_types']:
+            proportion_unique_members[session_type], \
+            ensemble_size[session_type] = self.count_unique_ensemble_members(session_type,
+                                                                             filter_method=filter_method,
+                                                                             thresh=thresh)
+
+        fig, axs = plt.subplots(1, len(self.meta['session_types']))
+        fig.subplots_adjust(wspace=0)
+
+        data = {'unique_members': proportion_unique_members,
+                'ensemble_size': ensemble_size}
+        ylabels = {'unique_members': 'Unique members / total # neurons',
+                   'ensemble_size': 'Median # members per ensemble/ total # neurons'}
+        to_plot = data[data_type]
+        for i, (ax, session_type) in enumerate(zip(axs, self.meta['session_types'])):
+            box = ax.boxplot(
+                [to_plot[session_type][age] for age in ages],
+                labels=ages,
+                patch_artist=True,
+                widths=0.75,
+            )
+            for patch, med, color in zip(box['boxes'], box['medians'], ['w', 'r']):
+                patch.set_facecolor(color)
+                med.set(color='k')
+            ax.set_xticks([])
+            ax.set_title(session_type)
+
+        [ax.set_yticks([]) for ax in axs[1:]]
+        axs[0].set_ylabel(ylabels[data_type])
+
+        return data
 
     def plot_registered_cells(self, mouse, session_types, neurons_from_session1=None):
         session_list = self.get_cellreg_mappings(
@@ -885,7 +971,7 @@ class ProjectAnalyses:
         return p_changing_split_by_age
 
     def plot_assembly_by_trend(
-        self, mouse, session_type, trend, x="time", x_bin_size=60
+        self, mouse, session_type, trend, x="time", x_bin_size=60, plot_type='spiral', thresh=2
     ):
         assembly_trends, binned_activations = self.find_assembly_trends(
             mouse, session_type, x=x, x_bin_size=x_bin_size
@@ -893,7 +979,17 @@ class ProjectAnalyses:
 
         session = self.data[mouse][session_type]
         for assembly_number in assembly_trends[trend]:
-            session.plot_assembly(assembly_number)
+            if plot_type == 'temporal':
+                session.plot_assembly(assembly_number)
+            elif plot_type == 'spiral':
+                ax = session.spiralplot_assembly(assembly_number, threshold=thresh)
+
+                if session_type == 'Reversal':
+                    goals4 = self.data[mouse]['Goals4'].behavior.data
+                    reversal = self.data[mouse]['Reversal'].behavior.data
+                    for port in np.asarray(reversal['lin_ports'])[goals4['rewarded_ports']]:
+                        ax.axvline(x=port, color='y')
+
 
     def plot_licks(self, mouse, session_type):
         """
@@ -1763,7 +1859,7 @@ do_sort: bool
 
     def plot_ensemble_field_correlations(self, session_pair:tuple, show_plot=True):
         ensemble_field_rhos = dict()
-        for age in ['young', 'aged']:
+        for age in ages:
             ensemble_field_rhos[age] = []
 
             for mouse in self.meta['grouped_mice'][age]:
@@ -1774,7 +1870,7 @@ do_sort: bool
             fig, axs = plt.subplots(1, 2)
             fig.subplots_adjust(wspace=0)
 
-            for age, color, ax in zip(['young', 'aged'], ['w', 'r'], axs):
+            for age, color, ax in zip(ages, ['w', 'r'], axs):
                 boxes = ax.boxplot(ensemble_field_rhos[age], patch_artist=True)
 
                 for patch, med in zip(boxes['boxes'], boxes['medians']):
@@ -1799,7 +1895,7 @@ do_sort: bool
             fig, axs = plt.subplots(1, 2)
             fig.subplots_adjust(wspace=0)
 
-            for age, ax, color in zip(['young', 'aged'], axs, ['w', 'r']):
+            for age, ax, color in zip(ages, axs, ['w', 'r']):
                 mice = self.meta["grouped_mice"][age]
                 positions = [
                     np.arange(start, start + 3 * len(mice), 3) for start in [-0.5, 0.5]

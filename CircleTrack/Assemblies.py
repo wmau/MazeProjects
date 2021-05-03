@@ -179,6 +179,27 @@ def find_members(patterns, filter_method='sd', thresh=2):
 
     return bool_members, member_idx, corrected_patterns
 
+def find_memberships(patterns, filter_method='sd', thresh=2):
+    """
+    Rather than finding the members for each ensemble, do the inverse -- find which ensemble each neuron belongs to.
+
+    :param patterns:
+    :param filter_method:
+    :param thresh:
+    :return:
+    """
+    member_list = find_members(patterns, filter_method=filter_method, thresh=thresh)[1]
+
+    memberships = []
+    n_neurons = patterns.shape[1]
+
+    for neuron in range(n_neurons):
+        memberships.append([])
+        for i, ensemble in enumerate(member_list):
+            if neuron in ensemble: memberships[neuron].append(i)
+
+    return memberships
+
 
 def spatial_bin_ensemble_activations(activations, lin_position, occupancy_normalization,
                                      spatial_bin_size_radians=0.05, do_zscore=True):
