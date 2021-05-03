@@ -90,24 +90,93 @@ class ProjectAnalyses:
         #
         #     rearranged = rearrange_neurons(cell_map, S_list)
 
-    def count_ensembles(self):
-        n_ensembles = nan_array(
-            (len(self.meta["mice"]), len(self.meta["session_types"]))
-        )
-        for i, mouse in enumerate(self.meta["mice"]):
-            for j, session_type in enumerate(self.meta["session_types"]):
-                session = self.data[mouse][session_type]
-                n_ensembles[i, j] = session.assemblies["significance"].nassemblies
+    def count_ensembles(self, grouped=True, normalize=True):
+        """
+        Plot number of ensembles for each session. Can also normalize by total number of neurons.
 
-        fig, ax = plt.subplots()
-        for n, mouse in zip(n_ensembles, self.meta["mice"]):
-            color = "k" if mouse in self.meta["grouped_mice"]["young"] else "r"
-            ax.plot(self.meta["session_labels"], n, color=color)
-            ax.annotate(mouse, (0.1, n[0] + 1))
+        :parameters
+        ---
+        grouped: bool
+            Whether to group into aged vs young mice. If False, plot all mice as lines. If True, make boxplots for
+            aged vs young for each session.
 
-        ax.set_ylabel("# of ensembles")
-        plt.setp(ax.xaxis.get_majorticklabels(), rotation=45)
-        fig.subplots_adjust(bottom=0.2)
+        normalize: bool
+            Whether to normalize by number of recorded neurons.
+
+        """
+        ylabel = '# of ensembles' if not normalize else '# of ensembles normalized by cell count'
+
+        if grouped:
+            # Make a dictionary that's [session_type][age] = list of ensemble counts.
+            n_ensembles = dict()
+
+            for session_type in self.meta['session_types']:
+                n_ensembles[session_type] = dict()
+
+                for age in ['young', 'aged']:
+                    n_ensembles[session_type][age] = []
+
+                    for mouse in self.meta['grouped_mice'][age]:
+                        session = self.data[mouse][session_type]
+                        n = session.assemblies['significance'].nassemblies
+
+                        if normalize:
+                            n /= session.imaging['n_neurons']
+
+                        n_ensembles[session_type][age].append(n)
+
+            # Plot.
+            fig, axs = plt.subplots(1, len(self.meta['session_types']))
+            fig.subplots_adjust(wspace=0)
+
+            for i, (ax, session_type) in enumerate(zip(axs, self.meta['session_types'])):
+                box = ax.boxplot(
+                    [n_ensembles[session_type][age] for age in ['young', 'aged']],
+                    labels=['young', 'aged'],
+                    patch_artist=True,
+                    widths=0.75,
+                )
+                for patch, med, color in zip(box['boxes'], box['medians'], ['w', 'r']):
+                    patch.set_facecolor(color)
+                    med.set(color='k')
+                ax.set_xticks([])
+                ax.set_title(session_type)
+
+                if i > 0:
+                    ax.set_yticks([])
+                else:
+                    ax.set_ylabel(ylabel)
+
+            patches = [
+                mpatches.Patch(color=c, label=label)
+                for c, label in zip(["w", "r"], ["Young", "Aged"])
+            ]
+            fig.legend(handles=patches, loc='lower right')
+
+
+        else:
+            n_ensembles = nan_array(
+                (len(self.meta["mice"]), len(self.meta["session_types"]))
+            )
+            for i, mouse in enumerate(self.meta["mice"]):
+                for j, session_type in enumerate(self.meta["session_types"]):
+                    session = self.data[mouse][session_type]
+                    n = session.assemblies["significance"].nassemblies
+
+                    if normalize:
+                        n /= session.imaging['n_neurons']
+
+                    n_ensembles[i, j] = n
+
+            fig, ax = plt.subplots()
+            for n, mouse in zip(n_ensembles, self.meta["mice"]):
+                color = "k" if mouse in self.meta["grouped_mice"]["young"] else "r"
+                ax.plot(self.meta["session_labels"], n, color=color)
+                ax.annotate(mouse, (0.1, n[0] + 1))
+
+            ax.set_ylabel(ylabel)
+            plt.setp(ax.xaxis.get_majorticklabels(), rotation=45)
+            fig.subplots_adjust(bottom=0.2)
 
     def rearrange_neurons(self, mouse, session_types, data_type, detected="everyday"):
         """

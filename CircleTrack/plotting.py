@@ -153,3 +153,4 @@ def highlight_column(column, ax, **kwargs):
     ax.add_patch(rect)
 
     return rect
+
