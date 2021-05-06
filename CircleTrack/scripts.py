@@ -2022,7 +2022,7 @@ do_sort: bool
             mice = self.meta["grouped_mice"][age]
             boxes = ax.boxplot(SI[age], patch_artist=True)
 
-            # color the boxplots. 
+            # color the boxplots.
             for patch, med in zip(boxes['boxes'], boxes['medians']):
                 patch.set_facecolor(color)
                 med.set(color='k')
@@ -2032,6 +2032,31 @@ do_sort: bool
             else:
                 ax.set_ylabel('Assembly spatial information (z)')
             ax.set_xticklabels(mice, rotation=45)
+
+        return SI
+
+    def boxplot_all_assembly_SI(self):
+        SI = {session_type: {age: [np.median(self.data[mouse][session_type].assemblies['fields'].data['spatial_info_z'])
+                                   for mouse in self.meta['grouped_mice'][age]]
+                             for age in ages}
+              for session_type in self.meta['session_types']}
+
+        fig, axs = plt.subplots(1, len(self.meta['session_types']))
+        fig.subplots_adjust(wspace=0)
+
+        for ax, session_type in zip(axs, self.meta['session_types']):
+            boxes = ax.boxplot([SI[session_type][age] for age in ages], patch_artist=True, widths=0.75)
+
+            for patch, med, color in zip(boxes['boxes'], boxes['medians'], ['w', 'r']):
+                patch.set_facecolor(color)
+                med.set(color='k')
+
+            if session_type != self.meta['session_types'][0]:
+                ax.set_yticks([])
+            else:
+                ax.set_ylabel('Median assembly spatial information (z)')
+            ax.set_xticklabels(ages, rotation=45)
+            ax.set_title(session_type)
 
         return SI
 
