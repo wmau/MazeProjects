@@ -886,11 +886,6 @@ class SessionStitcherV4:
             lick_files_concatenated = True
 
 
-if __name__ == "__main__":
-    folder = r"Z:\Will\Drift\Data\Encedalus_Scope14\10_16_2020_CircleTrackRecall"
-    # SessionStitcherV4(folder)
-
-
 def get_equivalent_local_path(folder, local_base=r"D:\Projects", depth=2):
     folder = os.path.normpath(folder)
     split_tree = folder.split(os.sep)
@@ -924,11 +919,11 @@ def get_circular_error(y_predicted, y_real, n_spatial_bins):
 
 
 def format_spatial_location_for_decoder(
-    lin_position,
-    n_spatial_bins=36,
-    time_bin_size=1,
-    fps=15,
-    classifier=BernoulliNB(),
+        lin_position,
+        n_spatial_bins=36,
+        time_bin_size=1,
+        fps=15,
+        classifier=BernoulliNB(),
 ):
     """
     Naive Bayes classifiers only take integers as outcomes.
@@ -968,3 +963,9 @@ def format_spatial_location_for_decoder(
         position = np.array([mode(time_bin)[0][0] for time_bin in binned_position])
 
     return position
+
+if __name__ == "__main__":
+    folder = r"Z:\Will\Drift\Data\Encedalus_Scope14\10_16_2020_CircleTrackRecall"
+    # SessionStitcherV4(folder)
+
+

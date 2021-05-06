@@ -27,7 +27,8 @@ from tqdm import tqdm
 import matplotlib.patches as mpatches
 import matplotlib.gridspec as gridspec
 import warnings
-from CircleTrack.utils import get_circular_error, format_spatial_location_for_decoder
+import pickle as pkl
+from CircleTrack.utils import get_circular_error, format_spatial_location_for_decoder, get_equivalent_local_path
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -82,6 +83,36 @@ class ProjectAnalyses:
         self.meta["aged"] = {
             mouse: True if mouse in aged_mice else False for mouse in self.meta["mice"]
         }
+
+        # Get spatial fields of the assemblies.
+        for mouse in self.meta['mice']:
+            for session_type in self.meta['session_types']:
+                session = self.data[mouse][session_type]
+                folder = session.meta['folder']
+
+                if session.meta['local']:
+                    folder = get_equivalent_local_path(folder)
+                fpath = os.path.join(folder, 'AssemblyFields.pkl')
+
+                try:
+                    with open(fpath, 'rb') as file:
+                        session.assemblies['fields'] = pkl.load(file)
+                except:
+                    behavior = session.behavior.data['df']
+                    session.assemblies['fields'] = PlaceFields(
+                        np.asarray(behavior['t']),
+                        np.asarray(behavior['x']),
+                        np.asarray(behavior['y']),
+                        session.assemblies['activations'],
+                        bin_size=session.spatial.meta['bin_size'],
+                        circular=True,
+                        shuffle_test=True,
+                        fps=session.spatial.meta['fps'],
+                        velocity_threshold=0
+                    )
+
+                    with open(fpath, 'wb') as file:
+                        pkl.dump(session.assemblies['fields'], file)
 
         # for mouse in mice:
         #     S_list = [self.data[mouse][session].data['imaging']['S']
@@ -1554,7 +1585,7 @@ class ProjectAnalyses:
         fig, axs = plt.subplots(1, 2)
         fig.subplots_adjust(wspace=0)
 
-        for age, ax, color in zip(["young", "aged"], axs, ["w", "r"]):
+        for age, ax, color in zip(ages, axs, ["w", "r"]):
             mice = self.meta["grouped_mice"][age]
             positions = [
                 np.arange(start, start + 3 * len(mice), 3) for start in [-0.5, 0.5]
@@ -1978,6 +2009,31 @@ do_sort: bool
                     ax.axvline(port, c='r', alpha=0.5)
 
         return ensemble_fields
+
+    def boxplot_assembly_SI(self, session_type):
+        SI = {age: [self.data[mouse][session_type].assemblies['fields'].data['spatial_info_z']
+                    for mouse in self.meta['grouped_mice'][age]]
+              for age in ages}
+
+        fig, axs = plt.subplots(1,2)
+        fig.subplots_adjust(wspace=0)
+
+        for age, ax, color in zip(ages, axs, ["w", "r"]):
+            mice = self.meta["grouped_mice"][age]
+            boxes = ax.boxplot(SI[age], patch_artist=True)
+
+            # color the boxplots. 
+            for patch, med in zip(boxes['boxes'], boxes['medians']):
+                patch.set_facecolor(color)
+                med.set(color='k')
+
+            if age == 'aged':
+                ax.set_yticks([])
+            else:
+                ax.set_ylabel('Assembly spatial information (z)')
+            ax.set_xticklabels(mice, rotation=45)
+
+        return SI
 
     # def correlate_stability_to_reversal(
     #     self,
