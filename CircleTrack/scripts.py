@@ -17,7 +17,7 @@ import os
 from CircleTrack.plotting import plot_daily_rasters, spiral_plot, highlight_column
 from CaImaging.Assemblies import preprocess_multiple_sessions, lapsed_activation
 from CircleTrack.Assemblies import plot_assembly, \
-    spatial_bin_ensemble_activations, find_members, find_memberships
+    spatial_bin_ensemble_activations, find_members, find_memberships, plot_pattern
 import xarray as xr
 import pymannkendall as mk
 from sklearn.metrics.pairwise import cosine_similarity
@@ -210,6 +210,8 @@ class ProjectAnalyses:
             plt.setp(ax.xaxis.get_majorticklabels(), rotation=45)
             fig.subplots_adjust(bottom=0.2)
 
+        return n_ensembles
+
     def rearrange_neurons(self, mouse, session_types, data_type, detected="everyday"):
         """
         Rearrange neural activity matrix to have the same neuron in
@@ -363,7 +365,7 @@ class ProjectAnalyses:
         data = {'unique_members': proportion_unique_members,
                 'ensemble_size': ensemble_size}
         ylabels = {'unique_members': 'Unique members / total # neurons',
-                   'ensemble_size': 'Median # members per ensemble/ total # neurons'}
+                   'ensemble_size': 'Median # members per ensemble / total # neurons'}
         to_plot = data[data_type]
         for i, (ax, session_type) in enumerate(zip(axs, self.meta['session_types'])):
             box = ax.boxplot(
@@ -400,7 +402,7 @@ class ProjectAnalyses:
 
         # Get fields.
         fields = {
-            session_type: self.data[mouse][session_type].spatial.data["placefields"]
+            session_type: self.data[mouse][session_type].spatial.data["placefields_normalized"]
             for session_type in session_types
         }
 
@@ -546,7 +548,7 @@ class ProjectAnalyses:
                 )
 
                 placefields.append(
-                    sessions[session_type].spatial.data["placefields"][
+                    sessions[session_type].spatial.data["placefields_normalized"][
                         neurons_to_analyze
                     ]
                 )
@@ -1380,12 +1382,57 @@ class ProjectAnalyses:
 
         return registered_ensembles
 
-    def plot_matched_assemblies(self, mouse, session_types: tuple):
+    def plot_matched_ensemble(self, registered_activations, registered_patterns,
+                              registered_spike_times, similarity, session_types, poor_match=False):
+        order = np.argsort(np.abs(registered_patterns[0]))
+
+        fig = plt.figure(figsize=(19.2, 10.7))
+        spec = gridspec.GridSpec(ncols=2, nrows=2, figure=fig)
+        assembly_axs = [fig.add_subplot(spec[i, 0]) for i in range(2)]
+        pattern_ax = fig.add_subplot(spec[:, 1])
+
+        for ax, activation, spike_times, pattern, c, session in zip(
+                assembly_axs,
+                registered_activations,
+                registered_spike_times,
+                registered_patterns,
+                ["k", "r"],
+                session_types,
+        ):
+            # Plot assembly activation.
+            plot_assembly(
+                0,
+                activation,
+                spike_times,
+                sort_by_contribution=False,
+                order=order,
+                ax=ax,
+            )
+            ax.set_title(session)
+
+            # Plot the patterns.
+            pattern_ax = plot_pattern(pattern, ax=pattern_ax, color=c, alpha=0.5)
+
+        # Label the patterns.
+        pattern_ax.legend(session_types)
+        title = f"Cosine similarity: {np.round(similarity, 3)}"
+        if poor_match:
+            title += " NON-SIG MATCH!"
+        pattern_ax.set_title(title)
+        pattern_ax.set_xticks([0, registered_patterns[0].shape[0]])
+        pattern_ax = beautify_ax(pattern_ax)
+        fig.tight_layout()
+
+        return fig
+
+    def plot_matched_ensembles(self, mouse, session_types: tuple, subset='all'):
         registered_patterns = self.match_ensembles(mouse, session_types)
-        matched_patterns = registered_patterns["matched_patterns"]
         registered_spike_times = self.rearrange_neurons(
             mouse, session_types, "spike_times", detected="everyday"
         )
+
+        if subset == 'all':
+            subset = range(len(registered_patterns[0].shape[0]))
 
         for (
             s1_activation,
@@ -1395,61 +1442,26 @@ class ProjectAnalyses:
             poor_match,
             similarity,
         ) in zip(
-            registered_patterns["matched_activations"][0],
-            registered_patterns["matched_activations"][1],
-            registered_patterns["matched_patterns"][0],
-            registered_patterns["matched_patterns"][1],
-            registered_patterns["poor_matches"],
-            registered_patterns["best_similarities"],
+            registered_patterns["matched_activations"][0][subset],
+            registered_patterns["matched_activations"][1][subset],
+            registered_patterns["matched_patterns"][0][subset],
+            registered_patterns["matched_patterns"][1][subset],
+            registered_patterns["poor_matches"][subset],
+            registered_patterns["best_similarities"][subset],
         ):
-            order = np.argsort(np.abs(s1_pattern))
+            self.plot_matched_ensemble((s1_activation, s2_activation),
+                                       (s1_pattern, s2_pattern),
+                                       registered_spike_times,
+                                       similarity,
+                                       session_types,
+                                       poor_match=poor_match)
 
-            fig = plt.figure(figsize=(19.2, 10.7))
-            spec = gridspec.GridSpec(ncols=2, nrows=2, figure=fig)
-            assembly_axs = [fig.add_subplot(spec[i, 0]) for i in range(2)]
-            pattern_ax = fig.add_subplot(spec[:, 1])
-
-            for ax, activation, spike_times, pattern, c, session in zip(
-                assembly_axs,
-                [s1_activation, s2_activation],
-                registered_spike_times,
-                [s1_pattern, s2_pattern],
-                ["k", "r"],
-                session_types,
-            ):
-                # Plot assembly activation.
-                plot_assembly(
-                    0,
-                    activation,
-                    spike_times,
-                    sort_by_contribution=False,
-                    order=order,
-                    ax=ax,
-                )
-                ax.set_title(session)
-
-                # Plot the patterns.
-                markerline, stemlines, baseline = pattern_ax.stem(
-                    range(len(pattern)), pattern, c, markerfmt=c + "o", basefmt=" "
-                )
-                plt.setp(markerline, alpha=0.5)
-                plt.setp(stemlines, alpha=0.5)
-
-            # Label the patterns.
-            pattern_ax.set_ylabel("Weight [a.u.]")
-            pattern_ax.set_xlabel("Neurons")
-            pattern_ax.legend(session_types)
-            title = f"Cosine similarity: {np.round(similarity, 3)}"
-            if poor_match:
-                title += " NON-SIG MATCH!"
-            pattern_ax.set_title(title)
-            pattern_ax.set_xticks([0, matched_patterns[0].shape[0]])
-            pattern_ax = beautify_ax(pattern_ax)
-            plt.gcf().tight_layout()
-
-    def spiralplot_matched_assemblies(self, mouse, session_types: tuple, thresh=1):
+    def spiralplot_matched_ensembles(self, mouse, session_types: tuple, thresh=2.58, subset='all'):
         # Match assemblies.
         registered_ensembles = self.match_ensembles(mouse, session_types)
+
+        if subset == 'all':
+            subset = range((len(registered_ensembles['matches'])))
 
         # Get timestamps and linearized position.
         t = [
@@ -1462,36 +1474,44 @@ class ProjectAnalyses:
         ]
 
         # For each assembly in session 1 and its corresponding match in session 2, get their activation profiles.
-        for s1_assembly, s2_assembly in enumerate(registered_ensembles["matches"]):
-            activations = [
-                self.data[mouse][session_type].assemblies["activations"][assembly]
-                for session_type, assembly in zip(
-                    session_types, [s1_assembly, s2_assembly]
-                )
-            ]
+        for s1_assembly, (s2_assembly, session_type) in enumerate(zip(registered_ensembles["matches"], session_types)):
+            if s1_assembly in subset:
+                activations = [
+                    self.data[mouse][session_type].assemblies["activations"][assembly]
+                    for session_type, assembly in zip(
+                        session_types, [s1_assembly, s2_assembly]
+                    )
+                ]
 
-            # Make a figure with 2 subplots, one for each session.
-            fig, axs = plt.subplots(2, 1, subplot_kw=dict(polar=True))
-            for ax, activation, t_, lin_pos, assembly_number, session_type in zip(
-                axs,
-                activations,
-                t,
-                linearized_position,
-                [s1_assembly, s2_assembly],
-                session_types,
-            ):
+                # Make a figure with 2 subplots, one for each session.
+                fig, axs = plt.subplots(2, 1, subplot_kw=dict(polar=True))
+                for ax, activation, t_, lin_pos, assembly_number, session_type in zip(
+                    axs,
+                    activations,
+                    t,
+                    linearized_position,
+                    [s1_assembly, s2_assembly],
+                    session_types,
+                ):
 
-                # Find activation threshold and plot location of assembly activation.
-                z_activations = zscore(activation)
-                above_thresh = z_activations > thresh
-                ax = spiral_plot(
-                    t_,
-                    lin_pos,
-                    above_thresh,
-                    ax=ax,
-                    marker_legend="Ensemble activation",
-                )
-                ax.set_title(f"Ensemble #{assembly_number} in session {session_type}")
+                    # Find activation threshold and plot location of assembly activation.
+                    z_activations = zscore(activation)
+                    above_thresh = z_activations > thresh
+                    ax = spiral_plot(
+                        t_,
+                        lin_pos,
+                        above_thresh,
+                        ax=ax,
+                        marker_legend="Ensemble activation",
+                    )
+                    ax.set_title(f"Ensemble #{assembly_number} in session {session_type}")
+
+                    behavior_data = self.data[mouse][session_type].behavior.data
+                    ax.axvline(behavior_data['lin_ports'][behavior_data['rewarded_ports']], color='g')
+
+                    if session_type == 'Reversal':
+                        behavior_data = self.data[mouse]['Goals4'].behavior.data
+                        # NEED TO FINISH PLOTTING REWARD SITES
 
         return registered_ensembles
 
@@ -1533,7 +1553,7 @@ class ProjectAnalyses:
 
         return similarities
 
-    def percent_matched_ensembles(self, session_pair1, session_pair2):
+    def percent_matched_ensembles(self, session_pair1=('Goals3', 'Goals4'), session_pair2=('Goals4', 'Reversal')):
         percent_matches = dict()
         for age in ["young", "aged"]:
             percent_matches[age] = dict()
@@ -1567,7 +1587,7 @@ class ProjectAnalyses:
 
         return percent_matches
 
-    def plot_pattern_cosine_similarity_comparisons(self, session_pair1, session_pair2):
+    def plot_pattern_cosine_similarity_comparisons(self, session_pair1=('Goals3', 'Goals4'), session_pair2=('Goals4', 'Reversal')):
         """
         For two given session pairs, plot the distribution of cosine similarities for each mouse and the two session
         pairs side by side. This is good for assessing pattern similarity across Goals3 vs Goals4 and Goals4 vs Reversal.
@@ -1754,33 +1774,33 @@ class ProjectAnalyses:
     def make_ensemble_fields(self, mouse, session_type, spatial_bin_size_radians=0.05, running_only=False, std_thresh=2,
                              get_zSI=False):
         """
-Make a single Pastalkova (snake) plot depicting z-scored assembly activation strength as a function of spatial
-location.
+        Make a single Pastalkova (snake) plot depicting z-scored assembly activation strength as a function of spatial
+        location.
 
-:parameters
----
-mouse: str
-    Mouse name.
+        :parameters
+        ---
+        mouse: str
+            Mouse name.
 
-session_type: str
-    Session name (Goals1, 2, 3, 4, or Reversal).
+        session_type: str
+            Session name (Goals1, 2, 3, 4, or Reversal).
 
-spatial_bin_size_radians: float
-    Spatial bin size in radians. Should be the same as the one run with PlaceFields() for consistency.
+        spatial_bin_size_radians: float
+            Spatial bin size in radians. Should be the same as the one run with PlaceFields() for consistency.
 
-show_plot: bool
-    Whether to plot.
+        show_plot: bool
+            Whether to plot.
 
-ax: Axis object.
-    Axis to plot on.
+        ax: Axis object.
+            Axis to plot on.
 
-order: None or (assembly,) array
-    Order to plot assemblies in. If order is None and do_sort is False, leave it alone. If order has a value,
-    overrides do_sort.
+        order: None or (assembly,) array
+            Order to plot assemblies in. If order is None and do_sort is False, leave it alone. If order has a value,
+            overrides do_sort.
 
-do_sort: bool
-    Whether to sort assembly order based on peak location.
-"""
+        do_sort: bool
+            Whether to sort assembly order based on peak location.
+        """
         ensembles = self.data[mouse][session_type].assemblies
         behavior_data = self.data[mouse][session_type].behavior.data
 
@@ -1836,7 +1856,7 @@ do_sort: bool
         if order is None and do_sort:
             order = np.argsort(ensemble_fields.data['placefield_centers'])
         elif order is None and not do_sort:
-            order = range(ensemble_fields.data['placefields'].shape[0])
+            order = range(ensemble_fields.data['placefields_normalized'].shape[0])
 
         # Plot assemblies.
         if show_plot:
@@ -1852,7 +1872,7 @@ do_sort: bool
 
             if ax is None:
                 fig, ax = plt.subplots(figsize=(5, 5.5))
-            ax.imshow(ensemble_fields.data['placefields'][order])
+            ax.imshow(ensemble_fields.data['placefields_normalized'][order])
             ax.axis("tight")
             ax.set_ylabel("Ensemble #")
             ax.set_xlabel("Location")
@@ -1873,8 +1893,8 @@ do_sort: bool
 
         # Get the spatial fields of the ensembles and reorder them.
         ensemble_fields = [
-            ensemble_field_data[0].data['placefields'],
-            ensemble_field_data[1].data['placefields'][registered_ensembles['matches']]
+            ensemble_field_data[0].data['placefields_normalized'],
+            ensemble_field_data[1].data['placefields_normalized'][registered_ensembles['matches']]
         ]
         ensemble_fields[1][registered_ensembles['poor_matches']] = np.nan
 
@@ -1917,7 +1937,8 @@ do_sort: bool
         return ensemble_field_rhos
 
 
-    def plot_ensemble_field_correlation_comparisons(self, session_pair1:tuple, session_pair2:tuple, show_plot=True):
+    def plot_ensemble_field_correlation_comparisons(self, session_pair1=('Goals3', 'Goals4'),
+                                                    session_pair2=('Goals4','Reversal'), show_plot=True):
         ensemble_field_rhos = dict()
         for session_pair in [session_pair1, session_pair2]:
             ensemble_field_rhos[session_pair] = self.plot_ensemble_field_correlations(session_pair, show_plot=False)
@@ -1953,8 +1974,6 @@ do_sort: bool
                 ax.set_xticklabels(mice, rotation=45)
 
         return ensemble_field_rhos
-
-    #def ensemble_
 
     def snakeplot_matched_ensembles(self, mouse, session_types, spatial_bin_size_radians=0.05,
                                     show_plot=True, axs=None, sort_on=0):
@@ -1997,13 +2016,14 @@ do_sort: bool
         # Plot.
         if show_plot:
             if axs is None:
-                fig, axs = plt.subplots(1, len(session_types))
+                fig, axs = plt.subplots(1, len(session_types), figsize=(10,7))
 
-            for ax, fields, ports in zip(axs, ensemble_fields, port_locations_bins):
+            for ax, fields, ports, session in zip(axs, ensemble_fields, port_locations_bins, session_types):
                 ax.imshow(fields[order])
                 ax.axis('tight')
                 ax.set_ylabel('Ensemble #')
                 ax.set_xlabel('Location')
+                ax.set_title(session)
 
                 for port in ports:
                     ax.axvline(port, c='r', alpha=0.5)
@@ -2055,7 +2075,7 @@ do_sort: bool
                 ax.set_yticks([])
             else:
                 ax.set_ylabel('Median assembly spatial information (z)')
-            ax.set_xticklabels(ages, rotation=45)
+            ax.set_xticks([])
             ax.set_title(session_type)
 
         return SI
@@ -2125,5 +2145,25 @@ if __name__ == "__main__":
         project_name="RemoteReversal",
         behavior_only=False,
     )
-    RR.data["Fornax"]["Goals3"].sdt_trials()
+    n_ensembles = RR.count_ensembles(normalize=False)
+    n_ensembles_norm = RR.count_ensembles(normalize=True)
+    RR.data['Fornax']['Goals4'].plot_assembly(0)
+
+    # Only Goals2 p = 0.03.
+    RR.plot_ensemble_sizes(data_type='ensemble_size')
+
+    # Goals1, Goals2 p = 0.04, Goals3, Goals4 p = 0.07
+    ensemble_makeup = RR.plot_ensemble_sizes(data_type='unique_members')
+
+    # Goals2 p = 0.02, Goals1, Goals3 p = 0.07. Aged mice catch up slowly?
+    SI = RR.boxplot_all_assembly_SI()
+
+    RR.snakeplot_matched_ensembles('Fornax', ('Goals3', 'Goals4'))
+    RR.snakeplot_matched_ensembles('Fornax', ('Goals4', 'Reversal'))
+
+    p_matches = RR.percent_matched_ensembles()
+    reg_similarities = RR.plot_pattern_cosine_similarity_comparisons()
+    ensemble_field_rhos = RR.plot_ensemble_field_correlation_comparisons()
+
+
     pass

@@ -256,7 +256,7 @@ class CalciumSession:
         if binary:
             rasters = rasters > 0
 
-        tuning_curves = self.spatial.data["placefields"][neurons]
+        tuning_curves = self.spatial.data["placefields_normalized"][neurons]
 
         cell_number_labels = [f"Cell #{n}" for n in neurons]
         self.raster_plot = ScrollPlot(
@@ -482,7 +482,7 @@ class CalciumSession:
                 print("Excluded ensemble members: " + str(excluded_members))
                 included_neurons = members[in_neurons]
 
-        fig = plt.figure()
+        fig = plt.figure(figsize=(10.5, 7.5))
         spec = gridspec.GridSpec(nrows=1, ncols=6, figure=fig)
         assembly_ax = fig.add_subplot(spec[:5])
         pattern_ax = fig.add_subplot(spec[-1])

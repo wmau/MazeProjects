@@ -224,3 +224,16 @@ def spatial_bin_ensemble_activations(activations, lin_position, occupancy_normal
     ensemble_fields = np.vstack(ensemble_fields)
 
     return ensemble_fields
+
+def plot_pattern(pattern, ax=None, color='k', alpha=1):
+    if ax is None:
+        fig, ax = plt.subplots()
+
+    markerline, stemlines, baseline = ax.stem(range(len(pattern)), pattern, color, markerfmt=color + 'o', basefmt=" ")
+    plt.setp(markerline, alpha=alpha)
+    plt.setp(stemlines, alpha=alpha)
+
+    ax.set_ylabel("Weight [a.u.]")
+    ax.set_xlabel("Neurons")
+
+    return ax
