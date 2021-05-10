@@ -15,6 +15,8 @@ from CaImaging.util import (
 import numpy as np
 import tkinter as tk
 
+from CaImaging.PlaceFields import spatial_bin
+
 tkroot = tk.Tk()
 tkroot.withdraw()
 from pathlib import Path
@@ -963,6 +965,19 @@ def format_spatial_location_for_decoder(
         position = np.array([mode(time_bin)[0][0] for time_bin in binned_position])
 
     return position
+
+def find_reward_spatial_bins(lin_position, port_locations, spatial_bin_size_radians=0.05):
+    bins = spatial_bin(
+        lin_position,
+        np.zeros_like(lin_position),
+        bin_size_cm=spatial_bin_size_radians,
+        show_plot=False,
+        one_dim=True,
+    )[-1]
+    reward_locations_bins = np.digitize(port_locations, bins) - 1
+
+    return reward_locations_bins, bins
+
 
 if __name__ == "__main__":
     folder = r"Z:\Will\Drift\Data\Encedalus_Scope14\10_16_2020_CircleTrackRecall"

@@ -37,6 +37,7 @@ from CircleTrack.utils import (
     get_circular_error,
     format_spatial_location_for_decoder,
     get_equivalent_local_path,
+    find_reward_spatial_bins
 )
 
 plt.rcParams["pdf.fonttype"] = 42
@@ -1926,6 +1927,76 @@ class ProjectAnalyses:
 
         return ensemble_fields
 
+    def find_ensemble_dist_to_reward(self, mouse, session_type):
+        fields = self.data[mouse][session_type].assemblies['fields']
+        behavior_data = self.data[mouse][session_type].behavior.data
+        lin_position = behavior_data['df']['lin_position']
+        port_locations = np.asarray(behavior_data['lin_ports'])[
+            behavior_data['rewarded_ports']
+        ]
+        spatial_bin_size_radians = fields.meta['bin_size']
+
+        reward_location_bins, bins  = \
+            find_reward_spatial_bins(lin_position,
+                                     port_locations,
+                                     spatial_bin_size_radians=spatial_bin_size_radians)
+
+        d = np.min(
+            np.hstack(
+                [
+                    [
+                        get_circular_error(center,
+                                           reward_bin,
+                                           len(bins))
+                        for center in fields.data['placefield_centers']
+                    ]
+                    for reward_bin in reward_location_bins
+                ]
+            ), axis=1)
+
+        return d
+
+    def plot_ensemble_field_distances_to_rewards(self):
+        """
+        For each session, find  the distances of all ensemble fields to
+        the closest reward location. Compare young vs aged.
+
+        :return:
+        """
+        d = dict()
+        for session in self.meta['session_types']:
+            d[session] = dict()
+
+            for age in ages:
+                d[session][age] = []
+
+                for mouse in self.meta['grouped_mice'][age]:
+                    d[session][age].extend(
+                        self.find_ensemble_dist_to_reward(mouse,
+                                                          session)
+                    )
+
+        fig, axs = plt.subplots(1, len(self.meta['session_types']))
+        fig.subplots_adjust(wspace=0)
+        for session, ax in zip(self.meta['session_types'], axs):
+            boxes = ax.boxplot(
+                [d[session]['young'], d[session]['aged']],
+                widths=0.75,
+                patch_artist=True)
+
+            for patch, med, color in zip(boxes['boxes'], boxes['medians'], ['w', 'r']):
+                patch.set_facecolor(color)
+                med.set(color='k')
+
+            if session == 'Goals1':
+                ax.set_ylabel('Median distance of field center to reward')
+            else:
+                ax.set_yticks([])
+            ax.set_xticklabels(ages, rotation=45)
+
+        return d
+
+
     def snakeplot_ensembles(
         self,
         mouse,
@@ -1955,14 +2026,9 @@ class ProjectAnalyses:
         # Plot assemblies.
         if show_plot:
             # Convert port locations to bin #.
-            bins = spatial_bin(
-                lin_position,
-                np.zeros_like(lin_position),
-                bin_size_cm=spatial_bin_size_radians,
-                show_plot=False,
-                one_dim=True,
-            )[-1]
-            reward_locations_bins = np.digitize(port_locations, bins) - 1
+            reward_locations_bins = find_reward_spatial_bins(
+                lin_position, port_locations,
+                spatial_bin_size_radians=spatial_bin_size_radians)[0]
 
             if ax is None:
                 fig, ax = plt.subplots(figsize=(5, 5.5))
