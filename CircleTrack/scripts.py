@@ -244,7 +244,7 @@ class ProjectAnalyses:
 
         data_type: str
             Neural activity data type that you want to align. (e.g.
-            'S' or 'C').
+            'S' or 'C' or 'patterns').
         """
         sessions = self.data[mouse]
         trimmed_map = self.get_cellreg_mappings(
@@ -1580,14 +1580,12 @@ class ProjectAnalyses:
                     )
 
                     behavior_data = self.data[mouse][session_type].behavior.data
-                    ax.axvline(
-                        behavior_data["lin_ports"][behavior_data["rewarded_ports"]],
-                        color="g",
-                    )
+                    port_locations = np.asarray(behavior_data["lin_ports"])[behavior_data["rewarded_ports"]]
+                    [ax.axvline(port, color="g") for port in port_locations]
 
-                    if session_type == "Reversal":
-                        behavior_data = self.data[mouse]["Goals4"].behavior.data
-                        # NEED TO FINISH PLOTTING REWARD SITES
+                    # if session_type == "Reversal":
+                    #     behavior_data = self.data[mouse]["Goals4"].behavior.data
+                    #     # NEED TO FINISH PLOTTING REWARD SITES
 
         return registered_ensembles
 
@@ -2043,7 +2041,94 @@ class ProjectAnalyses:
 
         return ensemble_fields
 
+    def ensemble_membership_changes(self, mouse, session_types):
+        # Register the ensembles and for both sessions, find members of each ensemble.
+        registered_ensembles = self.match_ensembles(mouse, session_types)
+
+        # Find the highest contributing neurons for each from both
+        # sessions. This gives you a few neuron indices for each ensemble
+        # and each session, referenced to the "matched_patterns" matrix,
+        # which is after pruning away non-registered neurons. These
+        # are NOT the neuron indices referenced to single sessions.
+        members_ = {
+            session_type: find_members(registered_ensembles['matched_patterns'][session_number])[1]
+            for session_number, session_type in enumerate(session_types)
+        }
+
+        # We also want the neuron indices referenced to single sessions
+        # for convenience on a number of functions. Get the registration
+        # mappings so that we can use the "pruned" indices to retrieve
+        # the within-session indices.
+        trimmed_map = np.asarray(self.get_cellreg_mappings(mouse, session_types)[0])
+
+        # Same as members_, but referenced within a session (without
+        # pruning non-registered neurons.
+        members = {
+            session_type: [trimmed_map[ensemble_members, i]
+                           for ensemble_members in members_[session_type]]
+            for i, session_type in enumerate(session_types)
+        }
+
+        # Find neurons that were consistent across both sessions, meaning
+        # they were members in both. Referenced to pruned patterns.
+        consistent_members_ = [np.intersect1d(a,b)
+                              for a, b in zip(members_[session_types[0]],
+                                              members_[session_types[1]])]
+
+        # Same as above but referenced to single sessions.
+        consistent_members = {
+            session_type: [trimmed_map[consistent_members_this_ensemble, i]
+                           for consistent_members_this_ensemble in consistent_members_]
+            for i, session_type in enumerate(session_types)
+        }
+
+        dropouts_ = []
+        newcomers_ = []
+        for members_s1, members_s2 in zip(
+            members_[session_types[0]],
+            members_[session_types[1]]
+        ):
+            members_s1 = np.asarray(members_s1)
+            members_s2 = np.asarray(members_s2)
+            dropouts_.append(
+                members_s1[~np.isin(members_s1, members_s2)]
+            )
+            newcomers_.append(
+                members_s2[~np.isin(members_s2, members_s1)]
+            )
+
+        dropouts = {
+            session_type: [trimmed_map[dropouts_this_session, i]
+                           for dropouts_this_session in dropouts_]
+            for i, session_type in enumerate(session_types)
+        }
+
+        newcomers = {
+            session_type: [trimmed_map[newcomers_this_session, i]
+                           for newcomers_this_session in newcomers_]
+            for i, session_type in enumerate(session_types)
+        }
+
+        return members, consistent_members, dropouts, newcomers
+
     def plot_average_ensemble_member_field(self, mouse, session_type, ensemble_number, S_type='S'):
+        """
+        Finds the aggregate or average firing field of an ensemble member's field.
+
+        :parameters
+        ---
+        mouse: str
+            Mouse name.
+
+        session_type: str
+            Session name (e.g. 'Goals4').
+
+        ensemble_number: int
+            Specify an ensemble index.
+
+        S_type: str
+            'S' or 'S_binary'.
+        """
         ensembles = self.data[mouse][session_type].assemblies
         spatial_data = self.data[mouse][session_type].spatial
         imaging_data = self.data[mouse][session_type].imaging[S_type]
