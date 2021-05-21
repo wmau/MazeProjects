@@ -1,11 +1,10 @@
 from CircleTrack.BehaviorFunctions import BehaviorSession
 import matplotlib.pyplot as plt
 import numpy as np
-from CaImaging.util import sync_data, nan_array
+from CaImaging.util import sync_data, nan_array, ScrollPlot
 from CaImaging.Miniscope import get_transient_timestamps
 from util import Session_Metadata
 from CircleTrack.BehaviorFunctions import linearize_trajectory
-from CaImaging.util import ScrollPlot
 from CircleTrack.plotting import plot_spiral, plot_raster, spiral_plot
 from CaImaging.PlaceFields import PlaceFields
 from CaImaging.Behavior import spatial_bin
@@ -19,7 +18,7 @@ from CaImaging.Assemblies import (
     membership_sort,
     plot_assemblies,
 )
-from CircleTrack.utils import sync, get_equivalent_local_path
+from CircleTrack.utils import sync, get_equivalent_local_path, find_reward_spatial_bins
 from CircleTrack.Assemblies import (
     write_assembly_triggered_movie,
     plot_assembly,
@@ -215,7 +214,7 @@ class CalciumSession:
 
         return corrected_C, corrected_S
 
-    def plot_spiral_spikes(self, first_neuron=0):
+    def spiralplot_spikes(self, neurons=None):
         """
         Plot where on the maze a neuron spikes, starting with
         first_neuron. Scroll through the rest.
@@ -229,19 +228,22 @@ class CalciumSession:
             a spike.
         """
         # Get spiking activity and time vector.
-        spikes = self.imaging["S_binary"]
+        if neurons is None:
+            neurons = range(self.imaging['S_binary'])
+        spikes = np.vstack([spikes_i for spikes_i in self.imaging["S_binary"][neurons]])
         t = np.asarray(self.behavior.data["df"]["frame"])
 
         # Linearize position.
         lin_position = np.asarray(linearize_trajectory(self.behavior.data["df"])[0])
 
         # Do the show_plot.
-        cell_number_labels = [f"Cell #{n}" for n, _ in enumerate(spikes)]
+        cell_number_labels = [f"Cell #{n}" for n in neurons]
         self.spiral_spatial_plot = ScrollPlot(
             plot_spiral,
-            current_position=first_neuron,
             t=t,
             lin_position=lin_position,
+            lin_ports=self.behavior.data['lin_ports'],
+            rewarded=self.behavior.data['rewarded_ports'],
             markers=spikes,
             marker_legend="Spikes",
             subplot_kw={"projection": "polar"},
@@ -258,12 +260,19 @@ class CalciumSession:
 
         tuning_curves = self.spatial.data["placefields_normalized"][neurons]
 
+        behavior_data = self.behavior.data
+
+        reward_bins = find_reward_spatial_bins(behavior_data['df']['lin_position'],
+                                               np.asarray(behavior_data['lin_ports'])[behavior_data['rewarded_ports']],
+                                               spatial_bin_size_radians=self.spatial.meta['bin_size'])[0]
+
         cell_number_labels = [f"Cell #{n}" for n in neurons]
         self.raster_plot = ScrollPlot(
             plot_raster,
             nrows=2,
             rasters=rasters,
             tuning_curves=tuning_curves,
+            rewards=reward_bins,
             binary=binary,
             titles=cell_number_labels,
             figsize=(3, 6.5),
@@ -271,16 +280,18 @@ class CalciumSession:
 
         return self.raster_plot
 
-    def spiral_scrollplot_assemblies(self, threshold=2):
+    def spiral_scrollplot_assemblies(self, threshold=2, order=None):
         assemblies = self.assemblies
         behavior_df = self.behavior.data["df"]
 
-        z_activation = zscore(assemblies["activations"], axis=1)
+        z_activation = zscore(assemblies["activations"], axis=1)[order]
         above_threshold = z_activation > threshold
 
-        titles = [
-            f"Assembly #{n}" for n in range(assemblies["significance"].nassemblies)
-        ]
+        if order is None:
+            order = range(assemblies["significance"].nassemblies)
+
+        titles = [f"Assembly #{n}" for n in order]
+
         ScrollPlot(
             plot_spiral,
             t=behavior_df["t"],

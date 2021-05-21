@@ -197,7 +197,7 @@ class ProjectAnalyses:
                     ax.set_ylabel(ylabel)
 
             patches = [
-                mpatches.Patch(color=c, label=label)
+                mpatches.Patch(facecolor=c, label=label, edgecolor='k')
                 for c, label in zip(["w", "r"], ["Young", "Aged"])
             ]
             fig.legend(handles=patches, loc="lower right")
@@ -1318,7 +1318,7 @@ class ProjectAnalyses:
                 ax.set_ylabel("d' (per mouse)")
 
         patches = [
-            mpatches.Patch(color=c, label=label)
+            mpatches.Patch(facecolor=c, label=label, edgecolor='k')
             for c, label in zip(["w", "r"], ["Young", "Aged"])
         ]
         fig.legend(handles=patches, loc="lower right")
@@ -1792,9 +1792,10 @@ class ProjectAnalyses:
         for i, s1 in enumerate(self.meta["session_types"]):
             for j, s2 in enumerate(self.meta["session_types"]):
                 if i != j:
-                    best_similarities_this_pair = self.match_ensembles(mouse, (s1, s2))[
+                    registered_ensembles = self.match_ensembles(mouse, (s1, s2))
+                    best_similarities_this_pair = registered_ensembles[
                         "best_similarities"
-                    ]
+                    ][~registered_ensembles['poor_matches']]
                     best_similarities[i, j] = best_similarities_this_pair
                     best_similarities_median[i, j] = np.nanmedian(
                         best_similarities_this_pair
@@ -1996,7 +1997,6 @@ class ProjectAnalyses:
 
         return d
 
-
     def snakeplot_ensembles(
         self,
         mouse,
@@ -2042,6 +2042,82 @@ class ProjectAnalyses:
                 ax.axvline(port, c="g")
 
         return ensemble_fields
+
+    def plot_average_ensemble_member_field(self, mouse, session_type, ensemble_number, S_type='S'):
+        ensembles = self.data[mouse][session_type].assemblies
+        spatial_data = self.data[mouse][session_type].spatial
+        imaging_data = self.data[mouse][session_type].imaging[S_type]
+        behavior_data = self.data[mouse][session_type].behavior.data
+
+        ports = find_reward_spatial_bins(spatial_data.data['x'],
+                                         np.asarray(behavior_data['lin_ports'])[behavior_data['rewarded_ports']],
+                                         spatial_bin_size_radians=spatial_data.meta['bin_size'])[0]
+        members = find_members(ensembles['patterns'][ensemble_number])[1]
+        fields = np.vstack([
+            spatial_bin(
+                spatial_data.data['x'],
+                spatial_data.data['y'],
+                bin_size_cm=spatial_data.meta['bin_size'],
+                weights=neuron,
+                one_dim=True,
+                bins=spatial_data.data['occupancy_bins']
+            )[0]
+            for neuron in imaging_data
+        ])
+
+        fig, ax = plt.subplots()
+        normalized_field = np.mean(
+            fields[members], axis=0
+        ) / np.mean(fields, axis=0)
+        ax.plot(normalized_field)
+        [ax.axvline(x=port, color='r') for port in ports]
+
+    def get_spatial_ensembles(self, mouse, session_type, pval_threshold=0.05):
+        is_spatial = self.data[mouse][session_type].assemblies['fields'].data['spatial_info_pvals'] < pval_threshold
+
+        return is_spatial
+
+    def find_proportion_spatial_ensembles(self, pval_threshold=0.05):
+        p = dict()
+        for session in self.meta['session_types']:
+            p[session] = dict()
+
+            for age in ages:
+                p[session][age] = []
+
+                for mouse in self.meta['grouped_mice'][age]:
+                    is_spatial = self.get_spatial_ensembles(mouse, session, pval_threshold)
+
+                    p[session][age].append(sum(is_spatial) / len(is_spatial))
+
+        fig, axs = plt.subplots(1, len(self.meta['session_types']))
+        fig.subplots_adjust(wspace=0)
+
+        for i, (ax, session) in enumerate(zip(axs, self.meta['session_types'])):
+            box = ax.boxplot(
+                [p[session][age] for age in ages],
+                labels=ages,
+                patch_artist=True,
+                widths=0.75
+            )
+            for patch, med, color in zip(box["boxes"], box["medians"], ["w", "r"]):
+                patch.set_facecolor(color)
+                med.set(color="k")
+            ax.set_xticks([])
+            ax.set_title(session)
+
+            if i > 0:
+                ax.set_yticks([])
+            else:
+                ax.set_ylabel('Proportion of ensembles with spatial selectivity')
+
+        patches = [
+            mpatches.Patch(facecolor=c, label=label, edgecolor='k')
+            for c, label in zip(["w", "r"], ["Young", "Aged"])
+        ]
+        fig.legend(handles=patches, loc="lower right")
+
+        return p
 
     def map_ensemble_fields(
         self,

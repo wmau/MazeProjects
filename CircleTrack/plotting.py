@@ -61,7 +61,7 @@ def plot_spiral(ScrollObj):
 
 
 def plot_raster(ScrollObj):
-    attrs = ["rasters", "tuning_curves", "binary"]
+    attrs = ["rasters", "tuning_curves", "binary", "rewards"]
     check_attrs(ScrollObj, attrs)
 
     axs = ScrollObj.ax
@@ -74,6 +74,10 @@ def plot_raster(ScrollObj):
     axs[0].set_title(ScrollObj.titles[ScrollObj.current_position])
     axs[0].imshow(rasters[ScrollObj.current_position], cmap=cmap)
     axs[1].plot(tuning_curve[ScrollObj.current_position])
+
+    for ax in axs:
+        for reward in ScrollObj.rewards:
+            ax.axvline(x=reward, color='r')
 
     ScrollObj.last_position = len(ScrollObj.rasters)
 
