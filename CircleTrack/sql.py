@@ -7,7 +7,6 @@ import regex
 import numpy as np
 import pandas as pd
 
-project_directory = r"D:\Projects\CircleTrack"
 mouse_csv = r"Z:\Will\mouse_info.csv"
 
 class Database:

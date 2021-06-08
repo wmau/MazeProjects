@@ -779,6 +779,8 @@ class Preprocess:
                 (self.behavior_df["distance"] > velocity_threshold))[
                 0]
 
+            self.save()
+
     def get_timestamps(self):
         if not self.v4:
             timestamps = pd.read_csv(self.paths["timestamps"], sep="\t")
