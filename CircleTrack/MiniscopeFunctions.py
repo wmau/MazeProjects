@@ -284,14 +284,14 @@ class CalciumSession:
         assemblies = self.assemblies
         behavior_df = self.behavior.data["df"]
 
-        z_activation = zscore(assemblies["activations"], axis=1)[order]
-        above_threshold = z_activation > threshold
-
         if order is None:
             order = range(assemblies["significance"].nassemblies)
 
-        titles = [f"Assembly #{n}" for n in order]
+        z_activation = zscore(assemblies["activations"], axis=1)
+        above_threshold = z_activation > threshold
+        above_threshold = above_threshold[order]
 
+        titles = [f"Assembly #{n}" for n in order]
         ScrollPlot(
             plot_spiral,
             t=behavior_df["t"],
