@@ -72,18 +72,20 @@ def plot_assembly(
 
 
 def write_assembly_triggered_movie(
-    activation, frame_numbers, behavior_movie, fpath=None, threshold=2.58
+    activation, frame_numbers, behavior_movie, fpath=None, threshold=2.58,
+        trials=None,
 ):
     z_activation = zscore(activation)
-    above_threshold_frames = frame_numbers[z_activation > threshold]
+    inds = np.where(z_activation > threshold)[0]
+    above_threshold_frames = frame_numbers[inds]
 
     grouped_frames = util.cluster(above_threshold_frames, 30)
+    grouped_inds = util.cluster(inds, 30)
 
-    compressionCodec = "FFV1"
+    compressionCodec = "XVID"
     codec = cv2.VideoWriter_fourcc(*compressionCodec)
     cap = cv2.VideoCapture(behavior_movie)
     ret, frame = cap.read()
-    blank_frame = np.zeros_like(frame)
     rows, cols = int(cap.get(4)), int(cap.get(3))
 
     if fpath is None:
@@ -92,11 +94,23 @@ def write_assembly_triggered_movie(
 
     writeFile = cv2.VideoWriter(fpath, codec, 15, (cols, rows), isColor=True)
     print(f"Writing {fpath}")
-    for group in grouped_frames:
-        for frame_number in group:
+    for i, (chunked_frames, chunked_inds) in \
+            enumerate(zip(grouped_frames, grouped_inds)):
+        for frame_number in chunked_frames:
             cap.set(1, frame_number)
             ret, frame = cap.read()
             writeFile.write(frame)
+
+        blank_frame = np.zeros_like(frame)
+        text = f'Activation #{i}'
+
+        cv2.putText(blank_frame, text, (50, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+        if trials is not None:
+            trial_text = f'Lap # {trials[chunked_inds[0]]}'
+            cv2.putText(blank_frame, trial_text, (50, 100),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
         for i in range(15):
             writeFile.write(blank_frame)

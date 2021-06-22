@@ -39,6 +39,7 @@ def make_tracking_video(
     output_fname="Tracking.avi",
     start=0,
     stop=None,
+    frames=None,
     fps=15,
 ):
     """
@@ -80,6 +81,9 @@ def make_tracking_video(
     if stop is None:
         stop = int(vid.get(7))  # 7 is the index for total frames.
 
+    if frames is None:
+        frames = np.arange(start, stop)
+
     # Save data to the same folder.
     folder = os.path.split(vid_path)[0]
     output_path = os.path.join(folder, output_fname)
@@ -111,7 +115,7 @@ def make_tracking_video(
     fig, ax = plt.subplots()
     writer = FFMpegWriter(fps=fps)
     with writer.saving(fig, output_path, 100):
-        for frame_number in np.arange(start, stop):
+        for frame_number in frames:
             # Plot frame.
             vid.set(1, frame_number)
             ret, frame = vid.read()
@@ -1149,7 +1153,7 @@ class BehaviorSession:
                 for im in ax.get_images():
                     im.set_clim(min_speed, max_speed)
 
-    def get_licks(self, plot=True):
+    def get_licks(self, plot=True, binarize=False):
         """
         Plots the number of licks on each port per trial.
 
@@ -1168,6 +1172,9 @@ class BehaviorSession:
 
             all_licks.append(licks_per_port)
 
+        all_licks = np.asarray(all_licks)
+        if binarize:
+            all_licks = all_licks > 0
         if plot:
             fig, ax = plt.subplots(figsize=(4.35, 5))
             ax.imshow(all_licks)
@@ -1179,8 +1186,6 @@ class BehaviorSession:
             fig.tight_layout()
         else:
             ax = None
-
-        all_licks = np.asarray(all_licks)
 
         return all_licks, ax
 
@@ -1201,13 +1206,15 @@ class BehaviorSession:
         ax.set_ylabel("Licks")
 
     def sdt_trials(self, n_trial_blocks=None, rolling_window=5,
-                   trial_interval=2, plot=True):
+                   trial_interval=2, plot=True, trial_limit=None):
         # Split the session into N blocks.
         if n_trial_blocks is not None:
             licks = np.array_split(self.data["all_licks"], n_trial_blocks)
         elif rolling_window is not None:
             licks = self.rolling_window_licks(window_size=rolling_window,
                                               trial_interval=trial_interval)
+        elif trial_limit is not None:
+            licks = [self.data["all_licks"][:trial_limit]]
         else:
             licks = [self.data["all_licks"]]
 
