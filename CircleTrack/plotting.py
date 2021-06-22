@@ -74,6 +74,9 @@ def plot_raster(ScrollObj):
     axs[0].set_title(ScrollObj.titles[ScrollObj.current_position])
     axs[0].imshow(rasters[ScrollObj.current_position], cmap=cmap)
     axs[1].plot(tuning_curve[ScrollObj.current_position])
+    axs[0].set_ylabel('Laps')
+    axs[1].set_xlabel('Linearized position')
+    axs[1].set_ylabel('Average transient rate')
 
     for ax in axs:
         for reward in ScrollObj.rewards:
