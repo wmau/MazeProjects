@@ -1,10 +1,11 @@
 from CircleTrack.BehaviorFunctions import BehaviorSession
 import matplotlib.pyplot as plt
 import numpy as np
-from CaImaging.util import sync_data, nan_array, ScrollPlot
+from CaImaging.util import sync_data, nan_array, ScrollPlot, \
+    sync_cameras_v4, concat_avis
 from CaImaging.Miniscope import get_transient_timestamps
-from util import Session_Metadata
-from CircleTrack.BehaviorFunctions import linearize_trajectory
+from util import Session_Metadata, find_timestamp_file
+from CircleTrack.BehaviorFunctions import linearize_trajectory, make_tracking_video
 from CircleTrack.plotting import plot_spiral, plot_raster, spiral_plot
 from CaImaging.PlaceFields import PlaceFields
 from CaImaging.Behavior import spatial_bin
@@ -275,7 +276,7 @@ class CalciumSession:
             rewards=reward_bins,
             binary=binary,
             titles=cell_number_labels,
-            figsize=(3, 6.5),
+            figsize=(5, 8),
         )
 
         return self.raster_plot
@@ -451,6 +452,7 @@ class CalciumSession:
         assembly_activations = self.assemblies["activations"][assembly_number]
         behavior_frame_numbers = self.behavior.data["df"]["frame"].to_numpy()
         movie_fname = self.meta["paths"]["BehaviorVideo"]
+        trials = self.behavior.data["df"]["trials"].to_numpy()
 
         fpath = os.path.join(self.meta["folder"], f"Assembly #{assembly_number}.avi")
         write_assembly_triggered_movie(
@@ -459,6 +461,7 @@ class CalciumSession:
             movie_fname,
             fpath=fpath,
             threshold=threshold,
+            trials=trials,
         )
 
     def plot_assembly(self, assembly_number, neurons=None, get_members=True, filter_method='sd', thresh=2):
@@ -533,7 +536,8 @@ class CalciumSession:
             plt.setp(markerlines, 'markersize', 1)
         else:
             markerlines, stemlines = pattern_ax.stem(
-                pattern,
+                range(len(pattern)),
+                np.sort(np.abs(pattern))[::-1],
                 "b",
                 orientation="horizontal",
                 basefmt=" ",
@@ -555,6 +559,31 @@ class CalciumSession:
             self.assemblies["activations"], sorted_spiking, colors=sorted_colors
         )
 
+    def sync_behavior_movie(self, miniscope_vids=(40, 43)):
+        """
+        Concatenates frames in the behavior video to be synchronous with
+        the specified miniscope videos.
+
+        :parameter
+        ---
+        miniscope_vids: (2,) tuple
+            The miniscope video numbers that the behavior movie will be
+            synchronized with. Doesn't include the second value.
+
+        """
+        timestamp_fpath = self.meta['paths']['timestamps']
+        miniscope_file = find_timestamp_file(timestamp_fpath, "Miniscope")
+        behavior_file = find_timestamp_file(timestamp_fpath, "BehavCam")
+        sync_map, DAQ_data = sync_cameras_v4(miniscope_file, behavior_file)
+
+        frame_window = [vid * 1000 for vid in miniscope_vids]
+        frames = np.asarray(sync_map['fmCam1'][np.arange(frame_window[0],
+                                                         frame_window[1])])
+
+        make_tracking_video(self.meta['folder'],
+                            output_fname=f'{miniscope_vids[0]}_{miniscope_vids[1]}.avi',
+                            frames=frames,
+                            fps=60)
 
 def nan_corrupted_frames(miniscope_folder, C, S, frames):
     bad_frames_folder = os.path.join(miniscope_folder, "bad_frames")
@@ -574,12 +603,13 @@ def nan_corrupted_frames(miniscope_folder, C, S, frames):
     return C, S
 
 
-if __name__ == "__main__":
-    folder = (r"Z:\Will\RemoteReversal\Data\Fornax\2021_02_25_Reversal\10_04_05",)
 
+if __name__ == "__main__":
+    folder = r"Z:\Will\RemoteReversal\Data\Fornax\2021_02_24_Goals4\09_06_18"
     S = CalciumSession(folder)
-    pvals = S.spatial["placefield_class"].data["spatial_info_pvals"]
-    S.scrollplot_rasters(neurons=np.where(np.asarray(pvals) < 0.01)[0], binary=True)
+    #pvals = S.spatial["placefield_class"].data["spatial_info_pvals"]
+    #S.scrollplot_rasters(neurons=np.where(np.asarray(pvals) < 0.01)[0], binary=True)
     # S.spatial_activity_by_trial(0.1)
     # S.correlate_spatial_PVs_by_trial()
+    S.plot_all_assemblies()
     pass
