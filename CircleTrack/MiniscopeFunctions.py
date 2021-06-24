@@ -26,7 +26,6 @@ from CircleTrack.Assemblies import (
     find_members,
 )
 
-
 hv.extension("bokeh")
 from bokeh.plotting import show
 from itertools import product
@@ -41,9 +40,11 @@ class CalciumSession:
         spatial_bin_size_radians=0.05,
         S_std_thresh=1,
         velocity_threshold=7,
+        place_cell_alpha=0.001,
+        place_cell_transient_threshold=40,
         overwrite_synced_data=False,
         overwrite_placefields=False,
-        overwrite_placefield_trials=False,
+        overwrite_placefield_trials=True,
         overwrite_assemblies=False,
         local=True,
     ):
@@ -195,6 +196,11 @@ class CalciumSession:
 
             with open(fpath, "wb") as file:
                 pkl.dump(self.assemblies, file)
+
+        self.spatial.data['place_cells'] = self.get_place_cells(alpha=place_cell_alpha,
+                                                                transient_threshold=place_cell_transient_threshold)
+        self.spatial.meta['place_cell_pval'] = place_cell_alpha
+        self.spatial.meta['place_cell_transient_threshold'] = place_cell_transient_threshold
 
     def get_pkl_path(self, fname):
         if self.meta["local"]:
@@ -367,7 +373,8 @@ class CalciumSession:
 
             # Get occupancy this trial.
             occupancy = spatial_bin(
-                positions_this_trial, filler, bins=bin_edges, one_dim=True
+                positions_this_trial, filler, bins=bin_edges, one_dim=True,
+                weights=running_this_trial.astype(int)
             )[0]
 
             # Weight position by activity of each neuron.
@@ -385,6 +392,68 @@ class CalciumSession:
         occ_map_by_trial = np.vstack(occ_map_by_trial)
 
         return fields, occ_map_by_trial
+
+    def get_place_cells(self, alpha=0.001, transient_threshold=40):
+        n_transients = np.sum(np.sum(self.spatial.data['rasters'], axis=1), axis=1)
+        place_cells = np.where(np.logical_and(self.spatial.data['spatial_info_pvals'] < alpha,
+                               n_transients> transient_threshold))[0]
+
+        return place_cells
+
+    def placefield_reliability(self, neuron, field_threshold=0.15, even_split=True, split=4,
+                               show_plot=True):
+        """
+        Compute the trial-by-trial in-field consistency of a neuron (whether it fired in field).
+
+        :parameters
+        ---
+        neuron: int
+            Neuron number.
+
+        field_threshold: float
+            Percentage of field peak to be considered part of the field.
+
+        even_split: bool
+            Flag to split trials evenly into n parts (defined by the argument split). If False,
+            instead split is the number of trials in each split.
+
+        split: int
+            If even_split, the number of parts to divide the trial into.
+            If not even_split, the number of trials in each split.
+
+        """
+        raster = self.spatial.data['rasters'][neuron]
+        placefield = self.spatial.data['placefields_normalized'][neuron]
+
+        field_bins = np.where(placefield > max(placefield) * field_threshold)[0]
+        fired_in_field = np.any(raster[:, field_bins], axis=1)
+
+        if not even_split:
+            split = np.arange(split, len(fired_in_field), split)
+
+        split_fired_in_field = np.array_split(fired_in_field, split)
+
+        # Handles cases where you don't actually want to split the reliability across trials.
+        if split == 1 and even_split:
+            reliability = np.sum(split_fired_in_field[0])/len(split_fired_in_field[0])
+        else:
+            reliability = [np.sum(fired_in_field) / len(fired_in_field) for fired_in_field in split_fired_in_field]
+
+        if show_plot and even_split:
+            fig, axs = plt.subplots(1,2)
+            axs[0].imshow(raster > 0, aspect='auto')
+            axs[0].set_xlabel('Position')
+            axs[0].set_ylabel('Trials')
+
+            axs[1].plot(reliability, range(len(reliability)))
+            axs[1].set_xlim([0, 1])
+            axs[1].invert_yaxis()
+            axs[1].set_ylabel(f'Trial block #, {len(split_fired_in_field[0])} trials per block')
+            axs[1].set_xlabel('Proportion of trials with '
+                              '\n in-field calcium transient')
+            fig.tight_layout()
+
+        return reliability
 
     def viz_spatial_trial_activity(self, neurons=range(10), preserve_neuron_idx=True):
         """

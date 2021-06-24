@@ -1775,7 +1775,7 @@ class ProjectAnalyses:
                 ]
 
                 # Make a figure with 2 subplots, one for each session.
-                fig, axs = plt.subplots(2, 1, subplot_kw=dict(polar=True))
+                fig, axs = plt.subplots(2, 1, subplot_kw=dict(polar=True), figsize=(6.4, 10))
                 for ax, activation, t_, lin_pos, assembly_number, session_type in zip(
                     axs,
                     activations,
