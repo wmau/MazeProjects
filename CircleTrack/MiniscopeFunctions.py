@@ -41,7 +41,7 @@ class CalciumSession:
         S_std_thresh=1,
         velocity_threshold=7,
         place_cell_alpha=0.001,
-        place_cell_transient_threshold=40,
+        place_cell_transient_threshold='n_trials',
         overwrite_synced_data=False,
         overwrite_placefields=False,
         overwrite_placefield_trials=True,
@@ -197,6 +197,8 @@ class CalciumSession:
             with open(fpath, "wb") as file:
                 pkl.dump(self.assemblies, file)
 
+        if place_cell_transient_threshold == 'n_trials':
+            place_cell_transient_threshold = self.behavior.data['ntrials']
         self.spatial.data['place_cells'] = self.get_place_cells(alpha=place_cell_alpha,
                                                                 transient_threshold=place_cell_transient_threshold)
         self.spatial.meta['place_cell_pval'] = place_cell_alpha
@@ -439,7 +441,7 @@ class CalciumSession:
         else:
             reliability = [np.sum(fired_in_field) / len(fired_in_field) for fired_in_field in split_fired_in_field]
 
-        if show_plot and even_split:
+        if show_plot and split != 1:
             fig, axs = plt.subplots(1,2)
             axs[0].imshow(raster > 0, aspect='auto')
             axs[0].set_xlabel('Position')
