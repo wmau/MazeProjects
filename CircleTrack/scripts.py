@@ -652,8 +652,8 @@ class ProjectAnalyses:
         for age in ["young", "aged"]:
             r_values[age] = []
             for mouse in self.meta["grouped_mice"][age]:
-                if not place_cells:
-                    neurons = np.where(self.data[mouse][session_types[0]].spatial.data['spatial_info_pvals'] < 0.01)[0]
+                if place_cells:
+                    neurons = self.data[mouse][session_types[0]].spatial.data['place_cells']
                 else:
                     neurons = None
 
@@ -856,6 +856,121 @@ class ProjectAnalyses:
                 ax.set_ylabel(ylabel)
 
         return median_spatial_infos
+
+    def plot_reliabilities(self, session_type, field_threshold=0.15, show_plot=True):
+        reliabilities = {}
+        for age in ages:
+            reliabilities[age] = []
+            for mouse in self.meta['grouped_mice'][age]:
+                session = self.data[mouse][session_type]
+                place_cells = session.spatial.data['place_cells']
+                reliabilities_ = [session.placefield_reliability(neuron,
+                                                                 field_threshold=field_threshold,
+                                                                 even_split=True, split=1, show_plot=False)
+                                  for neuron in place_cells]
+                reliabilities[age].append(reliabilities_)
+
+        if show_plot:
+            fig, axs = plt.subplots(1,2)
+            fig.subplots_adjust(wspace=0)
+
+            for age, color, ax in zip(ages, age_colors, axs):
+                mice = self.meta['grouped_mice'][age]
+                boxes = ax.boxplot(reliabilities[age], patch_artist=True)
+                for patch, med in zip(boxes["boxes"], boxes["medians"]):
+                    patch.set_facecolor(color)
+                    med.set(color="k")
+
+                if age == "aged":
+                    ax.set_yticks([])
+                else:
+                    ax.set_ylabel("Place cell reliability")
+                ax.set_xticklabels(mice, rotation=45)
+
+        return reliabilities
+
+    def plot_reliabilities_comparisons(self, session_types=('Goals4', 'Reversal'), field_threshold=0.15,
+                                       show_plot=True):
+        reliabilities = {}
+        mean_reliabilities = {session_type: dict() for session_type in session_types}
+        for session_type in session_types:
+            reliabilities[session_type] = self.plot_reliabilities(session_type, field_threshold=field_threshold,
+                                                                  show_plot=False)
+            for age in ages:
+                mean_reliabilities[session_type][age] = [np.mean(r) for r in reliabilities[session_type][age]]
+
+        if show_plot:
+            fig, axs = plt.subplots(1,2)
+            fig.subplots_adjust(wspace=0)
+
+            for age, ax, color in zip(ages, axs, age_colors):
+                mice = self.meta['grouped_mice'][age]
+                positions = [
+                    np.arange(start, start + 3 * len(mice), 3) for start in [-0.5, 0.5]
+                ]
+                label_positions = np.arange(0, 3 * len(mice), 3)
+
+                for session_type, position in zip(
+                        session_types, positions
+                ):
+                    boxes = ax.boxplot(
+                        reliabilities[session_type][age],
+                        positions=position,
+                        patch_artist=True,
+                    )
+                    for patch, med in zip(boxes["boxes"], boxes["medians"]):
+                        patch.set_facecolor(color)
+                        med.set(color="k")
+
+                if age == "aged":
+                    ax.set_yticks([])
+                else:
+                    ax.set_ylabel("Place cell reliabilities")
+                ax.set_xticks(label_positions)
+                ax.set_xticklabels(mice, rotation=45)
+
+            fig, axs = plt.subplots(1,2, sharey=True)
+            fig.subplots_adjust(wspace=0)
+
+            for age, ax, color in zip(ages, axs, age_colors):
+                boxes = ax.boxplot([
+                    mean_reliabilities[session_type][age]
+                    for session_type in session_types],
+                                   patch_artist=True)
+
+                for patch, med in zip(boxes['boxes'], boxes['medians']):
+                    patch.set_facecolor(color)
+                    med.set(color='k')
+                ax.set_xticklabels(session_types, rotation=45)
+
+                if age == 'young':
+                    ax.set_ylabel('Mean place field reliability')
+
+        return reliabilities, mean_reliabilities
+
+    def correlate_field_reliability_to_performance(self, performance_metric='CRs',
+                                                   session_types=('Goals4', 'Reversal'), field_threshold=0.15):
+        reliabilities, mean_reliabilities = self.plot_reliabilities_comparisons(session_types=session_types,
+                                                                                field_threshold=field_threshold,
+                                                                                show_plot=False)
+
+        performance = self.plot_best_performance('Reversal', window=None, performance_metric=performance_metric,
+                                                 show_plot=False)
+        fig, ax = plt.subplots()
+        for age, color in zip(ages, age_colors):
+            ax.scatter(mean_reliabilities['Reversal'][age],
+                       performance[age], color=color)
+
+        ylabel = {'CRs': 'Correct rejection rate',
+                  'hits': 'Hit rate',
+                  'd_prime': "d'"}
+        ax.set_ylabel(ylabel[performance_metric])
+        ax.set_xlabel('Place field reliability')
+
+        pvalue = spearmanr(np.hstack([mean_reliabilities['Reversal'][age] for age in ages]),
+                           np.hstack([performance[age] for age in ages])).pvalue
+
+        return pvalue
 
     ############################ DECODER FUNCTIONS ############################
     def decode_place(
@@ -1834,7 +1949,7 @@ class ProjectAnalyses:
         if show_plot:
             fig, axs = plt.subplots(1, 2, figsize=(7, 6))
             fig.subplots_adjust(wspace=0)
-            for age, color, ax in zip(["young", "aged"], age_colors, axs):
+            for age, color, ax in zip(ages, age_colors, axs):
                 mice = self.meta["grouped_mice"][age]
                 boxes = ax.boxplot(similarities[age], patch_artist=True)
                 for patch, med in zip(boxes["boxes"], boxes["medians"]):
