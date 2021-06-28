@@ -67,7 +67,7 @@ def make_tracking_video(
         Sampling rate of the behavior camera.
 
     Arduino_path:
-        Full path to the Arduino output txt. If None, doesn't plot licking.
+        Full path to the Arduino output txt. If None, doesn't show_plot licking.
 
     """
     # Get paths.
@@ -311,7 +311,7 @@ def find_water_ports(behavior_df, use_licks=True):
     #                'blue',
     #                'darkviolet',
     #                'gray']
-    # plt.plot(behavior_df.x, behavior_df.y)
+    # plt.show_plot(behavior_df.x, behavior_df.y)
     # plt.scatter(center[0], center[1], c='r')
     # for color, (i, port) in zip(port_colors, ports.iterrows()):
     #     plt.scatter(port['x'], port['y'], c=color)
@@ -542,7 +542,7 @@ def get_trials(behavior_df, counterclockwise=False):
 
     # Debugging purposes.
     # for trial in range(int(max(trials))):
-    #     plt.plot(position[trials == trial])
+    #     plt.show_plot(position[trials == trial])
 
     return trials.astype(int)
 
@@ -554,8 +554,9 @@ def approach_speed(
     dist_thresh=0.03,
     smoothing_factor=4,
     ax=None,
-    plot=True,
+    show_plot=True,
     acceleration=True,
+    label_axes=True,
 ):
     """
     Get the approach speed of the mouse to an arbitrary location on the maze
@@ -575,7 +576,7 @@ def approach_speed(
         Vicinity to location to set window.
 
     smoothing_factor: numeric
-        Amount to smooth velocity or accleration trace.
+        Amount to smooth velocity or acceleration trace.
 
     ax: Axes object
         Axis to plot on.
@@ -654,7 +655,7 @@ def approach_speed(
         )
         approaches[trial] = to_insert
 
-    if plot:
+    if show_plot:
         if ax is None:
             fig, ax = plt.subplots()
 
@@ -669,8 +670,10 @@ def approach_speed(
                 np.round(window[1] / frame_rate, 1),
             ]
         )
-        ax.set_xlabel("Time to reach location (s)")
-        ax.set_ylabel("Trials")
+
+        if label_axes:
+            ax.set_xlabel("Time to reach location (s)")
+            ax.set_ylabel("Trials")
 
     return approaches
 
@@ -1140,9 +1143,12 @@ class BehaviorSession:
                 dist_thresh=dist_thresh,
                 smoothing_factor=smoothing_factor,
                 acceleration=acceleration,
-                plot=plot,
+                show_plot=plot,
                 ax=ax,
+                label_axes=False,
             )
+            fig.supxlabel('Time to reach location [s]')
+            fig.supylabel('Trial #')
             self.approaches.append(approaches)
 
         if plot:

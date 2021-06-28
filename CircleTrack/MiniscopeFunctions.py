@@ -44,7 +44,7 @@ class CalciumSession:
         place_cell_transient_threshold='n_trials',
         overwrite_synced_data=False,
         overwrite_placefields=False,
-        overwrite_placefield_trials=True,
+        overwrite_placefield_trials=False,
         overwrite_assemblies=False,
         local=True,
     ):

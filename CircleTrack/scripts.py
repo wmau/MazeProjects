@@ -6,9 +6,11 @@ from CaImaging.util import (
     make_bins,
     ScrollPlot,
     contiguous_regions,
+    cluster
 )
 from CaImaging.plotting import errorfill, beautify_ax
 from scipy.stats import spearmanr, zscore, circmean, kendalltau
+from scipy.spatial import distance
 from CircleTrack.SessionCollation import MultiAnimal
 from CaImaging.CellReg import rearrange_neurons, trim_map, scrollplot_footprints
 from sklearn.naive_bayes import BernoulliNB
@@ -1391,6 +1393,196 @@ class ProjectAnalyses:
                 plot_assembly(pattern, activation[i], spike_times, ax=ax)
 
         return lapsed_assemblies, spiking
+
+    def port_vicinity_ensemble_activation(self, mouse, session_type, ensemble_number, time_window=(2,2),
+                                          dist_thresh=5):
+        # Abbreviate references.
+        session = self.data[mouse][session_type]
+        df = session.behavior.data['df']
+        licks = df['lick_port']
+        n_trials = max(df['trials'] + 1)
+        trials = np.asarray(df["trials"])
+        distance_to_port = distance.cdist(np.vstack((df['x'], df['y'])).T,
+                                          session.behavior.data['ports'])
+        rewarded = np.where(session.behavior.data['rewarded_ports'])[0]
+        ensemble_activation = session.assemblies['activations'][ensemble_number]
+
+        # If looking at the Reversal session, also
+        if session_type == 'Reversal':
+            previously_rewarded = np.where(self.data[mouse]['Goals4'].behavior.data['rewarded_ports'])[0]
+        else:
+            previously_rewarded = []
+
+        fps = 15
+        t_xaxis = np.arange(-time_window[0], time_window[1] + 1/fps, 1/fps)
+        time_window = np.asarray([t * fps for t in time_window])
+        window_size = sum(abs(time_window))
+        n_frames = len(ensemble_activation)
+
+        fig, axs = plt.subplots(4,2, sharex=True, figsize=(7, 10.5))
+
+        # For each port, collect timestamps before and after licks. If there was no lick,
+        # instead collect timestamps around when the mouse arrived at that port.
+        port_activations = []
+        for port, ax in enumerate(axs.flatten()):
+            lick_activations = []
+            passed_activations = []
+
+            for trial in range(n_trials):
+                # Get timestamps when the mouse licked if at all.
+                on_trial = trials==trial
+                licks_ = np.where(np.logical_and(licks == port, on_trial))[0]
+                did_not_lick = licks_.size==0
+
+                # If the mouse didn't lick, get the first timestamp when the mouse got close
+                # to the port.
+                if did_not_lick:
+                    near_port = np.where(np.logical_and(on_trial,
+                                                        distance_to_port[:, port] < dist_thresh))[0]
+
+                    if len(near_port) > 0:
+                        t0 = near_port[0]
+                    else:
+                        activation = nan_array(window_size)
+                        passed_activations.append(activation)
+                        continue
+
+                else:
+                    t0 = licks_[0]
+
+                pre = t0 - time_window[0]
+                post = t0 + time_window[1]
+                # Handles edge cases where the window extends past the session start
+                # or end. In those cases, pad with nans.
+                front_pad = 0
+                back_pad = 0
+                if pre < 0:
+                    front_pad = 0 - pre
+                    pre = 0
+                if post > n_frames:
+                    back_pad = post - n_frames
+                    post = n_frames
+                window_ind = slice(pre, post)
+                activation = ensemble_activation[window_ind]
+                activation = np.pad(activation, (front_pad, back_pad), mode='constant', constant_values=np.nan)
+
+                if did_not_lick:
+                    passed_activations.append(activation)
+                else:
+                    lick_activations.append(activation)
+
+            port_activation = np.vstack((passed_activations, lick_activations))
+            port_activations.append(port_activation)
+            ax.imshow(port_activation, extent=[t_xaxis[0], t_xaxis[-1],
+                                               len(port_activation)+1, 1],
+                      aspect='auto')
+            ax.axhline(y=len(passed_activations), color='r')
+            ax.axvline(x=0, color='r')
+
+            if port in rewarded:
+                title_color = 'g'
+            elif port in previously_rewarded:
+                title_color = 'orange'
+            else:
+                title_color = 'k'
+            ax.set_title(f'Port #{port}', color=title_color)
+
+        max_activation = np.max([np.nanmax(activation) for activation in port_activations])
+        min_activation = np.min([np.nanmin(activation) for activation in port_activations])
+        for ax in fig.axes:
+            for im in ax.get_images():
+                im.set_clim(min_activation, max_activation)
+        fig.supylabel('Trial #')
+        fig.supxlabel('Time centered on lick/approach to port [s]')
+
+
+    def lick_triggered_ensemble_activation(self, mouse, session_type, ensemble_number, time_window=(2,2),
+                                           plot_type='imshow'):
+        """
+        Get the ensemble activation conditioned on lick. Triggered only by the first lick in a bout of licks.
+
+        :parameters
+        ---
+        mouse: str
+            Mouse name.
+
+        session_type: str
+            Session type.
+
+        ensemble_number: int
+            Index of ensemble that you want to plot.
+
+        time_window: tuple
+            (seconds back, seconds ahead) of lick.
+
+        plot_type: str
+            'imshow' or 'line'
+
+        :return:
+        """
+        # Abbreviate references.
+        session = self.data[mouse][session_type]
+        licks = session.behavior.data['df']['lick_port']
+        rewarded = np.where(session.behavior.data['rewarded_ports'])[0]
+        ensemble_activation = session.assemblies['activations'][ensemble_number]
+
+        # If looking at the Reversal session, also
+        if session_type == 'Reversal':
+            previously_rewarded = np.where(self.data[mouse]['Goals4'].behavior.data['rewarded_ports'])[0]
+        else:
+            previously_rewarded = []
+
+        fps = 15
+        t_xaxis = np.arange(-time_window[0], time_window[1] + 1/fps, 1/fps)
+        time_window = [t * fps for t in time_window]
+        n_frames = len(ensemble_activation)
+
+        fig, axs = plt.subplots(4,2, sharex=True, figsize=(7, 10.5))
+        activations = []
+        for port in range(8):
+            lick_clusters = cluster(np.where(licks == port)[0], maxgap=15*time_window[0])
+            lick_t0 = [lick_t[0] for lick_t in lick_clusters]
+
+            port_activations = []
+            for t0 in lick_t0:
+                window_idx = [t0 - time_window[0], t0 + time_window[1]]
+
+                if window_idx[0] < 0:
+                    activation = np.append(nan_array(abs(window_idx[0])), ensemble_activation[0:window_idx[1]])
+                else:
+                    activation = ensemble_activation[window_idx[0]:window_idx[1]]
+
+                # Handles edge cases where licks occur near the end of the session.
+                if window_idx[1] > n_frames:
+                    activation = np.append(activation, nan_array(window_idx[1] - n_frames))
+                port_activations.append(activation)
+            activations.append(np.vstack(port_activations))
+
+        peak = max([np.max(a) for a in activations])
+        for port, (ax, activation) in enumerate(zip(axs.flatten(), activations)):
+            if plot_type == 'line':
+                ax.plot(t_xaxis, activation)
+            elif plot_type == 'imshow':
+                ax.imshow(activation, aspect='auto', extent=[t_xaxis[0], t_xaxis[-1],
+                                                             len(activation)+1, 1],
+                          vmin=0, vmax=peak)
+            ax.axvline(x=0, color='r')
+
+            if port in rewarded:
+                title_color = 'g'
+            elif port in previously_rewarded:
+                title_color = 'orange'
+            else:
+                title_color = 'k'
+            ax.set_title(f'Port #{port}', color=title_color)
+
+        fig.supxlabel('Time centered on lick [s]')
+
+        if plot_type == 'line':
+            fig.supylabel('Ensemble activation [a.u.]')
+        elif plot_type == 'imshow':
+            fig.supylabel('Lick #')
+        fig.suptitle(f'Ensemble #{ensemble_number}')
 
     def find_assembly_trends(
         self, mouse, session_type, x="time", z_threshold=2.5, x_bin_size=50
