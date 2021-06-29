@@ -1394,7 +1394,7 @@ class ProjectAnalyses:
 
         return lapsed_assemblies, spiking
 
-    def port_vicinity_ensemble_activation(self, mouse, session_type, ensemble_number, time_window=(2,2),
+    def port_vicinity_ensemble_activation(self, mouse, session_type, ensemble_number, time_window=(1,1),
                                           dist_thresh=5):
         # Abbreviate references.
         session = self.data[mouse][session_type]
@@ -1471,12 +1471,16 @@ class ProjectAnalyses:
                 else:
                     lick_activations.append(activation)
 
-            port_activation = np.vstack((passed_activations, lick_activations))
+            # Handles edge cases where the mouse didn't lick at a particular port.
+            if not lick_activations:
+                port_activation = passed_activations
+            else:
+                port_activation = np.vstack((lick_activations, passed_activations))
             port_activations.append(port_activation)
             ax.imshow(port_activation, extent=[t_xaxis[0], t_xaxis[-1],
                                                len(port_activation)+1, 1],
                       aspect='auto')
-            ax.axhline(y=len(passed_activations), color='r')
+            ax.axhline(y=len(lick_activations), color='r')
             ax.axvline(x=0, color='r')
 
             if port in rewarded:
@@ -1487,13 +1491,13 @@ class ProjectAnalyses:
                 title_color = 'k'
             ax.set_title(f'Port #{port}', color=title_color)
 
-        max_activation = np.max([np.nanmax(activation) for activation in port_activations])
-        min_activation = np.min([np.nanmin(activation) for activation in port_activations])
+        max_clim = np.max([np.nanmax(activation) for activation in port_activations])
         for ax in fig.axes:
             for im in ax.get_images():
-                im.set_clim(min_activation, max_activation)
+                im.set_clim(0, max_clim)
         fig.supylabel('Trial #')
         fig.supxlabel('Time centered on lick/approach to port [s]')
+        fig.suptitle(f'Ensemble #{ensemble_number}')
 
 
     def lick_triggered_ensemble_activation(self, mouse, session_type, ensemble_number, time_window=(2,2),
@@ -2053,7 +2057,7 @@ class ProjectAnalyses:
             )
 
     def spiralplot_matched_ensembles(
-        self, mouse, session_types: tuple, thresh=2.58, subset="all"
+        self, mouse, session_types: tuple, thresh=1, subset="all"
     ):
         # Match assemblies.
         registered_ensembles = self.match_ensembles(mouse, session_types)
@@ -2072,7 +2076,8 @@ class ProjectAnalyses:
         ]
 
         # For each assembly in session 1 and its corresponding match in session 2, get their activation profiles.
-        for s1_assembly, s2_assembly in enumerate(registered_ensembles["matches"]):
+        for s1_assembly, (s2_assembly, poor_match) in enumerate(zip(registered_ensembles["matches"],
+                                                      registered_ensembles['poor_matches'])):
             if s1_assembly in subset:
                 activations = [
                     self.data[mouse][session_type].assemblies["activations"][assembly]
@@ -2102,8 +2107,9 @@ class ProjectAnalyses:
                         ax=ax,
                         marker_legend="Ensemble activation",
                     )
+                    title_color = 'r' if poor_match else 'k'
                     ax.set_title(
-                        f"Ensemble #{assembly_number} in session {session_type}"
+                        f"Ensemble #{assembly_number} in session {session_type}", color=title_color
                     )
 
                     behavior_data = self.data[mouse][session_type].behavior.data
