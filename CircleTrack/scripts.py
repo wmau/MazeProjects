@@ -6,14 +6,24 @@ from CaImaging.util import (
     make_bins,
     ScrollPlot,
     contiguous_regions,
-    cluster
+    cluster,
 )
 from CaImaging.plotting import errorfill, beautify_ax
 from scipy.stats import spearmanr, zscore, circmean, kendalltau
 from scipy.spatial import distance
 from CircleTrack.SessionCollation import MultiAnimal
 from CaImaging.CellReg import rearrange_neurons, trim_map, scrollplot_footprints
-from sklearn.naive_bayes import BernoulliNB
+from sklearn.naive_bayes import BernoulliNB, GaussianNB
+from sklearn.model_selection import (
+    StratifiedKFold,
+    StratifiedShuffleSplit,
+    permutation_test_score,
+)
+from sklearn.svm import LinearSVC
+from sklearn.linear_model import SGDClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.inspection import permutation_importance
+from sklearn.feature_selection import SequentialFeatureSelector, RFECV
 import numpy as np
 import os
 from CircleTrack.plotting import plot_daily_rasters, spiral_plot, highlight_column
@@ -230,8 +240,9 @@ class ProjectAnalyses:
             Session name (e.g. 'Goals4').
 
         """
-        ax = self.data[mouse][session_type].behavior.get_licks(plot=True,
-                                                               binarize=binarize)[1]
+        ax = self.data[mouse][session_type].behavior.get_licks(
+            plot=True, binarize=binarize
+        )[1]
         if session_type == "Reversal":
             [
                 highlight_column(rewarded, ax, linewidth=5, color="orange", alpha=0.6)
@@ -312,8 +323,13 @@ class ProjectAnalyses:
         return sdt, ax
 
     def plot_all_behavior(
-        self, window=8, strides=2, ax=None, performance_metric="d_prime", show_plot=True,
-            trial_limit=None
+        self,
+        window=8,
+        strides=2,
+        ax=None,
+        performance_metric="d_prime",
+        show_plot=True,
+        trial_limit=None,
     ):
         # Preallocate array.
         behavioral_performance_arr = np.zeros(
@@ -327,8 +343,10 @@ class ProjectAnalyses:
             for k, session_type in enumerate(self.meta["session_types"]):
                 session = self.data[mouse][session_type].behavior
                 session.sdt_trials(
-                    rolling_window=window, trial_interval=strides, plot=False,
-                    trial_limit=trial_limit
+                    rolling_window=window,
+                    trial_interval=strides,
+                    plot=False,
+                    trial_limit=trial_limit,
                 )
 
                 for i, key in enumerate(categories):
@@ -420,14 +438,20 @@ class ProjectAnalyses:
         downsample_trials=False,
     ):
         if downsample_trials:
-            trial_limit = min([self.data[mouse][session_type].behavior.data['ntrials']
-                               for mouse in self.meta['mice']])
+            trial_limit = min(
+                [
+                    self.data[mouse][session_type].behavior.data["ntrials"]
+                    for mouse in self.meta["mice"]
+                ]
+            )
         else:
             trial_limit = None
 
         behavioral_performance = self.plot_all_behavior(
-            show_plot=False, window=window, performance_metric=performance_metric,
-            trial_limit=trial_limit
+            show_plot=False,
+            window=window,
+            performance_metric=performance_metric,
+            trial_limit=trial_limit,
         )[0]
 
         best_performance = dict()
@@ -454,7 +478,9 @@ class ProjectAnalyses:
                 patch_artist=True,
                 widths=0.75,
             )
-            for patch, med, color in zip(box["boxes"], box["medians"], ["cornflowerblue", "r"]):
+            for patch, med, color in zip(
+                box["boxes"], box["medians"], ["cornflowerblue", "r"]
+            ):
                 patch.set_facecolor(color)
                 med.set(color="k")
 
@@ -468,7 +494,10 @@ class ProjectAnalyses:
         return best_performance
 
     def plot_best_performance_all_sessions(
-        self, window=None, performance_metric="d_prime", downsample_trials=False,
+        self,
+        window=None,
+        performance_metric="d_prime",
+        downsample_trials=False,
     ):
         fig, axs = plt.subplots(1, len(self.meta["session_types"]), sharey=True)
         fig.subplots_adjust(wspace=0)
@@ -477,7 +506,9 @@ class ProjectAnalyses:
             "CRs": "Correct rejection rate",
             "hits": "Hit rate",
         }
-        for ax, session, title in zip(axs, self.meta["session_types"], self.meta['session_labels']):
+        for ax, session, title in zip(
+            axs, self.meta["session_types"], self.meta["session_labels"]
+        ):
             self.plot_best_performance(
                 session_type=session,
                 ax=ax,
@@ -497,8 +528,8 @@ class ProjectAnalyses:
         fig.legend(handles=patches, loc="lower right")
 
     def plot_perseverative_licking(self, show_plot=True):
-        goals4 = 'Goals4'
-        reversal = 'Reversal'
+        goals4 = "Goals4"
+        reversal = "Reversal"
 
         perseverative_licking_rates = dict()
         straight_up_wrong_rates = dict()
@@ -506,50 +537,52 @@ class ProjectAnalyses:
             perseverative_licking_rates[age] = []
             straight_up_wrong_rates[age] = []
 
-            for mouse in self.meta['grouped_mice'][age]:
+            for mouse in self.meta["grouped_mice"][age]:
                 behavior_data = self.data[mouse][reversal].behavior.data
-                licks = behavior_data['all_licks'] > 0
+                licks = behavior_data["all_licks"] > 0
 
-                previous_reward_ports = self.data[mouse][goals4].behavior.data['rewarded_ports']
-                current_rewarded_ports = behavior_data['rewarded_ports']
+                previous_reward_ports = self.data[mouse][goals4].behavior.data[
+                    "rewarded_ports"
+                ]
+                current_rewarded_ports = behavior_data["rewarded_ports"]
                 other_ports = ~(previous_reward_ports + current_rewarded_ports)
 
-                perseverative_rate = np.sum(licks[:, previous_reward_ports]) \
-                                     / (np.sum(previous_reward_ports) * licks.shape[0])
+                perseverative_rate = np.sum(licks[:, previous_reward_ports]) / (
+                    np.sum(previous_reward_ports) * licks.shape[0]
+                )
                 perseverative_licking_rates[age].append(perseverative_rate)
 
-                straight_up_wrong_rate = np.sum(licks[:, other_ports]) \
-                                         / (np.sum(other_ports) * licks.shape[0])
+                straight_up_wrong_rate = np.sum(licks[:, other_ports]) / (
+                    np.sum(other_ports) * licks.shape[0]
+                )
                 straight_up_wrong_rates[age].append(straight_up_wrong_rate)
 
         if show_plot:
             fig, axs = plt.subplots(1, 2, sharey=True)
             fig.subplots_adjust(wspace=0)
 
-            for ax, rate, title in zip(axs, [perseverative_licking_rates,
-                                             straight_up_wrong_rates],
-                                       ['Perseverative errors',
-                                        'Unforgiveable errors']):
+            for ax, rate, title in zip(
+                axs,
+                [perseverative_licking_rates, straight_up_wrong_rates],
+                ["Perseverative errors", "Unforgiveable errors"],
+            ):
                 boxes = ax.boxplot(
-                    [rate['young'], rate['aged']],
-                    patch_artist=True,
-                    widths=0.75
+                    [rate["young"], rate["aged"]], patch_artist=True, widths=0.75
                 )
-                for patch, med, color in zip(boxes["boxes"],
-                                             boxes["medians"],
-                                             ['cornflowerblue', 'r']):
+                for patch, med, color in zip(
+                    boxes["boxes"], boxes["medians"], ["cornflowerblue", "r"]
+                ):
                     patch.set_facecolor(color)
                     med.set(color="k")
                 ax.set_title(title)
                 ax.set_xticks([])
 
-            axs[0].set_ylabel('Proportion of trials')
+            axs[0].set_ylabel("Proportion of trials")
             patches = [
                 mpatches.Patch(facecolor=c, label=label, edgecolor="k")
                 for c, label in zip(["cornflowerblue", "r"], ["Young", "Aged"])
             ]
             fig.legend(handles=patches, loc="lower right")
-
 
         return perseverative_licking_rates, straight_up_wrong_rates
 
@@ -646,23 +679,28 @@ class ProjectAnalyses:
 
         return corrs
 
-    def plot_aged_pf_correlation(self, session_types=("Goals3", "Goals4"), show_plot=True,
-                                 place_cells=True):
-
+    def plot_aged_pf_correlation(
+        self, session_types=("Goals3", "Goals4"), show_plot=True, place_cells=True
+    ):
 
         r_values = dict()
         for age in ["young", "aged"]:
             r_values[age] = []
             for mouse in self.meta["grouped_mice"][age]:
                 if place_cells:
-                    neurons = self.data[mouse][session_types[0]].spatial.data['place_cells']
+                    neurons = self.data[mouse][session_types[0]].spatial.data[
+                        "place_cells"
+                    ]
                 else:
                     neurons = None
 
                 rs_this_mouse = np.asarray(
-                    self.correlate_fields(mouse, session_types, show_histogram=False, neurons_from_session1=neurons)[
-                        "r"
-                    ]
+                    self.correlate_fields(
+                        mouse,
+                        session_types,
+                        show_histogram=False,
+                        neurons_from_session1=neurons,
+                    )["r"]
                 )
                 rs = rs_this_mouse[~np.isnan(rs_this_mouse)]
 
@@ -683,144 +721,148 @@ class ProjectAnalyses:
 
         return r_values
 
-    def plot_aged_pf_correlation_comparisons(self,
-                                             session_pair1=('Goals3','Goals4'),
-                                             session_pair2=('Goals4', 'Reversal'),
-                                             place_cells=False
-                                             ):
+    def plot_aged_pf_correlation_comparisons(
+        self,
+        session_pair1=("Goals3", "Goals4"),
+        session_pair2=("Goals4", "Reversal"),
+        place_cells=False,
+    ):
         r_values = dict()
         for session_pair in [session_pair1, session_pair2]:
-            r_values[session_pair] = self.plot_aged_pf_correlation(session_pair, show_plot=False, place_cells=place_cells)
+            r_values[session_pair] = self.plot_aged_pf_correlation(
+                session_pair, show_plot=False, place_cells=place_cells
+            )
 
         fig, axs = plt.subplots(1, 2)
         fig.subplots_adjust(wspace=0)
         for age, ax, color in zip(ages, axs, age_colors):
-             mice = self.meta['grouped_mice'][age]
-             positions = [np.arange(start, start + 3 * len(mice), 3) for start in [-0.5, 0.5]]
-             label_positions = np.arange(0, 3 * len(mice), 3)
+            mice = self.meta["grouped_mice"][age]
+            positions = [
+                np.arange(start, start + 3 * len(mice), 3) for start in [-0.5, 0.5]
+            ]
+            label_positions = np.arange(0, 3 * len(mice), 3)
 
-             for session_pair, position in zip(
-                     [session_pair1, session_pair2],
-                     positions
-             ):
-                 boxes = ax.boxplot(
-                     r_values[session_pair][age],
-                     positions=position,
-                     patch_artist=True,
-                 )
-                 for patch, med in zip(boxes["boxes"],
-                                       boxes["medians"]):
-                     patch.set_facecolor(color)
-                     med.set(color="k")
+            for session_pair, position in zip(
+                [session_pair1, session_pair2], positions
+            ):
+                boxes = ax.boxplot(
+                    r_values[session_pair][age],
+                    positions=position,
+                    patch_artist=True,
+                )
+                for patch, med in zip(boxes["boxes"], boxes["medians"]):
+                    patch.set_facecolor(color)
+                    med.set(color="k")
 
-             if age == "aged":
+            if age == "aged":
                 ax.set_yticks([])
-             else:
+            else:
                 ax.set_ylabel("Spatial correlations [Spearman rho]")
-             ax.set_xticks(label_positions)
-             ax.set_xticklabels(mice, rotation=45)
+            ax.set_xticks(label_positions)
+            ax.set_xticklabels(mice, rotation=45)
 
         return r_values
 
     def plot_rasters_by_day(
-            self, mouse, session_types, neurons_from_session1=None, mode="scroll"
-        ):
-            """
-            Visualize binned spatial activity by each trial across
-            multiple days.
+        self, mouse, session_types, neurons_from_session1=None, mode="scroll"
+    ):
+        """
+        Visualize binned spatial activity by each trial across
+        multiple days.
 
-            :parameters
-            ---
-            mouse: str
-                Mouse name.
+        :parameters
+        ---
+        mouse: str
+            Mouse name.
 
-            session_types: array-like of strs
-                Must correspond to at least two of the sessions in the
-                session_types class attribute (e.g. 'CircleTrackGoals2'.
+        session_types: array-like of strs
+            Must correspond to at least two of the sessions in the
+            session_types class attribute (e.g. 'CircleTrackGoals2'.
 
-            neurons_from_session1: array-like of scalars
-                Neuron indices to include from the first session in
-                session_types.
+        neurons_from_session1: array-like of scalars
+            Neuron indices to include from the first session in
+            session_types.
 
-            """
-            # Get neuron mappings.
-            sessions = self.data[mouse]
-            trimmed_map, global_idx = self.get_cellreg_mappings(
-                mouse, session_types, neurons_from_session1=neurons_from_session1
-            )[:-1]
+        """
+        # Get neuron mappings.
+        sessions = self.data[mouse]
+        trimmed_map, global_idx = self.get_cellreg_mappings(
+            mouse, session_types, neurons_from_session1=neurons_from_session1
+        )[:-1]
 
-            # Gather neurons and build dictionaries for HoloMap.
-            daily_rasters = []
-            placefields = []
-            for i, session_type in enumerate(session_types):
-                neurons_to_analyze = trimmed_map.iloc[trimmed_map.index.isin(global_idx), i]
+        # Gather neurons and build dictionaries for HoloMap.
+        daily_rasters = []
+        placefields = []
+        for i, session_type in enumerate(session_types):
+            neurons_to_analyze = trimmed_map.iloc[trimmed_map.index.isin(global_idx), i]
 
-                if mode == "holoviews":
-                    rasters = sessions[session_type].viz_spatial_trial_activity(
-                        neurons=neurons_to_analyze, preserve_neuron_idx=False
-                    )
-                elif mode in ["png", "scroll"]:
-                    rasters = (
-                        sessions[session_type].spatial.data["rasters"][neurons_to_analyze]
-                        > 0
-                    )
-
-                    placefields.append(
-                        sessions[session_type].spatial.data["placefields_normalized"][
-                            neurons_to_analyze
-                        ]
-                    )
-                else:
-                    raise ValueError("mode must be holoviews, png, or scroll")
-                daily_rasters.append(rasters)
-
-            if mode == "png":
-                for neuron in range(daily_rasters[0].shape[0]):
-                    fig, axs = plt.subplots(1, len(daily_rasters))
-                    for s, ax in enumerate(axs):
-                        ax.imshow(daily_rasters[s][neuron], cmap="gray")
-
-                    fname = os.path.join(
-                        r"Z:\Will\Drift\Data",
-                        mouse,
-                        r"Analysis\Place fields",
-                        f"Neuron {neuron}.png",
-                    )
-                    fig.savefig(fname, bbox_inches="tight")
-                    plt.close(fig)
-            elif mode == "scroll":
-                ScrollPlot(
-                    plot_daily_rasters,
-                    current_position=0,
-                    nrows=len(session_types),
-                    ncols=2,
-                    rasters=daily_rasters,
-                    tuning_curves=placefields,
+            if mode == "holoviews":
+                rasters = sessions[session_type].viz_spatial_trial_activity(
+                    neurons=neurons_to_analyze, preserve_neuron_idx=False
+                )
+            elif mode in ["png", "scroll"]:
+                rasters = (
+                    sessions[session_type].spatial.data["rasters"][neurons_to_analyze]
+                    > 0
                 )
 
-            # List of dictionaries. Do HoloMap(daily_rasters) in a
-            # jupyter notebook.
-            return daily_rasters
+                placefields.append(
+                    sessions[session_type].spatial.data["placefields_normalized"][
+                        neurons_to_analyze
+                    ]
+                )
+            else:
+                raise ValueError("mode must be holoviews, png, or scroll")
+            daily_rasters.append(rasters)
 
-    def plot_spatial_info(self, session_type, ax=None, show_plot=True,
-                          aggregate_mode='median'):
+        if mode == "png":
+            for neuron in range(daily_rasters[0].shape[0]):
+                fig, axs = plt.subplots(1, len(daily_rasters))
+                for s, ax in enumerate(axs):
+                    ax.imshow(daily_rasters[s][neuron], cmap="gray")
+
+                fname = os.path.join(
+                    r"Z:\Will\Drift\Data",
+                    mouse,
+                    r"Analysis\Place fields",
+                    f"Neuron {neuron}.png",
+                )
+                fig.savefig(fname, bbox_inches="tight")
+                plt.close(fig)
+        elif mode == "scroll":
+            ScrollPlot(
+                plot_daily_rasters,
+                current_position=0,
+                nrows=len(session_types),
+                ncols=2,
+                rasters=daily_rasters,
+                tuning_curves=placefields,
+            )
+
+        # List of dictionaries. Do HoloMap(daily_rasters) in a
+        # jupyter notebook.
+        return daily_rasters
+
+    def plot_spatial_info(
+        self, session_type, ax=None, show_plot=True, aggregate_mode="median"
+    ):
         if ax is None:
             fig, ax = plt.subplots()
 
-        if aggregate_mode not in ['median', 'mean', 'all']:
-            raise ValueError('Invalid aggregate_mode')
+        if aggregate_mode not in ["median", "mean", "all"]:
+            raise ValueError("Invalid aggregate_mode")
 
         spatial_info = dict()
         for age in ages:
             spatial_info[age] = []
-            for mouse in self.meta['grouped_mice'][age]:
-                SIs = self.data[mouse][session_type].spatial.data['spatial_info_z']
+            for mouse in self.meta["grouped_mice"][age]:
+                SIs = self.data[mouse][session_type].spatial.data["spatial_info_z"]
 
-                if aggregate_mode == 'median':
+                if aggregate_mode == "median":
                     spatial_info[age].append(np.median(SIs))
-                elif aggregate_mode == 'mean':
+                elif aggregate_mode == "mean":
                     spatial_info[age].append(np.mean(SIs))
-                elif aggregate_mode == 'all':
+                elif aggregate_mode == "all":
                     spatial_info[age].extend(SIs)
 
         if show_plot:
@@ -830,31 +872,31 @@ class ProjectAnalyses:
                 widths=0.75,
             )
 
-            for patch, med, color in zip(box['boxes'], box['medians'], age_colors):
+            for patch, med, color in zip(box["boxes"], box["medians"], age_colors):
                 patch.set_facecolor(color)
-                med.set(color='k')
+                med.set(color="k")
 
         return spatial_info
 
-    def plot_all_spatial_info(self, aggregate_mode='median'):
-        fig, axs = plt.subplots(1, len(self.meta['session_types']), sharey=True)
+    def plot_all_spatial_info(self, aggregate_mode="median"):
+        fig, axs = plt.subplots(1, len(self.meta["session_types"]), sharey=True)
         fig.subplots_adjust(wspace=0)
 
         median_spatial_infos = dict()
-        for ax, session_type, title in zip(axs,
-                                           self.meta['session_types'],
-                                           self.meta['session_labels']):
-            median_spatial_infos[session_type] = \
-                self.plot_spatial_info(session_type, ax=ax,
-                                       aggregate_mode=aggregate_mode)
+        for ax, session_type, title in zip(
+            axs, self.meta["session_types"], self.meta["session_labels"]
+        ):
+            median_spatial_infos[session_type] = self.plot_spatial_info(
+                session_type, ax=ax, aggregate_mode=aggregate_mode
+            )
             ax.set_xticks([])
             ax.set_title(title)
 
-            if session_type == 'Goals1':
-                ylabel = f'Spatial information ({aggregate_mode})'
-                if aggregate_mode in ['median', 'mean']:
-                    ylabel += ' per mouse'
-                ylabel += ' [z]'
+            if session_type == "Goals1":
+                ylabel = f"Spatial information ({aggregate_mode})"
+                if aggregate_mode in ["median", "mean"]:
+                    ylabel += " per mouse"
+                ylabel += " [z]"
                 ax.set_ylabel(ylabel)
 
         return median_spatial_infos
@@ -863,21 +905,27 @@ class ProjectAnalyses:
         reliabilities = {}
         for age in ages:
             reliabilities[age] = []
-            for mouse in self.meta['grouped_mice'][age]:
+            for mouse in self.meta["grouped_mice"][age]:
                 session = self.data[mouse][session_type]
-                place_cells = session.spatial.data['place_cells']
-                reliabilities_ = [session.placefield_reliability(neuron,
-                                                                 field_threshold=field_threshold,
-                                                                 even_split=True, split=1, show_plot=False)
-                                  for neuron in place_cells]
+                place_cells = session.spatial.data["place_cells"]
+                reliabilities_ = [
+                    session.placefield_reliability(
+                        neuron,
+                        field_threshold=field_threshold,
+                        even_split=True,
+                        split=1,
+                        show_plot=False,
+                    )
+                    for neuron in place_cells
+                ]
                 reliabilities[age].append(reliabilities_)
 
         if show_plot:
-            fig, axs = plt.subplots(1,2)
+            fig, axs = plt.subplots(1, 2)
             fig.subplots_adjust(wspace=0)
 
             for age, color, ax in zip(ages, age_colors, axs):
-                mice = self.meta['grouped_mice'][age]
+                mice = self.meta["grouped_mice"][age]
                 boxes = ax.boxplot(reliabilities[age], patch_artist=True)
                 for patch, med in zip(boxes["boxes"], boxes["medians"]):
                     patch.set_facecolor(color)
@@ -891,30 +939,32 @@ class ProjectAnalyses:
 
         return reliabilities
 
-    def plot_reliabilities_comparisons(self, session_types=('Goals4', 'Reversal'), field_threshold=0.15,
-                                       show_plot=True):
+    def plot_reliabilities_comparisons(
+        self, session_types=("Goals4", "Reversal"), field_threshold=0.15, show_plot=True
+    ):
         reliabilities = {}
         mean_reliabilities = {session_type: dict() for session_type in session_types}
         for session_type in session_types:
-            reliabilities[session_type] = self.plot_reliabilities(session_type, field_threshold=field_threshold,
-                                                                  show_plot=False)
+            reliabilities[session_type] = self.plot_reliabilities(
+                session_type, field_threshold=field_threshold, show_plot=False
+            )
             for age in ages:
-                mean_reliabilities[session_type][age] = [np.mean(r) for r in reliabilities[session_type][age]]
+                mean_reliabilities[session_type][age] = [
+                    np.mean(r) for r in reliabilities[session_type][age]
+                ]
 
         if show_plot:
-            fig, axs = plt.subplots(1,2)
+            fig, axs = plt.subplots(1, 2)
             fig.subplots_adjust(wspace=0)
 
             for age, ax, color in zip(ages, axs, age_colors):
-                mice = self.meta['grouped_mice'][age]
+                mice = self.meta["grouped_mice"][age]
                 positions = [
                     np.arange(start, start + 3 * len(mice), 3) for start in [-0.5, 0.5]
                 ]
                 label_positions = np.arange(0, 3 * len(mice), 3)
 
-                for session_type, position in zip(
-                        session_types, positions
-                ):
+                for session_type, position in zip(session_types, positions):
                     boxes = ax.boxplot(
                         reliabilities[session_type][age],
                         positions=position,
@@ -931,46 +981,60 @@ class ProjectAnalyses:
                 ax.set_xticks(label_positions)
                 ax.set_xticklabels(mice, rotation=45)
 
-            fig, axs = plt.subplots(1,2, sharey=True)
+            fig, axs = plt.subplots(1, 2, sharey=True)
             fig.subplots_adjust(wspace=0)
 
             for age, ax, color in zip(ages, axs, age_colors):
-                boxes = ax.boxplot([
-                    mean_reliabilities[session_type][age]
-                    for session_type in session_types],
-                                   patch_artist=True)
+                boxes = ax.boxplot(
+                    [
+                        mean_reliabilities[session_type][age]
+                        for session_type in session_types
+                    ],
+                    patch_artist=True,
+                )
 
-                for patch, med in zip(boxes['boxes'], boxes['medians']):
+                for patch, med in zip(boxes["boxes"], boxes["medians"]):
                     patch.set_facecolor(color)
-                    med.set(color='k')
+                    med.set(color="k")
                 ax.set_xticklabels(session_types, rotation=45)
 
-                if age == 'young':
-                    ax.set_ylabel('Mean place field reliability')
+                if age == "young":
+                    ax.set_ylabel("Mean place field reliability")
 
         return reliabilities, mean_reliabilities
 
-    def correlate_field_reliability_to_performance(self, performance_metric='CRs',
-                                                   session_types=('Goals4', 'Reversal'), field_threshold=0.15):
-        reliabilities, mean_reliabilities = self.plot_reliabilities_comparisons(session_types=session_types,
-                                                                                field_threshold=field_threshold,
-                                                                                show_plot=False)
+    def correlate_field_reliability_to_performance(
+        self,
+        performance_metric="CRs",
+        session_types=("Goals4", "Reversal"),
+        field_threshold=0.15,
+    ):
+        reliabilities, mean_reliabilities = self.plot_reliabilities_comparisons(
+            session_types=session_types,
+            field_threshold=field_threshold,
+            show_plot=False,
+        )
 
-        performance = self.plot_best_performance('Reversal', window=None, performance_metric=performance_metric,
-                                                 show_plot=False)
+        performance = self.plot_best_performance(
+            "Reversal",
+            window=None,
+            performance_metric=performance_metric,
+            show_plot=False,
+        )
         fig, ax = plt.subplots()
         for age, color in zip(ages, age_colors):
-            ax.scatter(mean_reliabilities['Reversal'][age],
-                       performance[age], color=color)
+            ax.scatter(
+                mean_reliabilities["Reversal"][age], performance[age], color=color
+            )
 
-        ylabel = {'CRs': 'Correct rejection rate',
-                  'hits': 'Hit rate',
-                  'd_prime': "d'"}
+        ylabel = {"CRs": "Correct rejection rate", "hits": "Hit rate", "d_prime": "d'"}
         ax.set_ylabel(ylabel[performance_metric])
-        ax.set_xlabel('Place field reliability')
+        ax.set_xlabel("Place field reliability")
 
-        pvalue = spearmanr(np.hstack([mean_reliabilities['Reversal'][age] for age in ages]),
-                           np.hstack([performance[age] for age in ages])).pvalue
+        pvalue = spearmanr(
+            np.hstack([mean_reliabilities["Reversal"][age] for age in ages]),
+            np.hstack([performance[age] for age in ages]),
+        ).pvalue
 
         return pvalue
 
@@ -1193,7 +1257,7 @@ class ProjectAnalyses:
             fig.subplots_adjust(wspace=0)
 
             for i, (ax, session_type, title) in enumerate(
-                zip(axs, self.meta["session_types"], self.meta['session_labels'])
+                zip(axs, self.meta["session_types"], self.meta["session_labels"])
             ):
                 box = ax.boxplot(
                     [n_ensembles[session_type][age] for age in ages],
@@ -1298,6 +1362,132 @@ class ProjectAnalyses:
 
         return p_promiscuous_neurons
 
+    def fit_ensemble_lick_decoder(
+        self,
+        mouse: str,
+        session_types: tuple,
+        classifier=GaussianNB,
+        licks_only=True,
+        **classifier_kwargs,
+    ):
+        registered_ensembles = self.match_ensembles(mouse, session_types)
+        poor_matches = registered_ensembles['poor_matches']
+        # Gather predictor neural data.
+        X = dict()
+        y = dict()
+        for session_activations, t, session_type in zip(
+            registered_ensembles["matched_activations"],
+            ["train", "test"],
+            session_types,
+        ):
+            licks = np.asarray(
+                self.data[mouse][session_type].behavior.data["df"]["lick_port"]
+            )
+            activations = zscore(np.squeeze(session_activations[~poor_matches]), axis=0).T
+            if licks_only:
+                licking = licks > -1
+                licks = licks[licking]
+                activations = activations[licking]
+
+            X[t] = activations
+            y[t] = licks
+
+        classifier = classifier(**classifier_kwargs)
+        classifier.fit(X["train"], y["train"])
+
+        return X, y, classifier
+
+    def registered_ensemble_lick_decoder(self,
+                                         mouse,
+                                         session_types,
+                                         classifier=GaussianNB,
+                                         licks_only=True,
+                                         n_splits=6,
+                                         show_plot=True,
+                                         ax=None,
+                                         **classifier_kwargs):
+        X, y, classifier = self.fit_ensemble_lick_decoder(mouse,
+                                                          session_types,
+                                                          classifier=classifier,
+                                                          licks_only=licks_only,
+                                                          **classifier_kwargs)
+
+        X_split = np.array_split(X['test'], n_splits)
+        y_split = np.array_split(y['test'], n_splits)
+        scores = [classifier.score(X_chunk, y_chunk)
+                  for X_chunk, y_chunk in zip(X_split, y_split)]
+
+        if show_plot:
+            if ax is None:
+                fig, ax = plt.subplots()
+
+            ax.plot(scores, 'k', alpha=0.5)
+
+        return scores
+
+    def ensemble_lick_decoding(self, mouse, session_type, licks_only=True):
+        session = self.data[mouse][session_type]
+        ensemble_activations = zscore(session.assemblies["activations"], axis=0).T
+        licks = np.asarray(session.behavior.data["df"]["lick_port"])
+
+        if licks_only:
+            licking = licks > -1
+            ensemble_activations = ensemble_activations[licking]
+            licks = licks[licking]
+
+        clf = GaussianNB()
+        cv = StratifiedKFold(n_splits=3)
+
+        score, _, p_value = permutation_test_score(
+            clf,
+            ensemble_activations,
+            licks,
+            scoring="accuracy",
+            cv=cv,
+            n_permutations=500,
+            n_jobs=6,
+        )
+
+        # splits = list(cv.split(ensemble_activations, licks))
+        # X_train = ensemble_activations[splits[0][0]]
+        # y_train = licks[splits[0][0]]
+        #
+        # clf.fit(X_train, y_train)
+
+        return ensemble_activations, licks
+
+    def ensemble_feature_selector(
+        self,
+        mouse,
+        session_type,
+        licks_only=True,
+        feature_selector=RFECV,
+        estimator=GaussianNB(),
+        show_plot=True,
+        **kwargs,
+    ):
+        session = self.data[mouse][session_type]
+        ensemble_activations = zscore(session.assemblies["activations"], axis=0).T
+        licks = np.asarray(session.behavior.data["df"]["lick_port"])
+
+        if licks_only:
+            licking = licks > -1
+            ensemble_activations = ensemble_activations[licking]
+            licks = licks[licking]
+
+        fs = feature_selector(
+            estimator=estimator, cv=StratifiedKFold(3), n_jobs=6, **kwargs
+        )
+        fs.fit(ensemble_activations, licks)
+
+        # if show_plot:
+        #     fig, ax = plt.subplots()
+        #     ax.set_xlabel("Number of features selected")
+        #     ax.set_ylabel("Cross validation score (nb of correct classifications)")
+        #     ax.plot(fs.grid_scores_)
+
+        return fs
+
     def plot_ensemble_sizes(
         self, filter_method="sd", thresh=2, data_type="unique_members"
     ):
@@ -1394,32 +1584,36 @@ class ProjectAnalyses:
 
         return lapsed_assemblies, spiking
 
-    def port_vicinity_ensemble_activation(self, mouse, session_type, ensemble_number, time_window=(1,1),
-                                          dist_thresh=5):
+    def port_vicinity_ensemble_activation(
+        self, mouse, session_type, ensemble_number, time_window=(1, 1), dist_thresh=3
+    ):
         # Abbreviate references.
         session = self.data[mouse][session_type]
-        df = session.behavior.data['df']
-        licks = df['lick_port']
-        n_trials = max(df['trials'] + 1)
+        df = session.behavior.data["df"]
+        licks = df["lick_port"]
+        n_trials = max(df["trials"] + 1)
         trials = np.asarray(df["trials"])
-        distance_to_port = distance.cdist(np.vstack((df['x'], df['y'])).T,
-                                          session.behavior.data['ports'])
-        rewarded = np.where(session.behavior.data['rewarded_ports'])[0]
-        ensemble_activation = session.assemblies['activations'][ensemble_number]
+        distance_to_port = distance.cdist(
+            np.vstack((df["x"], df["y"])).T, session.behavior.data["ports"]
+        )
+        rewarded = np.where(session.behavior.data["rewarded_ports"])[0]
+        ensemble_activation = session.assemblies["activations"][ensemble_number]
 
         # If looking at the Reversal session, also
-        if session_type == 'Reversal':
-            previously_rewarded = np.where(self.data[mouse]['Goals4'].behavior.data['rewarded_ports'])[0]
+        if session_type == "Reversal":
+            previously_rewarded = np.where(
+                self.data[mouse]["Goals4"].behavior.data["rewarded_ports"]
+            )[0]
         else:
             previously_rewarded = []
 
         fps = 15
-        t_xaxis = np.arange(-time_window[0], time_window[1] + 1/fps, 1/fps)
+        t_xaxis = np.arange(-time_window[0], time_window[1] + 1 / fps, 1 / fps)
         time_window = np.asarray([t * fps for t in time_window])
         window_size = sum(abs(time_window))
         n_frames = len(ensemble_activation)
 
-        fig, axs = plt.subplots(4,2, sharex=True, figsize=(7, 10.5))
+        fig, axs = plt.subplots(4, 2, sharex=True, figsize=(7, 10.5))
 
         # For each port, collect timestamps before and after licks. If there was no lick,
         # instead collect timestamps around when the mouse arrived at that port.
@@ -1430,15 +1624,18 @@ class ProjectAnalyses:
 
             for trial in range(n_trials):
                 # Get timestamps when the mouse licked if at all.
-                on_trial = trials==trial
+                on_trial = trials == trial
                 licks_ = np.where(np.logical_and(licks == port, on_trial))[0]
-                did_not_lick = licks_.size==0
+                did_not_lick = licks_.size == 0
 
                 # If the mouse didn't lick, get the first timestamp when the mouse got close
                 # to the port.
                 if did_not_lick:
-                    near_port = np.where(np.logical_and(on_trial,
-                                                        distance_to_port[:, port] < dist_thresh))[0]
+                    near_port = np.where(
+                        np.logical_and(
+                            on_trial, distance_to_port[:, port] < dist_thresh
+                        )
+                    )[0]
 
                     if len(near_port) > 0:
                         t0 = near_port[0]
@@ -1464,7 +1661,12 @@ class ProjectAnalyses:
                     post = n_frames
                 window_ind = slice(pre, post)
                 activation = ensemble_activation[window_ind]
-                activation = np.pad(activation, (front_pad, back_pad), mode='constant', constant_values=np.nan)
+                activation = np.pad(
+                    activation,
+                    (front_pad, back_pad),
+                    mode="constant",
+                    constant_values=np.nan,
+                )
 
                 if did_not_lick:
                     passed_activations.append(activation)
@@ -1477,31 +1679,39 @@ class ProjectAnalyses:
             else:
                 port_activation = np.vstack((lick_activations, passed_activations))
             port_activations.append(port_activation)
-            ax.imshow(port_activation, extent=[t_xaxis[0], t_xaxis[-1],
-                                               len(port_activation)+1, 1],
-                      aspect='auto')
-            ax.axhline(y=len(lick_activations), color='r')
-            ax.axvline(x=0, color='r')
+            ax.imshow(
+                port_activation,
+                extent=[t_xaxis[0], t_xaxis[-1], len(port_activation) + 1, 1],
+                aspect="auto",
+                cmap="Blues",
+            )
+            ax.axhline(y=len(lick_activations), color="r")
+            ax.axvline(x=0, color="r")
 
             if port in rewarded:
-                title_color = 'g'
+                title_color = "g"
             elif port in previously_rewarded:
-                title_color = 'orange'
+                title_color = "orange"
             else:
-                title_color = 'k'
-            ax.set_title(f'Port #{port}', color=title_color)
+                title_color = "k"
+            ax.set_title(f"Port #{port}", color=title_color)
 
         max_clim = np.max([np.nanmax(activation) for activation in port_activations])
         for ax in fig.axes:
             for im in ax.get_images():
                 im.set_clim(0, max_clim)
-        fig.supylabel('Trial #')
-        fig.supxlabel('Time centered on lick/approach to port [s]')
-        fig.suptitle(f'Ensemble #{ensemble_number}')
+        fig.supylabel("Trial #")
+        fig.supxlabel("Time centered on lick/approach to port [s]")
+        fig.suptitle(f"Ensemble #{ensemble_number}")
 
-
-    def lick_triggered_ensemble_activation(self, mouse, session_type, ensemble_number, time_window=(2,2),
-                                           plot_type='imshow'):
+    def lick_triggered_ensemble_activation(
+        self,
+        mouse,
+        session_type,
+        ensemble_number,
+        time_window=(2, 2),
+        plot_type="imshow",
+    ):
         """
         Get the ensemble activation conditioned on lick. Triggered only by the first lick in a bout of licks.
 
@@ -1526,25 +1736,29 @@ class ProjectAnalyses:
         """
         # Abbreviate references.
         session = self.data[mouse][session_type]
-        licks = session.behavior.data['df']['lick_port']
-        rewarded = np.where(session.behavior.data['rewarded_ports'])[0]
-        ensemble_activation = session.assemblies['activations'][ensemble_number]
+        licks = session.behavior.data["df"]["lick_port"]
+        rewarded = np.where(session.behavior.data["rewarded_ports"])[0]
+        ensemble_activation = session.assemblies["activations"][ensemble_number]
 
         # If looking at the Reversal session, also
-        if session_type == 'Reversal':
-            previously_rewarded = np.where(self.data[mouse]['Goals4'].behavior.data['rewarded_ports'])[0]
+        if session_type == "Reversal":
+            previously_rewarded = np.where(
+                self.data[mouse]["Goals4"].behavior.data["rewarded_ports"]
+            )[0]
         else:
             previously_rewarded = []
 
         fps = 15
-        t_xaxis = np.arange(-time_window[0], time_window[1] + 1/fps, 1/fps)
+        t_xaxis = np.arange(-time_window[0], time_window[1] + 1 / fps, 1 / fps)
         time_window = [t * fps for t in time_window]
         n_frames = len(ensemble_activation)
 
-        fig, axs = plt.subplots(4,2, sharex=True, figsize=(7, 10.5))
+        fig, axs = plt.subplots(4, 2, sharex=True, figsize=(7, 10.5))
         activations = []
         for port in range(8):
-            lick_clusters = cluster(np.where(licks == port)[0], maxgap=15*time_window[0])
+            lick_clusters = cluster(
+                np.where(licks == port)[0], maxgap=15 * time_window[0]
+            )
             lick_t0 = [lick_t[0] for lick_t in lick_clusters]
 
             port_activations = []
@@ -1552,41 +1766,50 @@ class ProjectAnalyses:
                 window_idx = [t0 - time_window[0], t0 + time_window[1]]
 
                 if window_idx[0] < 0:
-                    activation = np.append(nan_array(abs(window_idx[0])), ensemble_activation[0:window_idx[1]])
+                    activation = np.append(
+                        nan_array(abs(window_idx[0])),
+                        ensemble_activation[0 : window_idx[1]],
+                    )
                 else:
-                    activation = ensemble_activation[window_idx[0]:window_idx[1]]
+                    activation = ensemble_activation[window_idx[0] : window_idx[1]]
 
                 # Handles edge cases where licks occur near the end of the session.
                 if window_idx[1] > n_frames:
-                    activation = np.append(activation, nan_array(window_idx[1] - n_frames))
+                    activation = np.append(
+                        activation, nan_array(window_idx[1] - n_frames)
+                    )
                 port_activations.append(activation)
             activations.append(np.vstack(port_activations))
 
         peak = max([np.max(a) for a in activations])
         for port, (ax, activation) in enumerate(zip(axs.flatten(), activations)):
-            if plot_type == 'line':
+            if plot_type == "line":
                 ax.plot(t_xaxis, activation)
-            elif plot_type == 'imshow':
-                ax.imshow(activation, aspect='auto', extent=[t_xaxis[0], t_xaxis[-1],
-                                                             len(activation)+1, 1],
-                          vmin=0, vmax=peak)
-            ax.axvline(x=0, color='r')
+            elif plot_type == "imshow":
+                ax.imshow(
+                    activation,
+                    aspect="auto",
+                    extent=[t_xaxis[0], t_xaxis[-1], len(activation) + 1, 1],
+                    vmin=0,
+                    vmax=peak,
+                )
+            ax.axvline(x=0, color="r")
 
             if port in rewarded:
-                title_color = 'g'
+                title_color = "g"
             elif port in previously_rewarded:
-                title_color = 'orange'
+                title_color = "orange"
             else:
-                title_color = 'k'
-            ax.set_title(f'Port #{port}', color=title_color)
+                title_color = "k"
+            ax.set_title(f"Port #{port}", color=title_color)
 
-        fig.supxlabel('Time centered on lick [s]')
+        fig.supxlabel("Time centered on lick [s]")
 
-        if plot_type == 'line':
-            fig.supylabel('Ensemble activation [a.u.]')
-        elif plot_type == 'imshow':
-            fig.supylabel('Lick #')
-        fig.suptitle(f'Ensemble #{ensemble_number}')
+        if plot_type == "line":
+            fig.supylabel("Ensemble activation [a.u.]")
+        elif plot_type == "imshow":
+            fig.supylabel("Lick #")
+        fig.suptitle(f"Ensemble #{ensemble_number}")
 
     def find_assembly_trends(
         self, mouse, session_type, x="time", z_threshold=2.5, x_bin_size=50
@@ -1758,12 +1981,14 @@ class ProjectAnalyses:
             ]
 
         if show_plot:
-            ylabel = {'decreasing': 'fading',
-                      'increasing': 'rising',
-                      'no trend': 'flat'}
+            ylabel = {
+                "decreasing": "fading",
+                "increasing": "rising",
+                "no trend": "flat",
+            }
             fig, axs = plt.subplots(1, 2, figsize=(7, 6), sharey=True)
             fig.subplots_adjust(wspace=0)
-            for ax, age, color in zip(axs, ages, ['cornflowerblue', 'r']):
+            for ax, age, color in zip(axs, ages, ["cornflowerblue", "r"]):
                 boxes = ax.boxplot(
                     p_changing_split_by_age[age], patch_artist=True, widths=0.75
                 )
@@ -1776,19 +2001,25 @@ class ProjectAnalyses:
                 else:
                     ax.set_ylabel("Proportion " + ylabel[trend] + " ensembles")
                 ax.set_title(age)
-                ax.set_xticklabels([session_type.replace("Goals", "Training")
-                                    for session_type in sessions], rotation=45)
+                ax.set_xticklabels(
+                    [
+                        session_type.replace("Goals", "Training")
+                        for session_type in sessions
+                    ],
+                    rotation=45,
+                )
 
         return p_changing_split_by_age
 
-    def correlate_prop_changing_ensembles_to_behavior(self,
-                                                      x='time',
-                                                      x_bin_size=60,
-                                                      z_threshold=2.58,
-                                                      trend='decreasing',
-                                                      performance_metric='CRs',
-                                                      ax=None,
-                                                      ):
+    def correlate_prop_changing_ensembles_to_behavior(
+        self,
+        x="time",
+        x_bin_size=60,
+        z_threshold=2.58,
+        trend="decreasing",
+        performance_metric="CRs",
+        ax=None,
+    ):
         ensemble_trends, ensemble_counts = self.plot_assembly_trends(
             x=x, x_bin_size=x_bin_size, z_threshold=z_threshold, show_plot=False
         )
@@ -1796,29 +2027,32 @@ class ProjectAnalyses:
 
         p_changing_split_by_age = dict()
         for age in ages:
-            p_changing_split_by_age[age] = p_changing.sel(session='Reversal',
-                                                          mouse=self.meta["grouped_mice"][age])
+            p_changing_split_by_age[age] = p_changing.sel(
+                session="Reversal", mouse=self.meta["grouped_mice"][age]
+            )
 
-        performance = self.plot_best_performance('Reversal',
-                                                 window=None,
-                                                 performance_metric=performance_metric,
-                                                 show_plot=False)
+        performance = self.plot_best_performance(
+            "Reversal",
+            window=None,
+            performance_metric=performance_metric,
+            show_plot=False,
+        )
 
         if ax is None:
             fig, ax = plt.subplots()
 
-        ylabels = {'CRs': 'Correct rejection rate',
-                   'hits': 'Hit rate',
-                   'd_prime': "d'"}
-        for age, c in zip(ages, ['cornflowerblue', 'r']):
-            ax.scatter(p_changing_split_by_age[age],
-                       performance[age],
-                       facecolors=c,
-                       edgecolors='k')
+        ylabels = {"CRs": "Correct rejection rate", "hits": "Hit rate", "d_prime": "d'"}
+        for age, c in zip(ages, ["cornflowerblue", "r"]):
+            ax.scatter(
+                p_changing_split_by_age[age],
+                performance[age],
+                facecolors=c,
+                edgecolors="k",
+            )
 
-        ax.set_xlabel('Proportion of ensembles with fading activation frequency')
+        ax.set_xlabel("Proportion of ensembles with fading activation frequency")
         ax.set_ylabel(ylabels[performance_metric])
-        ax.legend(['Young', 'Aged'])
+        ax.legend(["Young", "Aged"])
 
         p_changing = np.hstack([p_changing_split_by_age[age] for age in ages])
         perf = np.hstack([performance[age] for age in ages])
@@ -2076,8 +2310,9 @@ class ProjectAnalyses:
         ]
 
         # For each assembly in session 1 and its corresponding match in session 2, get their activation profiles.
-        for s1_assembly, (s2_assembly, poor_match) in enumerate(zip(registered_ensembles["matches"],
-                                                      registered_ensembles['poor_matches'])):
+        for s1_assembly, (s2_assembly, poor_match) in enumerate(
+            zip(registered_ensembles["matches"], registered_ensembles["poor_matches"])
+        ):
             if s1_assembly in subset:
                 activations = [
                     self.data[mouse][session_type].assemblies["activations"][assembly]
@@ -2087,7 +2322,9 @@ class ProjectAnalyses:
                 ]
 
                 # Make a figure with 2 subplots, one for each session.
-                fig, axs = plt.subplots(2, 1, subplot_kw=dict(polar=True), figsize=(6.4, 10))
+                fig, axs = plt.subplots(
+                    2, 1, subplot_kw=dict(polar=True), figsize=(6.4, 10)
+                )
                 for ax, activation, t_, lin_pos, assembly_number, session_type in zip(
                     axs,
                     activations,
@@ -2107,9 +2344,10 @@ class ProjectAnalyses:
                         ax=ax,
                         marker_legend="Ensemble activation",
                     )
-                    title_color = 'r' if poor_match else 'k'
+                    title_color = "r" if poor_match else "k"
                     ax.set_title(
-                        f"Ensemble #{assembly_number} in session {session_type}", color=title_color
+                        f"Ensemble #{assembly_number} in session {session_type}",
+                        color=title_color,
                     )
 
                     behavior_data = self.data[mouse][session_type].behavior.data
@@ -3046,8 +3284,9 @@ class ProjectAnalyses:
         fig, axs = plt.subplots(1, len(self.meta["session_types"]))
         fig.subplots_adjust(wspace=0)
 
-        for ax, session_type, title in zip(axs, self.meta["session_types"],
-                                    self.meta['session_labels']):
+        for ax, session_type, title in zip(
+            axs, self.meta["session_types"], self.meta["session_labels"]
+        ):
             boxes = ax.boxplot(
                 [SI[session_type][age] for age in ages], patch_artist=True, widths=0.75
             )
