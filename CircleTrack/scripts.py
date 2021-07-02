@@ -8,7 +8,7 @@ from CaImaging.util import (
     contiguous_regions,
     cluster,
 )
-from CaImaging.plotting import errorfill, beautify_ax
+from CaImaging.plotting import errorfill, beautify_ax, jitter_x
 from scipy.stats import spearmanr, zscore, circmean, kendalltau
 from scipy.spatial import distance
 from CircleTrack.SessionCollation import MultiAnimal
@@ -51,6 +51,8 @@ from CircleTrack.utils import (
     get_equivalent_local_path,
     find_reward_spatial_bins,
 )
+import pandas as pd
+import pingouin as pg
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -477,7 +479,18 @@ class ProjectAnalyses:
                 labels=ages,
                 patch_artist=True,
                 widths=0.75,
+                showfliers=False,
+                zorder=0,
             )
+
+            [ax.scatter(
+                jitter_x(np.ones_like(best_performance[age])*(i+1), 0.1),
+                best_performance[age],
+                color=color,
+                edgecolor='k',
+                zorder=1,
+            )
+             for i, (age, color) in enumerate(zip(ages, age_colors))]
             for patch, med, color in zip(
                 box["boxes"], box["medians"], ["cornflowerblue", "r"]
             ):
@@ -496,7 +509,7 @@ class ProjectAnalyses:
     def plot_best_performance_all_sessions(
         self,
         window=None,
-        performance_metric="d_prime",
+        performance_metric="CRs",
         downsample_trials=False,
     ):
         fig, axs = plt.subplots(1, len(self.meta["session_types"]), sharey=True)
@@ -567,8 +580,19 @@ class ProjectAnalyses:
                 ["Perseverative errors", "Unforgiveable errors"],
             ):
                 boxes = ax.boxplot(
-                    [rate["young"], rate["aged"]], patch_artist=True, widths=0.75
+                    [rate[age] for age in ages], patch_artist=True, widths=0.75,
+                    showfliers=False, zorder=0,
                 )
+
+                [ax.scatter(
+                    jitter_x(np.ones_like(rate[age])*(i+1), 0.05),
+                    rate[age],
+                    color=color,
+                    edgecolor='k',
+                    zorder=1,
+                )
+                    for i, (age, color) in enumerate(zip(ages, age_colors))]
+
                 for patch, med, color in zip(
                     boxes["boxes"], boxes["medians"], ["cornflowerblue", "r"]
                 ):
@@ -1367,7 +1391,7 @@ class ProjectAnalyses:
         mouse: str,
         session_types: tuple,
         classifier=GaussianNB,
-        licks_only=True,
+        licks_to_include='all',
         **classifier_kwargs,
     ):
         registered_ensembles = self.match_ensembles(mouse, session_types)
@@ -1384,10 +1408,17 @@ class ProjectAnalyses:
                 self.data[mouse][session_type].behavior.data["df"]["lick_port"]
             )
             activations = zscore(np.squeeze(session_activations[~poor_matches]), axis=0).T
-            if licks_only:
-                licking = licks > -1
+            licking = licks > -1
+
+            if licks_to_include=='all':
                 licks = licks[licking]
                 activations = activations[licking]
+            elif licks_to_include=='first':
+                licking = [l[0] for l in cluster(np.where(licking)[0])]
+                licks = licks[licking]
+                activations = activations[licking]
+            else:
+                pass
 
             X[t] = activations
             y[t] = licks
@@ -1401,7 +1432,7 @@ class ProjectAnalyses:
                                          mouse,
                                          session_types,
                                          classifier=GaussianNB,
-                                         licks_only=True,
+                                         licks_to_include='all',
                                          n_splits=6,
                                          show_plot=True,
                                          ax=None,
@@ -1409,7 +1440,7 @@ class ProjectAnalyses:
         X, y, classifier = self.fit_ensemble_lick_decoder(mouse,
                                                           session_types,
                                                           classifier=classifier,
-                                                          licks_only=licks_only,
+                                                          licks_to_include=licks_to_include,
                                                           **classifier_kwargs)
 
         X_split = np.array_split(X['test'], n_splits)
@@ -1421,9 +1452,85 @@ class ProjectAnalyses:
             if ax is None:
                 fig, ax = plt.subplots()
 
-            ax.plot(scores, 'k', alpha=0.5)
+            ax.plot(np.linspace(0, 1, n_splits), scores, 'k', alpha=0.2)
 
         return scores
+
+    def ensemble_lick_anova(self,
+                            classifier=GaussianNB,
+                            licks_to_include='all',
+                            n_splits=6,
+                            session_types=(('Goals3', 'Goals4'),
+                                           ('Goals4', 'Reversal')),
+                            **classifier_kwargs):
+        """
+        Do Bayesian decoding on which reward port is being licked. Then do
+        2-way repeated measures ANOVA on young and aged mice.
+
+        :param classifier:
+        :param licks_to_include:
+        :param n_splits:
+        :param session_types:
+        :param classifier_kwargs:
+        :return:
+        """
+        scores = dict()
+        fig, axs = plt.subplots(2, 2, sharey=True, figsize=(12,8.5))
+        time_bins = np.arange(n_splits)
+
+        mice_, session_pairs_, ages_, time_bins_ = [], [], [], []
+        for age, cohort_ax in zip(ages, axs):
+            scores[age] = []
+            for mouse in self.meta['grouped_mice'][age]:
+                for ax, session_pair in zip(cohort_ax, session_types):
+                    scores_ = self.registered_ensemble_lick_decoder(mouse,
+                                                                    session_pair,
+                                                                    classifier=classifier,
+                                                                    licks_to_include=licks_to_include,
+                                                                    n_splits=n_splits,
+                                                                    show_plot=True,
+                                                                    ax=ax,
+                                                                    **classifier_kwargs)
+
+                    scores[age].extend(scores_)
+                    session_pairs_.extend([session_pair for i in range(n_splits)])
+                    mice_.extend([mouse for i in range(n_splits)])
+                    ages_.extend([age for i in range(n_splits)])
+                    time_bins_.extend(time_bins)
+
+        df = pd.DataFrame(
+                {'mice': mice_,
+                 'age': ages_,
+                 'session_pairs': session_pairs_,
+                 'time_bins': time_bins_,
+                 'scores': np.hstack([scores[age] for age in ages])
+                 }
+            )
+        means = df.groupby(['age', 'session_pairs', 'time_bins']).mean()
+        sem = df.groupby(['age', 'session_pairs', 'time_bins']).sem()
+
+        for age, row_ax, color in zip(ages, axs, age_colors):
+            for session_pair, ax in zip(session_types, row_ax):
+                ax.errorbar(np.linspace(0, 1, n_splits),
+                            means.loc[age].loc[session_pair].to_numpy(),
+                            yerr=np.squeeze(sem.loc[age].loc[session_pair].to_numpy()),
+                            capsize=2, color=color)
+                ax.set_title(f"{age}, trained on {session_pair[0].replace('Goals', 'Training')}"
+                             f"\n tested on {session_pair[1].replace('Goals', 'Training')}")
+                ax.axhline(y=1/8, color='darkred')
+        fig.supxlabel('Time in session (normalized)')
+        fig.supylabel('Lick decoding accuracy')
+        fig.tight_layout()
+
+        anova_dfs = {
+            age: pg.rm_anova(df.loc[df['age']==age],
+                             dv='scores',
+                             within=['time_bins', 'session_pairs'],
+                             subject='mice')
+            for age in ages
+        }
+
+        return anova_dfs, df
 
     def ensemble_lick_decoding(self, mouse, session_type, licks_only=True):
         session = self.data[mouse][session_type]
@@ -1848,18 +1955,23 @@ class ProjectAnalyses:
         z_activations = zscore(assemblies["activations"], axis=1)
 
         # Binarize activations so that there are no strings of 1s spanning multiple frames.
-        binarized_activations = np.zeros_like(z_activations)
-        for i, assembly in enumerate(z_activations):
-            on_frames = contiguous_regions(assembly > z_threshold)[:, 0]
-            binarized_activations[i, on_frames] = 1
+        activations = np.zeros_like(z_activations)
+        if z_threshold is not None:
+            for i, assembly in enumerate(z_activations):
+                on_frames = contiguous_regions(assembly > z_threshold)[:, 0]
+                activations[i, on_frames] = 1
+        else:
+            activations = z_activations
 
         # If binning by time, sum activations every few seconds or minutes.
         if x == "time":
+            non_binary = True if z_threshold is None else False
             binned_activations = []
 
-            for assembly in binarized_activations:
+            for assembly in activations:
                 binned_activations.append(
-                    bin_transients(assembly[np.newaxis], x_bin_size, fps=15)[0]
+                    bin_transients(assembly[np.newaxis], x_bin_size, fps=15,
+                                   non_binary=non_binary)[0]
                 )
 
             binned_activations = np.vstack(binned_activations)
@@ -1870,9 +1982,9 @@ class ProjectAnalyses:
             df = session.behavior.data["df"]
 
             binned_activations = np.zeros(
-                (binarized_activations.shape[0], len(trial_bins))
+                (activations.shape[0], len(trial_bins))
             )
-            for i, assembly in enumerate(binarized_activations):
+            for i, assembly in enumerate(activations):
                 for j, (lower, upper) in enumerate(zip(trial_bins, trial_bins[1:])):
                     in_trial = (df["trials"] >= lower) & (df["trials"] < upper)
                     binned_activations[i, j] = np.sum(assembly[in_trial])
@@ -1990,11 +2102,19 @@ class ProjectAnalyses:
             fig.subplots_adjust(wspace=0)
             for ax, age, color in zip(axs, ages, ["cornflowerblue", "r"]):
                 boxes = ax.boxplot(
-                    p_changing_split_by_age[age], patch_artist=True, widths=0.75
+                    p_changing_split_by_age[age], patch_artist=True, widths=0.75,
+                    zorder=0
                 )
                 for patch, med in zip(boxes["boxes"], boxes["medians"]):
                     patch.set_facecolor(color)
                     med.set(color="k")
+
+                data_points = np.vstack(p_changing_split_by_age['young']).T
+                for mouse_data in data_points:
+                    ax.plot(jitter_x([1, 2], 0.05), mouse_data,
+                            'o-', color='k',
+                            markerfacecolor=color,
+                            zorder=1)
 
                 if age == "aged":
                     ax.tick_params(labelleft=False)
@@ -2048,9 +2168,10 @@ class ProjectAnalyses:
                 performance[age],
                 facecolors=c,
                 edgecolors="k",
+                alpha=0.5
             )
 
-        ax.set_xlabel("Proportion of ensembles with fading activation frequency")
+        ax.set_xlabel("Proportion of fading ensembles")
         ax.set_ylabel(ylabels[performance_metric])
         ax.legend(["Young", "Aged"])
 
@@ -2068,11 +2189,12 @@ class ProjectAnalyses:
         trend,
         x="time",
         x_bin_size=50,
-        plot_type="spiral",
+        plot_type="temporal",
         thresh=2.5,
+        trend_z_threshold=2.58,
     ):
         assembly_trends, binned_activations = self.find_assembly_trends(
-            mouse, session_type, x=x, x_bin_size=x_bin_size
+            mouse, session_type, x=x, x_bin_size=x_bin_size, z_threshold=trend_z_threshold,
         )
 
         session = self.data[mouse][session_type]
