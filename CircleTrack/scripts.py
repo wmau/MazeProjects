@@ -1457,6 +1457,85 @@ class ProjectAnalyses:
 
         return p_promiscuous_neurons
 
+    def find_ensemble_port_locations(self, mouse, session_type):
+        session = self.data[mouse][session_type]
+        n_assemblies = session.assemblies['significance'].nassemblies
+        ensemble_field_COMs = [session.get_ensemble_field_COM(i)
+                               for i in range(n_assemblies)]
+        port_locations = np.asarray(session.behavior.data['lin_ports'])
+
+        d = []
+        for ensemble in ensemble_field_COMs:
+            d.append(get_circular_error(ensemble, port_locations, 2*np.pi))
+        d = np.vstack(d)
+
+        closest_ports = np.argmin(d, axis=1)
+
+        return d, closest_ports
+
+    def plot_ensemble_port_locations(self, session_type, show_plot=True):
+        near_currently_rewarded = dict()
+        near_never_rewarded = dict()
+        near_previously_rewarded = dict()
+
+        for age in ages:
+            near_currently_rewarded[age] = []
+            near_never_rewarded[age] = []
+            near_previously_rewarded[age] = []
+
+            for mouse in self.meta['grouped_mice'][age]:
+                session = self.data[mouse][session_type]
+                d, closest_ports = self.find_ensemble_port_locations(mouse, session_type)
+                n_ensembles = closest_ports.shape[0]
+
+                if session_type == 'Reversal':
+                    previous_reward_ports = self.data[mouse]["Goals4"].behavior.data[
+                        "rewarded_ports"
+                    ]
+                else:
+                    previous_reward_ports = [False for i in range(8)]
+                current_rewarded_ports = session.behavior.data["rewarded_ports"]
+                never_rewarded_ports = ~(previous_reward_ports + current_rewarded_ports)
+
+                current_rewarded_ports = np.where(current_rewarded_ports)[0]
+                never_rewarded_ports = np.where(never_rewarded_ports)[0]
+                previously_rewarded_ports = np.where(previous_reward_ports)[0]
+
+                near_currently_rewarded[age].append(np.sum([ensemble_port in current_rewarded_ports
+                                                    for ensemble_port in closest_ports])/n_ensembles)
+
+                near_never_rewarded[age].append(np.sum([ensemble_port in never_rewarded_ports
+                                                        for ensemble_port in closest_ports])/n_ensembles)
+
+                near_previously_rewarded[age].append(np.sum([ensemble_port in previously_rewarded_ports
+                                                     for ensemble_port in closest_ports])/n_ensembles)
+
+        if show_plot:
+            fig, axs = plt.subplots(1, 2, sharey=True)
+
+            for ax, age in zip(axs, ages):
+                bottom = np.zeros_like(near_currently_rewarded[age])
+
+                mice = self.meta['grouped_mice'][age]
+                for p, label, c in zip(
+                        [near_currently_rewarded,
+                         near_never_rewarded,
+                         near_previously_rewarded],
+                    ['Currently rewarded',
+                     'Never rewarded',
+                     'Previously rewarded'],
+                    ['g', 'r', 'y']):
+                    ax.bar(mice, p[age], bottom=bottom, label=label, color=c)
+                    bottom += p[age]
+
+                ax.set_xticklabels(mice, rotation=45)
+
+            axs[0].set_ylabel('Proportion')
+            axs[1].legend()
+
+        pass
+
+
     def fit_ensemble_lick_decoder(
         self,
         mouse: str,
@@ -1497,6 +1576,10 @@ class ProjectAnalyses:
 
                 lick_inds = lick_ts[np.where(switched_ports!=0)[0]]
                 activation_inds = lick_inds + np.round(lag*fps).astype(int)
+
+                # Handles edge cases where indices exceed the recording duration.
+                activation_inds[activation_inds > activations.shape[0]] = activations.shape[0]-1
+                activation_inds[activation_inds < 0] = 0
 
             if licks_to_include=='all' or licks_to_include=='first':
                 licks = licks[lick_inds]
@@ -1546,7 +1629,7 @@ class ProjectAnalyses:
                                                           mouse,
                                                           session_types,
                                                           classifier=GaussianNB,
-                                                          licks_to_include='all',
+                                                          licks_to_include='first',
                                                           n_splits=6,
                                                           lag=0,
                                                           show_plot=True,
@@ -1599,7 +1682,7 @@ class ProjectAnalyses:
         return port_accuracies
 
     def ensemble_lick_anova(self,
-                            classifier=GaussianNB,
+                            classifier=RandomForestClassifier,
                             licks_to_include='all',
                             n_splits=6,
                             session_types=(('Goals3', 'Goals4'),
@@ -2064,7 +2147,7 @@ class ProjectAnalyses:
         fig.suptitle(f"Ensemble #{ensemble_number}")
 
     def find_assembly_trends(
-        self, mouse, session_type, x="time", z_threshold=2.5, x_bin_size=50
+        self, mouse, session_type, x="trial", z_threshold=None, x_bin_size=6
     ):
         """
         Find assembly "trends", whether they are increasing/decreasing in occurrence rate over the course
@@ -2318,7 +2401,7 @@ class ProjectAnalyses:
 
         ax.set_xlabel("Proportion of fading ensembles")
         ax.set_ylabel(ylabels[performance_metric])
-        ax.legend(["Young", "Aged"])
+        ax.legend(["Young", "Aged"], loc='lower right')
 
         p_changing = np.hstack([p_changing_split_by_age[age] for age in ages])
         perf = np.hstack([performance[age] for age in ages])

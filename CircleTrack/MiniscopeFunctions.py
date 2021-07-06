@@ -332,6 +332,12 @@ class CalciumSession:
 
         return ax
 
+    def get_ensemble_field_COM(self, ensemble_number):
+        COM = np.average(self.behavior.data['df']['lin_position'],
+                         weights=self.assemblies['activations'][ensemble_number])
+
+        return COM
+
     def spatial_activity_by_trial(self):
         """
         Plot activity trial by trial, binned in linearized space.
