@@ -21,6 +21,7 @@ from sklearn.model_selection import (
 )
 from sklearn.svm import LinearSVC
 from sklearn.linear_model import SGDClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.inspection import permutation_importance
 from sklearn.feature_selection import SequentialFeatureSelector, RFECV
@@ -544,11 +545,11 @@ class ProjectAnalyses:
         goals4 = "Goals4"
         reversal = "Reversal"
 
-        perseverative_licking_rates = dict()
-        straight_up_wrong_rates = dict()
+        perseverative_errors = dict()
+        unforgiveable_errors = dict()
         for age in ages:
-            perseverative_licking_rates[age] = []
-            straight_up_wrong_rates[age] = []
+            perseverative_errors[age] = []
+            unforgiveable_errors[age] = []
 
             for mouse in self.meta["grouped_mice"][age]:
                 behavior_data = self.data[mouse][reversal].behavior.data
@@ -563,12 +564,12 @@ class ProjectAnalyses:
                 perseverative_rate = np.sum(licks[:, previous_reward_ports]) / (
                     np.sum(previous_reward_ports) * licks.shape[0]
                 )
-                perseverative_licking_rates[age].append(perseverative_rate)
+                perseverative_errors[age].append(perseverative_rate)
 
                 straight_up_wrong_rate = np.sum(licks[:, other_ports]) / (
                     np.sum(other_ports) * licks.shape[0]
                 )
-                straight_up_wrong_rates[age].append(straight_up_wrong_rate)
+                unforgiveable_errors[age].append(straight_up_wrong_rate)
 
         if show_plot:
             fig, axs = plt.subplots(1, 2, sharey=True)
@@ -576,7 +577,7 @@ class ProjectAnalyses:
 
             for ax, rate, title in zip(
                 axs,
-                [perseverative_licking_rates, straight_up_wrong_rates],
+                [perseverative_errors, unforgiveable_errors],
                 ["Perseverative errors", "Unforgiveable errors"],
             ):
                 boxes = ax.boxplot(
@@ -608,7 +609,7 @@ class ProjectAnalyses:
             ]
             fig.legend(handles=patches, loc="lower right")
 
-        return perseverative_licking_rates, straight_up_wrong_rates
+        return perseverative_errors, unforgiveable_errors
 
     ############################ OVERLAP FUNCTIONS ############################
     def find_all_overlaps(self, show_plot=True):
@@ -1392,10 +1393,13 @@ class ProjectAnalyses:
         session_types: tuple,
         classifier=GaussianNB,
         licks_to_include='all',
+        lag=-1,
+        fps=15,
         **classifier_kwargs,
     ):
         registered_ensembles = self.match_ensembles(mouse, session_types)
         poor_matches = registered_ensembles['poor_matches']
+
         # Gather predictor neural data.
         X = dict()
         y = dict()
@@ -1408,15 +1412,25 @@ class ProjectAnalyses:
                 self.data[mouse][session_type].behavior.data["df"]["lick_port"]
             )
             activations = zscore(np.squeeze(session_activations[~poor_matches]), axis=0).T
-            licking = licks > -1
+            lick_bool = licks > -1
+            lick_inds = np.where(lick_bool)[0]
+            activation_inds = lick_inds + np.round(lag*fps).astype(int)
 
-            if licks_to_include=='all':
-                licks = licks[licking]
-                activations = activations[licking]
-            elif licks_to_include=='first':
-                licking = [l[0] for l in cluster(np.where(licking)[0])]
-                licks = licks[licking]
-                activations = activations[licking]
+            # if licks_to_include=='first':
+            #     lick_inds = np.where(np.diff(licks, prepend=0)>0)[0]
+            #     activation_inds = lick_inds + np.round(lag*fps).astype(int)
+
+            if licks_to_include=='first':
+                licks_only = licks[lick_bool]
+                switched_ports = np.diff(licks_only, prepend=0)
+                lick_ts = np.where(lick_bool)[0]
+
+                lick_inds = lick_ts[np.where(switched_ports!=0)[0]]
+                activation_inds = lick_inds + np.round(lag*fps).astype(int)
+
+            if licks_to_include=='all' or licks_to_include=='first':
+                licks = licks[lick_inds]
+                activations = activations[activation_inds]
             else:
                 pass
 
@@ -1431,15 +1445,17 @@ class ProjectAnalyses:
     def registered_ensemble_lick_decoder(self,
                                          mouse,
                                          session_types,
-                                         classifier=GaussianNB,
+                                         classifier=RandomForestClassifier,
                                          licks_to_include='all',
                                          n_splits=6,
+                                         lag=-1,
                                          show_plot=True,
                                          ax=None,
                                          **classifier_kwargs):
         X, y, classifier = self.fit_ensemble_lick_decoder(mouse,
                                                           session_types,
                                                           classifier=classifier,
+                                                          lag=lag,
                                                           licks_to_include=licks_to_include,
                                                           **classifier_kwargs)
 
@@ -1456,12 +1472,69 @@ class ProjectAnalyses:
 
         return scores
 
+    def registered_ensemble_lick_decoder_accuracy_by_port(self,
+                                                          mouse,
+                                                          session_types,
+                                                          classifier=GaussianNB,
+                                                          licks_to_include='all',
+                                                          n_splits=6,
+                                                          lag=0,
+                                                          show_plot=True,
+                                                          axs=None,
+                                                          **classifier_kwargs):
+        X, y, classifier = self.fit_ensemble_lick_decoder(mouse, session_types,
+                                                          classifier=classifier,
+                                                          lag=lag,
+                                                          licks_to_include=licks_to_include,
+                                                          **classifier_kwargs)
+
+        session = self.data[mouse][session_types[1]]
+        reward_locations = np.where(session.behavior.data['rewarded_ports'])[0]
+        if session_types[1] == 'Reversal':
+            previous_session = self.data[mouse]['Goals4']
+            previously_rewarded = np.where(previous_session.behavior.data['rewarded_ports'])[0]
+        else:
+            previously_rewarded = []
+
+        X_split = np.array_split(X['test'], n_splits)
+        y_split = np.array_split(y['test'], n_splits)
+        port_predictions = [[] for i in range(8)]
+        port_accuracies = nan_array((8, n_splits))
+        for t, (X_chunk, y_chunk) in enumerate(zip(X_split, y_split)):
+            predictions = classifier.predict(X_chunk)
+
+            for port in range(8):
+                port_prediction = predictions[y_chunk == port]
+                port_predictions[port].append(port_prediction)
+
+                port_accuracies[port, t] = np.sum(port_prediction==port)/len(port_prediction)
+
+        if show_plot:
+            if axs is None:
+                fig, axs = plt.subplots(4,2,sharey=True, sharex=True, figsize=(6.5, 10))
+
+            for port, (port_accuracy, ax) in enumerate(zip(port_accuracies,
+                                                             axs.flatten())):
+                if port in reward_locations:
+                    title_color = 'g'
+                elif port in previously_rewarded:
+                    title_color = 'y'
+                else:
+                    title_color = 'k'
+                ax.plot(port_accuracy, alpha=0.5)
+                ax.set_title(f'Port #{port}', color=title_color)
+
+            fig.tight_layout()
+
+        return port_accuracies
+
     def ensemble_lick_anova(self,
                             classifier=GaussianNB,
                             licks_to_include='all',
                             n_splits=6,
                             session_types=(('Goals3', 'Goals4'),
                                            ('Goals4', 'Reversal')),
+                            lag=0,
                             **classifier_kwargs):
         """
         Do Bayesian decoding on which reward port is being licked. Then do
@@ -1475,7 +1548,7 @@ class ProjectAnalyses:
         :return:
         """
         scores = dict()
-        fig, axs = plt.subplots(2, 2, sharey=True, figsize=(12,8.5))
+        fig, axs = plt.subplots(2, 2, sharey=True,  figsize=(12,8.5))
         time_bins = np.arange(n_splits)
 
         mice_, session_pairs_, ages_, time_bins_ = [], [], [], []
@@ -1489,6 +1562,7 @@ class ProjectAnalyses:
                                                                     licks_to_include=licks_to_include,
                                                                     n_splits=n_splits,
                                                                     show_plot=True,
+                                                                    lag=lag,
                                                                     ax=ax,
                                                                     **classifier_kwargs)
 
@@ -1532,36 +1606,36 @@ class ProjectAnalyses:
 
         return anova_dfs, df
 
-    def ensemble_lick_decoding(self, mouse, session_type, licks_only=True):
-        session = self.data[mouse][session_type]
-        ensemble_activations = zscore(session.assemblies["activations"], axis=0).T
-        licks = np.asarray(session.behavior.data["df"]["lick_port"])
-
-        if licks_only:
-            licking = licks > -1
-            ensemble_activations = ensemble_activations[licking]
-            licks = licks[licking]
-
-        clf = GaussianNB()
-        cv = StratifiedKFold(n_splits=3)
-
-        score, _, p_value = permutation_test_score(
-            clf,
-            ensemble_activations,
-            licks,
-            scoring="accuracy",
-            cv=cv,
-            n_permutations=500,
-            n_jobs=6,
-        )
-
-        # splits = list(cv.split(ensemble_activations, licks))
-        # X_train = ensemble_activations[splits[0][0]]
-        # y_train = licks[splits[0][0]]
-        #
-        # clf.fit(X_train, y_train)
-
-        return ensemble_activations, licks
+    # def ensemble_lick_decoding(self, mouse, session_type, licks_only=True):
+    #     session = self.data[mouse][session_type]
+    #     ensemble_activations = zscore(session.assemblies["activations"], axis=0).T
+    #     licks = np.asarray(session.behavior.data["df"]["lick_port"])
+    #
+    #     if licks_only:
+    #         licking = licks > -1
+    #         ensemble_activations = ensemble_activations[licking]
+    #         licks = licks[licking]
+    #
+    #     clf = GaussianNB()
+    #     cv = StratifiedKFold(n_splits=3)
+    #
+    #     score, _, p_value = permutation_test_score(
+    #         clf,
+    #         ensemble_activations,
+    #         licks,
+    #         scoring="accuracy",
+    #         cv=cv,
+    #         n_permutations=500,
+    #         n_jobs=6,
+    #     )
+    #
+    #     # splits = list(cv.split(ensemble_activations, licks))
+    #     # X_train = ensemble_activations[splits[0][0]]
+    #     # y_train = licks[splits[0][0]]
+    #     #
+    #     # clf.fit(X_train, y_train)
+    #
+    #     return ensemble_activations, licks
 
     def ensemble_feature_selector(
         self,
@@ -1720,7 +1794,8 @@ class ProjectAnalyses:
         window_size = sum(abs(time_window))
         n_frames = len(ensemble_activation)
 
-        fig, axs = plt.subplots(4, 2, sharex=True, figsize=(7, 10.5))
+        fig, axs = plt.subplots(4, 2, sharex=True, sharey=True,
+                                figsize=(7, 10.5))
 
         # For each port, collect timestamps before and after licks. If there was no lick,
         # instead collect timestamps around when the mouse arrived at that port.
@@ -2103,13 +2178,13 @@ class ProjectAnalyses:
             for ax, age, color in zip(axs, ages, ["cornflowerblue", "r"]):
                 boxes = ax.boxplot(
                     p_changing_split_by_age[age], patch_artist=True, widths=0.75,
-                    zorder=0
+                    zorder=0, showfliers=False,
                 )
                 for patch, med in zip(boxes["boxes"], boxes["medians"]):
                     patch.set_facecolor(color)
                     med.set(color="k")
 
-                data_points = np.vstack(p_changing_split_by_age['young']).T
+                data_points = np.vstack(p_changing_split_by_age[age]).T
                 for mouse_data in data_points:
                     ax.plot(jitter_x([1, 2], 0.05), mouse_data,
                             'o-', color='k',
@@ -2386,7 +2461,7 @@ class ProjectAnalyses:
         )
 
         if subset == "all":
-            subset = range(len(registered_patterns[0].shape[0]))
+            subset = range(registered_patterns['matched_patterns'].shape[1])
 
         for (
             s1_activation,
