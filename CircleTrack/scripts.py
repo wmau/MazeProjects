@@ -7,6 +7,7 @@ from CaImaging.util import (
     ScrollPlot,
     contiguous_regions,
     cluster,
+    stack_padding,
 )
 from CaImaging.plotting import errorfill, beautify_ax, jitter_x
 from scipy.stats import spearmanr, zscore, circmean, kendalltau
@@ -608,6 +609,75 @@ class ProjectAnalyses:
                 for c, label in zip(["cornflowerblue", "r"], ["Young", "Aged"])
             ]
             fig.legend(handles=patches, loc="lower right")
+
+        return perseverative_errors, unforgiveable_errors
+
+    def plot_perseverative_licking_over_session(self, session_type='Reversal', window_size=10,
+                                   trial_interval=4, show_plot=True, binarize_licks=True):
+        perseverative_errors = dict()
+        unforgiveable_errors = dict()
+        for age in ages:
+            perseverative_errors[age] = [[] for mouse in self.meta["grouped_mice"][age]]
+            unforgiveable_errors[age] = [[] for mouse in self.meta["grouped_mice"][age]]
+
+            for i, mouse in enumerate(self.meta["grouped_mice"][age]):
+                behavior = self.data[mouse][session_type].behavior
+                behavior_data = behavior.data
+
+                licks = behavior.rolling_window_licks(window_size, trial_interval)
+                if binarize_licks:
+                    licks = licks > 0
+
+                # Find previously rewarded, currently rewarded, and never
+                # rewarded ports.
+                previous_reward_ports = self.data[mouse]["Goals4"].behavior.data[
+                    "rewarded_ports"
+                ]
+                current_rewarded_ports = behavior_data["rewarded_ports"]
+                other_ports = ~(previous_reward_ports + current_rewarded_ports)
+                n_previous = np.sum(previous_reward_ports)
+                n_other = np.sum(other_ports)
+
+                for licks_this_window in licks:
+                    # Get perserverative errors.
+                    perseverative_errors[age][i].append(
+                        np.sum(licks_this_window[:, previous_reward_ports]) / (n_previous*licks_this_window.shape[0])
+                    )
+
+                    # Get unforgiveable errors.
+                    unforgiveable_errors[age][i].append(
+                        np.sum(licks_this_window[:, other_ports]) / (n_other*licks_this_window.shape[0])
+                    )
+
+        perseverative_errors = {age: stack_padding(perseverative_errors[age]) for age in ages}
+        unforgiveable_errors = {age: stack_padding(unforgiveable_errors[age]) for age in ages}
+
+        if show_plot:
+            ylabel = 'Error rate' if binarize_licks else 'Average number of licks'
+            if session_type == 'Reversal':
+                fig, axs = plt.subplots(1, 2, sharey=True, sharex=True)
+                fig.subplots_adjust(wspace=0)
+
+                for ax, rate, title in zip(
+                        axs,
+                        [perseverative_errors, unforgiveable_errors],
+                        ["Perseverative errors", "Unforgiveable errors"],
+                ):
+                    se = {age: sem(rate[age], axis=0) for age in ages}
+                    m = {age: np.nanmean(rate[age], axis=0) for age in ages}
+                    for c, age in zip(age_colors, ages):
+                        ax.plot(rate[age].T, color=c, alpha=0.1)
+                        errorfill(range(m[age].shape[0]), m[age], se[age], color=c, ax=ax)
+                        ax.set_title(title)
+                    fig.supxlabel('Trial blocks')
+                    fig.supylabel(ylabel)
+            else:
+                fig, ax = plt.subplots()
+                se = {age: sem(unforgiveable_errors[age], axis=0) for age in ages}
+                m = {age: np.nanmean(unforgiveable_errors[age], axis=0) for age in ages}
+                for c, age in zip(age_colors, ages):
+                    ax.plot(unforgiveable_errors[age].T, color=c, alpha=0.1)
+                    errorfill(range(m[age].shape[0]), m[age], se[age], color=c, ax=ax)
 
         return perseverative_errors, unforgiveable_errors
 
