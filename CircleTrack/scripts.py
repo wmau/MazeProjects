@@ -678,7 +678,8 @@ class ProjectAnalyses:
                 for c, age in zip(age_colors, ages):
                     ax.plot(unforgiveable_errors[age].T, color=c, alpha=0.1)
                     errorfill(range(m[age].shape[0]), m[age], se[age], color=c, ax=ax)
-
+                ax.set_xlabel('Trial blocks')
+                ax.set_ylabel(ylabel)
         return perseverative_errors, unforgiveable_errors
 
     ############################ OVERLAP FUNCTIONS ############################
