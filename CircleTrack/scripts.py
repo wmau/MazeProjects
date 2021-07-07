@@ -1142,6 +1142,7 @@ class ProjectAnalyses:
         classifier=BernoulliNB(),
         n_spatial_bins=36,
         show_plot=True,
+        predictors='cells',
     ):
         """
         Use a naive Bayes decoder to classify spatial position.
@@ -1170,9 +1171,19 @@ class ProjectAnalyses:
         """
         # Get sessions and neural activity.
         sessions = [self.data[mouse][session] for session in training_and_test_sessions]
-        S_list = self.rearrange_neurons(
-            mouse, training_and_test_sessions, data_type="S_binary"
-        )
+        if predictors == 'cells':
+            neural_data = self.rearrange_neurons(
+                mouse, training_and_test_sessions, data_type="S_binary"
+            )
+        elif predictors == 'ensembles':
+            neural_data = []
+            registered_ensembles = self.match_ensembles(mouse,
+                                                        training_and_test_sessions)
+            poor_matches = registered_ensembles['poor_matches']
+            for session_activations in registered_ensembles["matched_activations"]:
+                neural_data.append(zscore(np.squeeze(session_activations[~poor_matches]), axis=0))
+        else:
+            raise ValueError
         fps = 15
 
         running = [
@@ -1181,42 +1192,36 @@ class ProjectAnalyses:
         ]
 
         # Separate neural data into training and test.
-        predictor_data = {
-            train_test_label: S[:, isrunning].T
-            for S, train_test_label, isrunning in zip(
-                S_list, ["train", "test"], running
-            )
-        }
-        # predictor_data = {
-        #     train_test_label: bin_transients(S, time_bin_size, fps=fps).T
-        #     for S, train_test_label in zip(S_list, ["train", "test"])
-        # }
+        X = {'train': neural_data[0][:, running[0]].T}
+        X['test'] = neural_data[1].T
 
         # Separate spatially binned location into training and test.
-        outcome_data = dict()
-        for session, train_test_label, isrunning in zip(
-            sessions, ["train", "test"], running
-        ):
-            lin_position = session.behavior.data["df"]["lin_position"].values[isrunning]
-            outcome_data[train_test_label] = format_spatial_location_for_decoder(
-                lin_position,
-                n_spatial_bins=n_spatial_bins,
-                time_bin_size=1 / fps,
-                fps=fps,
-                classifier=classifier,
-            )
+        y = {'train': format_spatial_location_for_decoder(
+            sessions[0].behavior.data['df']['lin_position'].values[running[0]],
+            n_spatial_bins=n_spatial_bins,
+            time_bin_size=1/fps,
+            fps=fps,
+            classifier=classifier,
+        )}
+        y['test'] = format_spatial_location_for_decoder(
+            sessions[1].behavior.data['df']['lin_position'].values,
+            n_spatial_bins=n_spatial_bins,
+            time_bin_size=1/fps,
+            fps=fps,
+            classifier=classifier,
+        )
 
         # Fit the classifier and test on test data.
-        classifier.fit(predictor_data["train"], outcome_data["train"])
-        y_predicted = classifier.predict(predictor_data["test"])
+        classifier.fit(X["train"], y["train"])
+        y_predicted = classifier.predict(X["test"])
 
         # Plot real and predicted spatial location.
         if show_plot:
             fig, ax = plt.subplots()
-            ax.plot(outcome_data["test"], alpha=0.5)
-            ax.plot(y_predicted, alpha=0.5)
+            ax.plot(y["test"][running[1]], alpha=0.5)
+            ax.plot(y_predicted[running[1]], alpha=0.5)
 
-        return y_predicted, predictor_data, outcome_data, classifier
+        return y_predicted, X, y, classifier, running
 
         # X_test = S_list[1].T
         # y_predicted = classifier.predict(X_test)
@@ -1231,41 +1236,100 @@ class ProjectAnalyses:
         mouse,
         classifier=BernoulliNB(),
         n_spatial_bins=36,
-        error_time_bin_size=300,
+        error_time_bin_size=300*15,
+        axs=None,
+        color='cornflowerblue',
+        predictors='cells',
     ):
-        goals_to_goals_decoding_error = self.find_decoding_error(
+
+        decoding_errors = dict()
+        for key, session_pair in zip(['Training', 'Reversal'],
+                                     [('Goals3', 'Goals4'), ('Goals4', 'Reversal')]):
+
+            decoding_errors[key] = self.find_decoding_error(
             mouse,
-            ("Goals3", "Goals4"),
+            session_pair,
             classifier=classifier,
             n_spatial_bins=n_spatial_bins,
             error_time_bin_size=error_time_bin_size,
             show_plot=False,
+            predictors=predictors,
         )
+        time_bins = range(len(decoding_errors['Training']))
 
-        goals_to_reversal_decoding_error = self.find_decoding_error(
-            mouse,
-            ("Goals4", "Reversal"),
-            classifier=classifier,
-            n_spatial_bins=n_spatial_bins,
-            error_time_bin_size=error_time_bin_size,
-            show_plot=False,
-        )
-
-        time_bins_goals = range(len(goals_to_goals_decoding_error))
-        time_bins_reversal = (
-            np.arange(len(goals_to_reversal_decoding_error)) + time_bins_goals[-1] + 1
-        )
-
-        fig, ax = plt.subplots()
-        for errors, x in zip(
-            [goals_to_goals_decoding_error, goals_to_reversal_decoding_error],
-            [time_bins_goals, time_bins_reversal],
+        if axs is None:
+            fig, axs = plt.subplots(1,2,sharey=True, sharex=True)
+        for errors, ax in zip(
+                [decoding_errors['Training'], decoding_errors['Reversal']],
+                axs,
         ):
-            means = [np.mean(error) for error in errors]
-            sems = [np.std(error) / np.sqrt(error.shape[0]) for error in errors]
-            ax.errorbar(x, means, yerr=sems)
-        ax.set_ylabel("Decoding error [spatial bins]")
-        ax.set_xlabel("Time bins")
+            means = [np.nanmean(error) for error in errors]
+            #sems = [np.nanstd(error) / np.sqrt(error.shape[0]) for error in errors]
+            ax.plot(time_bins, means, color=color, alpha=0.2)
+
+        return decoding_errors
+
+    def spatial_decoding_anova(
+            self,
+            classifier=BernoulliNB(),
+            n_spatial_bins=36,
+            error_time_bin_size=300*15,
+            predictors='cells',
+    ):
+        fig, axs = plt.subplots(2,2,sharex=True, sharey=True)
+        fig.subplots_adjust(wspace=0)
+        sessions = ['Training', 'Reversal']
+        decoding_errors = dict()
+        errors_, sessions_, mice_, ages_, time_bins_, = [], [], [], [], []
+        for age, cohort_axs, color in zip(ages, axs, age_colors):
+            decoding_errors[age] = {key: [] for key in sessions}
+            for mouse in self.meta['grouped_mice'][age]:
+                errors = \
+                    self.plot_reversal_decoding_error(mouse,
+                                                      classifier=classifier,
+                                                      n_spatial_bins=n_spatial_bins,
+                                                      error_time_bin_size=error_time_bin_size,
+                                                      axs=cohort_axs,
+                                                      color=color,
+                                                      predictors=predictors,
+                                                      )
+                for session in sessions:
+                    mouse_means = [np.nanmean(error) for error in errors[session]]
+                    n_bins = len(mouse_means)
+                    decoding_errors[age][session].append(mouse_means)
+
+                    errors_.extend(mouse_means)
+                    sessions_.extend([session for i in range(n_bins)])
+                    mice_.extend([mouse for i in range(n_bins)])
+                    ages_.extend([age for i in range(n_bins)])
+                    time_bins_.extend(np.arange(n_bins))
+
+            for session, session_ax in zip(['Training', 'Reversal'], cohort_axs):
+                errors_arr = np.vstack(decoding_errors[age][session])
+                m = np.nanmean(errors_arr, axis=0)
+                se = sem(errors_arr, axis=0)
+                session_ax.errorbar(range(len(m)), m, yerr=se, color=color, capsize=1)
+
+        fig.supylabel('Mean decoding error (spatial bins)')
+        fig.supxlabel('Time bins')
+        df = pd.DataFrame(
+            {'mice': mice_,
+             'age': ages_,
+             'session_pairs': sessions_,
+             'time_bins': time_bins_,
+             'decoding_errors': errors_,
+             }
+        )
+
+        anova_dfs = {
+            age: pg.rm_anova(df.loc[df['age']==age],
+                             dv='decoding_errors',
+                             within=['time_bins', 'session_pairs'],
+                             subject='mice')
+            for age in ages
+        }
+
+        return decoding_errors, df, anova_dfs
 
     def find_decoding_error(
         self,
@@ -1275,6 +1339,7 @@ class ProjectAnalyses:
         n_spatial_bins=36,
         show_plot=True,
         error_time_bin_size=300,
+        predictors='cells',
     ):
         """
         Find decoding error between predicted and real spatially
@@ -1284,17 +1349,20 @@ class ProjectAnalyses:
         ---
         See decode_place().
         """
-        y_predicted, predictor_data, outcome_data, classifier = self.decode_place(
+        y_predicted, predictor_data, outcome_data, classifier, running = self.decode_place(
             mouse,
             training_and_test_sessions,
             classifier=classifier,
             n_spatial_bins=n_spatial_bins,
             show_plot=False,
+            predictors=predictors,
         )
 
         d = get_circular_error(
             y_predicted, outcome_data["test"], n_spatial_bins=n_spatial_bins
         )
+        d = d.astype(float)
+        d[~running[1]] = np.nan
 
         bins = make_bins(d, error_time_bin_size, axis=0)
         binned_d = np.split(d, bins)
@@ -1302,8 +1370,8 @@ class ProjectAnalyses:
         if show_plot:
             fig, ax = plt.subplots()
             time_bins = range(len(binned_d))
-            mean_errors = [np.mean(dist) for dist in binned_d]
-            sem_errors = [np.std(dist) / np.sqrt(dist.shape[0]) for dist in binned_d]
+            mean_errors = [np.nanmean(dist) for dist in binned_d]
+            sem_errors = [np.nanstd(dist) / np.sqrt(dist.shape[0]) for dist in binned_d]
             ax.errorbar(time_bins, mean_errors, yerr=sem_errors)
 
         return binned_d
@@ -1536,6 +1604,14 @@ class ProjectAnalyses:
 
         pass
 
+    def fit_ensemble_spatial_decoder(
+            self,
+            mouse: str,
+            session_types: tuple,
+            classifier=GaussianNB,
+
+    ):
+        pass
 
     def fit_ensemble_lick_decoder(
         self,
