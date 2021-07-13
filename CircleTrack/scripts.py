@@ -2223,8 +2223,9 @@ class ProjectAnalyses:
             fig.supylabel("Lick #")
         fig.suptitle(f"Ensemble #{ensemble_number}")
 
-    def find_assembly_trends(
-        self, mouse, session_type, x="trial", z_threshold=None, x_bin_size=6
+    def find_activity_trends(
+        self, mouse, session_type, x="trial", z_threshold=None, x_bin_size=6,
+            data_type='ensembles', alpha=0.05,
     ):
         """
         Find assembly "trends", whether they are increasing/decreasing in occurrence rate over the course
@@ -2254,28 +2255,33 @@ class ProjectAnalyses:
             With keys 'increasing', 'decreasing' or 'no trend' containing lists of assembly indices.
         """
         session = self.data[mouse][session_type]
-        assemblies = session.assemblies
 
-        # z-score all assembly activations within assembly.
-        z_activations = zscore(assemblies["activations"], axis=1)
+        if data_type == 'ensembles':
+            data = zscore(session.assemblies["activations"], nan_policy='omit', axis=1)
+        elif data_type in ['S', 'C']:
+            data = zscore(session.imaging[data_type], nan_policy='omit', axis=1)
+        elif data_type == 'S_binary':
+            data = session.imaging[data_type]
+        else:
+            raise ValueError
 
         # Binarize activations so that there are no strings of 1s spanning multiple frames.
-        activations = np.zeros_like(z_activations)
+        activations = np.zeros_like(data)
         if z_threshold is not None:
-            for i, assembly in enumerate(z_activations):
-                on_frames = contiguous_regions(assembly > z_threshold)[:, 0]
+            for i, unit in enumerate(data):
+                on_frames = contiguous_regions(unit > z_threshold)[:, 0]
                 activations[i, on_frames] = 1
         else:
-            activations = z_activations
+            activations = data
 
         # If binning by time, sum activations every few seconds or minutes.
         if x == "time":
             non_binary = True if z_threshold is None else False
             binned_activations = []
 
-            for assembly in activations:
+            for unit in activations:
                 binned_activations.append(
-                    bin_transients(assembly[np.newaxis], x_bin_size, fps=15,
+                    bin_transients(unit[np.newaxis], x_bin_size, fps=15,
                                    non_binary=non_binary)[0]
                 )
 
@@ -2289,28 +2295,29 @@ class ProjectAnalyses:
             binned_activations = np.zeros(
                 (activations.shape[0], len(trial_bins))
             )
-            for i, assembly in enumerate(activations):
+            for i, unit in enumerate(activations):
                 for j, (lower, upper) in enumerate(zip(trial_bins, trial_bins[1:])):
                     in_trial = (df["trials"] >= lower) & (df["trials"] < upper)
-                    binned_activations[i, j] = np.sum(assembly[in_trial])
+                    binned_activations[i, j] = np.sum(unit[in_trial])
 
         else:
             raise ValueError("Invalid value for x.")
 
-        # Group assemblies into either increasing, decreasing, or no trend in occurrence rate.
-        assembly_trends = {
+        # Group cells/ensembles into either increasing, decreasing, or no trend in occurrence rate.
+        trends = {
             "no trend": [],
             "decreasing": [],
             "increasing": [],
         }
-        for i, assembly in enumerate(binned_activations):
-            mk_test = mk.original_test(assembly)
-            assembly_trends[mk_test.trend].append(i)
+        for i, unit in enumerate(binned_activations):
+            mk_test = mk.original_test(unit, alpha=alpha)
+            trends[mk_test.trend].append(i)
 
-        return assembly_trends, binned_activations
+        return trends, binned_activations
 
     def plot_assembly_trends(
-        self, x="time", x_bin_size=60, z_threshold=2.58, show_plot=True
+        self, x="trial", x_bin_size=6, z_threshold=None, data_type='ensemble',
+            show_plot=True
     ):
         session_types = self.meta["session_types"]
         session_labels = self.meta["session_labels"]
@@ -2327,12 +2334,13 @@ class ProjectAnalyses:
         trend_strs = ["no trend", "decreasing", "increasing"]
         for i, mouse in enumerate(self.meta["mice"]):
             for j, session_type in enumerate(session_types):
-                assembly_trends = self.find_assembly_trends(
+                assembly_trends = self.find_activity_trends(
                     mouse,
                     session_type,
                     x=x,
                     x_bin_size=x_bin_size,
                     z_threshold=z_threshold,
+                    data_type=data_type,
                 )[0]
 
                 for h, trend in enumerate(trend_strs):
@@ -2379,15 +2387,17 @@ class ProjectAnalyses:
 
     def plot_proportion_changing_ensembles(
         self,
-        x="time",
-        x_bin_size=60,
-        z_threshold=2.58,
+        x="trial",
+        x_bin_size=6,
+        z_threshold=None,
         sessions=("Goals4", "Reversal"),
         trend="decreasing",
+        data_type='ensemble',
         show_plot=True,
     ):
         ensemble_trends, ensemble_counts = self.plot_assembly_trends(
-            x=x, x_bin_size=x_bin_size, z_threshold=z_threshold, show_plot=False
+            x=x, x_bin_size=x_bin_size, z_threshold=z_threshold, data_type=data_type,
+            show_plot=False
         )
         p_changing = ensemble_counts.sel(trend=trend) / ensemble_counts.sum(dim="trend")
         p_changing_split_by_age = dict()
@@ -2438,15 +2448,17 @@ class ProjectAnalyses:
 
     def correlate_prop_changing_ensembles_to_behavior(
         self,
-        x="time",
-        x_bin_size=60,
-        z_threshold=2.58,
+        x="trial",
+        x_bin_size=6,
+        z_threshold=None,
         trend="decreasing",
         performance_metric="CRs",
+        data_type='ensemble',
         ax=None,
     ):
         ensemble_trends, ensemble_counts = self.plot_assembly_trends(
-            x=x, x_bin_size=x_bin_size, z_threshold=z_threshold, show_plot=False
+            x=x, x_bin_size=x_bin_size, z_threshold=z_threshold, data_type=data_type,
+            show_plot=False
         )
         p_changing = ensemble_counts.sel(trend=trend) / ensemble_counts.sum(dim="trend")
 
@@ -2498,7 +2510,7 @@ class ProjectAnalyses:
         thresh=2.5,
         trend_z_threshold=2.58,
     ):
-        assembly_trends, binned_activations = self.find_assembly_trends(
+        assembly_trends, binned_activations = self.find_activity_trends(
             mouse, session_type, x=x, x_bin_size=x_bin_size, z_threshold=trend_z_threshold,
         )
 
