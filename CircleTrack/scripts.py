@@ -889,6 +889,7 @@ class ProjectAnalyses:
         # Gather neurons and build dictionaries for HoloMap.
         daily_rasters = []
         placefields = []
+        ax_titles = [title.replace('Goals', 'Training') for title in session_types]
         for i, session_type in enumerate(session_types):
             neurons_to_analyze = trimmed_map.iloc[trimmed_map.index.isin(global_idx), i]
 
@@ -933,6 +934,7 @@ class ProjectAnalyses:
                 ncols=2,
                 rasters=daily_rasters,
                 tuning_curves=placefields,
+                titles=ax_titles,
             )
 
         # List of dictionaries. Do HoloMap(daily_rasters) in a
