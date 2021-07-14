@@ -8,6 +8,7 @@ from CaImaging.util import (
     contiguous_regions,
     cluster,
     stack_padding,
+    distinct_colors,
 )
 from CaImaging.plotting import errorfill, beautify_ax, jitter_x
 from scipy.stats import spearmanr, zscore, circmean, kendalltau
@@ -37,6 +38,7 @@ from CircleTrack.Assemblies import (
     find_memberships,
     plot_pattern,
 )
+from pylab import cm
 import xarray as xr
 import pymannkendall as mk
 from sklearn.metrics.pairwise import cosine_similarity
@@ -732,6 +734,9 @@ class ProjectAnalyses:
             ax.imshow(overlaps)
 
         return overlaps
+
+    ############################ SINGLE CELL FUNCTIONS ############################
+
 
     ############################ PLACE FIELD FUNCTIONS ############################
     def map_placefields(self, mouse, session_types, neurons_from_session1=None):
@@ -2227,7 +2232,7 @@ class ProjectAnalyses:
 
     def find_activity_trends(
         self, mouse, session_type, x="trial", z_threshold=None, x_bin_size=6,
-            data_type='ensembles', alpha=0.05,
+            data_type='ensembles', subset=None, alpha=0.05,
     ):
         """
         Find assembly "trends", whether they are increasing/decreasing in occurrence rate over the course
@@ -2267,6 +2272,9 @@ class ProjectAnalyses:
         else:
             raise ValueError
 
+        if subset is not None:
+            data = data[subset]
+
         # Binarize activations so that there are no strings of 1s spanning multiple frames.
         activations = np.zeros_like(data)
         if z_threshold is not None:
@@ -2278,13 +2286,11 @@ class ProjectAnalyses:
 
         # If binning by time, sum activations every few seconds or minutes.
         if x == "time":
-            non_binary = True if z_threshold is None else False
             binned_activations = []
-
             for unit in activations:
                 binned_activations.append(
                     bin_transients(unit[np.newaxis], x_bin_size, fps=15,
-                                   non_binary=non_binary)[0]
+                                   non_binary=True if z_threshold is None else False)[0]
                 )
 
             binned_activations = np.vstack(binned_activations)
@@ -2300,7 +2306,7 @@ class ProjectAnalyses:
             for i, unit in enumerate(activations):
                 for j, (lower, upper) in enumerate(zip(trial_bins, trial_bins[1:])):
                     in_trial = (df["trials"] >= lower) & (df["trials"] < upper)
-                    binned_activations[i, j] = np.sum(unit[in_trial])
+                    binned_activations[i, j] = np.mean(unit[in_trial])
 
         else:
             raise ValueError("Invalid value for x.")
@@ -2311,14 +2317,84 @@ class ProjectAnalyses:
             "decreasing": [],
             "increasing": [],
         }
-        for i, unit in enumerate(binned_activations):
-            mk_test = mk.original_test(unit, alpha=alpha)
-            trends[mk_test.trend].append(i)
+        if subset is not None:
+            for i, unit in zip(subset, binned_activations):
+                mk_test = mk.original_test(unit, alpha=alpha)
+                trends[mk_test.trend].append(i)
+        else:
+            for i, unit in enumerate(binned_activations):
+                mk_test = mk.original_test(unit, alpha=alpha)
+                trends[mk_test.trend].append(i)
 
         return trends, binned_activations
 
+
+
+    def find_proportion_changing_cells(self, mouse, session_type, ensemble_trends=None, x='trial', x_bin_size=6, z_threshold=None,
+                                       ensemble_trend='decreasing', cell_trend='decreasing'):
+        """
+        Calculate the proportion of cells that follow a particular trend (no trend, decreasing, or increasing) that are members in
+        ensembles that follow another trend (no trend, decreasing, or increasing).
+
+        """
+        # Give the option to pre-compute this.
+        if ensemble_trends is None:
+            ensemble_trends = self.find_activity_trends(mouse, session_type, x=x, x_bin_size=x_bin_size, z_threshold=z_threshold,
+                                                        data_type='ensembles')[0]
+
+        patterns = self.data[mouse][session_type].assemblies['patterns']
+        prop_changing_cells = []
+        for fading_ensemble in ensemble_trends[ensemble_trend]:
+            ensemble_members = find_members(patterns[fading_ensemble])[1]
+            cell_trends = self.find_activity_trends(mouse, session_type, x=x, x_bin_size=x_bin_size,
+                                                    z_threshold=z_threshold, data_type='S', subset=ensemble_members)[0]
+
+            prop_changing_cells.append(len(cell_trends[cell_trend]) / len(ensemble_members))
+
+        return prop_changing_cells
+
+    def plot_proportion_fading_cells_in_ensembles(self,
+                                                  session_type='Reversal',
+                                                  x='trial',
+                                                  x_bin_size=6,
+                                                  z_threshold=None,):
+
+        prop_fading_cells = dict()
+        for age in ages:
+            prop_fading_cells[age] = {'trendless ensembles': [],
+                                      'fading ensembles': []}
+            for mouse in self.meta['grouped_mice'][age]:
+                ensemble_trends = self.find_activity_trends(mouse, session_type,
+                                                            x=x, x_bin_size=x_bin_size,
+                                                            z_threshold=z_threshold)[0]
+
+                for key, trend in zip(prop_fading_cells[age].keys(), ['no trend', 'decreasing']):
+                    prop_fading_cells[age][key].append(self.find_proportion_changing_cells(mouse, session_type,
+                                                                                           ensemble_trends=ensemble_trends,
+                                                                                           x=x, x_bin_size=x_bin_size,
+                                                                                           z_threshold=z_threshold,
+                                                                                           ensemble_trend=trend))
+        n_mice = len(self.meta['mice'])
+        colors = distinct_colors(n_mice)
+        i = 0
+        mean0 = lambda x: np.nanmean(x) if x else 0
+        fig, axs = plt.subplots(1,2,sharey=True)
+        for age, ax in zip(ages, axs):
+            for trendless, fading in zip(prop_fading_cells[age]['trendless ensembles'], prop_fading_cells[age]['fading ensembles']):
+                x = np.hstack((np.ones_like(trendless), np.ones_like(fading)*2))
+                ax.scatter(jitter_x(x, 0.05), np.hstack((trendless, fading)), alpha=0.2, color=colors[i])
+                ax.plot(jitter_x([1,2]), np.hstack((mean0(trendless), mean0(fading))), 'o-', color=colors[i])
+                ax.set_xticks([1, 2])
+                ax.set_xticklabels(['Trendless \nensembles', 'Fading \nensembles'], rotation=45)
+                i += 1
+
+        axs[0].set_ylabel('Proportion fading cells')
+        fig.tight_layout()
+
+        return prop_fading_cells
+
     def plot_assembly_trends(
-        self, x="trial", x_bin_size=6, z_threshold=None, data_type='ensemble',
+        self, x="trial", x_bin_size=6, z_threshold=None, data_type='ensembles',
             show_plot=True
     ):
         session_types = self.meta["session_types"]
@@ -2394,7 +2470,7 @@ class ProjectAnalyses:
         z_threshold=None,
         sessions=("Goals4", "Reversal"),
         trend="decreasing",
-        data_type='ensemble',
+        data_type='ensembles',
         show_plot=True,
     ):
         ensemble_trends, ensemble_counts = self.plot_assembly_trends(
@@ -2455,7 +2531,7 @@ class ProjectAnalyses:
         z_threshold=None,
         trend="decreasing",
         performance_metric="CRs",
-        data_type='ensemble',
+        data_type='ensembles',
         ax=None,
     ):
         ensemble_trends, ensemble_counts = self.plot_assembly_trends(
