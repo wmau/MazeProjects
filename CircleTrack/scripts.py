@@ -29,7 +29,7 @@ from sklearn.inspection import permutation_importance
 from sklearn.feature_selection import SequentialFeatureSelector, RFECV
 import numpy as np
 import os
-from CircleTrack.plotting import plot_daily_rasters, spiral_plot, highlight_column
+from CircleTrack.plotting import plot_daily_rasters, spiral_plot, highlight_column, plot_port_activations
 from CaImaging.Assemblies import preprocess_multiple_sessions, lapsed_activation
 from CircleTrack.Assemblies import (
     plot_assembly,
@@ -2002,8 +2002,9 @@ class ProjectAnalyses:
 
         return lapsed_assemblies, spiking
 
-    def port_vicinity_ensemble_activation(
-        self, mouse, session_type, ensemble_number, time_window=(1, 1), dist_thresh=3
+    def scrollplot_port_vicinity_activity(
+        self, mouse, session_type, inds=None, data_type='ensembles',
+            time_window=(0.5, 0.5), dist_thresh=3
     ):
         # Abbreviate references.
         session = self.data[mouse][session_type]
@@ -2015,7 +2016,17 @@ class ProjectAnalyses:
             np.vstack((df["x"], df["y"])).T, session.behavior.data["ports"]
         )
         rewarded = np.where(session.behavior.data["rewarded_ports"])[0]
-        ensemble_activation = session.assemblies["activations"][ensemble_number]
+
+        if data_type == 'ensembles':
+            neural_data = session.assemblies['activations']
+        elif data_type in ['C', 'S', 'S_binary']:
+            neural_data = session.imaging[data_type]
+        else:
+            raise ValueError
+
+        if inds is not None:
+            neural_data = neural_data[inds]
+        n_frames = neural_data.shape[1]
 
         # If looking at the Reversal session, also
         if session_type == "Reversal":
@@ -2029,99 +2040,96 @@ class ProjectAnalyses:
         t_xaxis = np.arange(-time_window[0], time_window[1] + 1 / fps, 1 / fps)
         time_window = np.round(np.asarray([t * fps for t in time_window])).astype(int)
         window_size = sum(abs(time_window))
-        n_frames = len(ensemble_activation)
-
-        fig, axs = plt.subplots(4, 2, sharex=True, sharey=True,
-                                figsize=(7, 10.5))
 
         # For each port, collect timestamps before and after licks. If there was no lick,
         # instead collect timestamps around when the mouse arrived at that port.
-        port_activations = []
-        for port, ax in enumerate(axs.flatten()):
-            lick_activations = []
-            passed_activations = []
+        all_activity = []
+        n_lick_laps = []
+        for unit, activity in enumerate(neural_data):
+            port_activations = []
 
-            for trial in range(n_trials):
-                # Get timestamps when the mouse licked if at all.
-                on_trial = trials == trial
-                licks_ = np.where(np.logical_and(licks == port, on_trial))[0]
-                did_not_lick = licks_.size == 0
+            for port in range(8):
+                lick_activations = []
+                passed_activations = []
 
-                # If the mouse didn't lick, get the first timestamp when the mouse got close
-                # to the port.
-                if did_not_lick:
-                    near_port = np.where(
-                        np.logical_and(
-                            on_trial, distance_to_port[:, port] < dist_thresh
-                        )
-                    )[0]
+                for trial in range(n_trials):
+                    # Get timestamps when the mouse licked if at all.
+                    on_trial = trials == trial
+                    licks_ = np.where(np.logical_and(licks == port, on_trial))[0]
+                    did_not_lick = licks_.size == 0
 
-                    if len(near_port) > 0:
-                        t0 = near_port[0]
+                    # If the mouse didn't lick, get the first timestamp when the mouse got close
+                    # to the port.
+                    if did_not_lick:
+                        near_port = np.where(
+                            np.logical_and(
+                                on_trial, distance_to_port[:, port] < dist_thresh
+                            )
+                        )[0]
+
+                        if len(near_port) > 0:
+                            t0 = near_port[0]
+                        else:
+                            activation = nan_array(window_size)
+                            passed_activations.append(activation)
+                            continue
+
                     else:
-                        activation = nan_array(window_size)
+                        t0 = licks_[0]
+
+                    pre = t0 - time_window[0]
+                    post = t0 + time_window[1]
+                    # Handles edge cases where the window extends past the session start
+                    # or end. In those cases, pad with nans.
+                    front_pad, back_pad = 0, 0
+                    if pre < 0:
+                        front_pad = 0 - pre
+                        pre = 0
+                    if post > n_frames:
+                        back_pad = post - n_frames
+                        post = n_frames
+                    window_ind = slice(pre, post)
+                    activation = np.pad(
+                        activity[window_ind],
+                        (front_pad, back_pad),
+                        mode="constant",
+                        constant_values=np.nan,
+                    )
+
+                    if did_not_lick:
                         passed_activations.append(activation)
-                        continue
+                    else:
+                        lick_activations.append(activation)
 
+                # Handles edge cases where the mouse didn't lick at a particular port.
+                if not lick_activations:
+                    port_activation = passed_activations
                 else:
-                    t0 = licks_[0]
+                    port_activation = np.vstack((lick_activations, passed_activations))
 
-                pre = t0 - time_window[0]
-                post = t0 + time_window[1]
-                # Handles edge cases where the window extends past the session start
-                # or end. In those cases, pad with nans.
-                front_pad = 0
-                back_pad = 0
-                if pre < 0:
-                    front_pad = 0 - pre
-                    pre = 0
-                if post > n_frames:
-                    back_pad = post - n_frames
-                    post = n_frames
-                window_ind = slice(pre, post)
-                activation = ensemble_activation[window_ind]
-                activation = np.pad(
-                    activation,
-                    (front_pad, back_pad),
-                    mode="constant",
-                    constant_values=np.nan,
-                )
+                if len(n_lick_laps) < 8:
+                    n_lick_laps.append(len(lick_activations))
+                port_activations.append(port_activation)
 
-                if did_not_lick:
-                    passed_activations.append(activation)
-                else:
-                    lick_activations.append(activation)
+            all_activity.append(np.asarray(port_activations))
 
-            # Handles edge cases where the mouse didn't lick at a particular port.
-            if not lick_activations:
-                port_activation = passed_activations
-            else:
-                port_activation = np.vstack((lick_activations, passed_activations))
-            port_activations.append(port_activation)
-            ax.imshow(
-                port_activation,
-                extent=[t_xaxis[0], t_xaxis[-1], len(port_activation) + 1, 1],
-                aspect="auto",
-                cmap="Blues",
-            )
-            ax.axhline(y=len(lick_activations), color="r")
-            ax.axvline(x=0, color="r")
+        titles = [f'Ensemble #{i}' for i in inds]
+        if data_type in ['C', 'S', 'S_binary']:
+            titles = [title.replace('Ensemble', 'Neuron') for title in titles]
+        ScrollObj = ScrollPlot(
+            plot_port_activations,
+            current_position=0,
+            nrows=4,
+            ncols=2,
+            figsize=(7, 10.5),
+            port_activations=all_activity,
+            t_xaxis=t_xaxis,
+            rewarded=rewarded,
+            previously_rewarded=previously_rewarded,
+            n_lick_laps=n_lick_laps,
+            titles=titles,
+        )
 
-            if port in rewarded:
-                title_color = "g"
-            elif port in previously_rewarded:
-                title_color = "orange"
-            else:
-                title_color = "k"
-            ax.set_title(f"Port #{port}", color=title_color)
-
-        max_clim = np.max([np.nanmax(activation) for activation in port_activations])
-        for ax in fig.axes:
-            for im in ax.get_images():
-                im.set_clim(0, max_clim)
-        fig.supylabel("Trial #")
-        fig.supxlabel("Time centered on lick/approach to port [s]")
-        fig.suptitle(f"Ensemble #{ensemble_number}")
 
     def lick_triggered_ensemble_activation(
         self,
@@ -2703,7 +2711,7 @@ class ProjectAnalyses:
         # the non-negated pattern.
         similarities[1] = -similarities[0]
 
-        # Now, for each assembly, find its best match (i.e., argmax the cosine similarity).
+        # Now, for each assembly, find its best match (inds.e., argmax the cosine similarity).
         n_assemblies_first_session = rearranged_patterns[0].shape[1]
         assembly_matches = np.zeros(
             n_assemblies_first_session, dtype=int

@@ -85,6 +85,54 @@ def plot_raster(ScrollObj):
     ScrollObj.last_position = len(ScrollObj.rasters)
 
 
+def plot_port_activations(ScrollObj):
+    attrs = ['port_activations', 't_xaxis', 'n_lick_laps', 'rewarded', 'titles']
+    check_attrs(ScrollObj, attrs)
+
+    axs = ScrollObj.ax
+    port_activations = ScrollObj.port_activations
+    t_xaxis = ScrollObj.t_xaxis
+    n_lick_laps = ScrollObj.n_lick_laps
+    rewarded = ScrollObj.rewarded
+    fig_titles = ScrollObj.titles
+    fig = ScrollObj.fig
+    try:
+        previously_rewarded = ScrollObj.previously_rewarded
+    except:
+        previously_rewarded = []
+
+    for port, (ax, port_activation, lick_approach_sep) in enumerate(
+            zip(axs.flatten(),
+                port_activations[ScrollObj.current_position],
+                n_lick_laps)
+    ):
+        ax.imshow(port_activation,
+                  extent=[t_xaxis[0], t_xaxis[-1], len(port_activation)+1, 1],
+                  aspect='auto',
+                  cmap='Blues'
+                  )
+        ax.axhline(y=lick_approach_sep, color='g')
+        ax.axvline(x=0, color='r')
+
+        if port in rewarded:
+            title_color = 'g'
+        elif port in previously_rewarded:
+            title_color = 'orange'
+        else:
+            title_color = 'k'
+        ax.set_title(f'Port # {port}', color=title_color)
+
+    max_clim = np.max([np.nanmax(activation) for activation in
+                       port_activations[ScrollObj.current_position]])
+    for ax in fig.axes:
+        for im in ax.get_images():
+            im.set_clim(0, max_clim)
+    fig.supylabel("Trial #")
+    fig.supxlabel("Time centered on lick/approach to port [s]")
+    fig.suptitle(fig_titles[ScrollObj.current_position])
+    fig.tight_layout()
+    ScrollObj.last_position = len(port_activations)
+
 def plot_daily_rasters(ScrollObj):
     attrs = ["rasters", "tuning_curves", "titles"]
     check_attrs(ScrollObj, attrs)
