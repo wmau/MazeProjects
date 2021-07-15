@@ -2027,7 +2027,7 @@ class ProjectAnalyses:
 
         fps = 15
         t_xaxis = np.arange(-time_window[0], time_window[1] + 1 / fps, 1 / fps)
-        time_window = np.asarray([t * fps for t in time_window])
+        time_window = np.round(np.asarray([t * fps for t in time_window])).astype(int)
         window_size = sum(abs(time_window))
         n_frames = len(ensemble_activation)
 
@@ -2271,7 +2271,7 @@ class ProjectAnalyses:
             data = session.imaging[data_type]
         else:
             raise ValueError
-
+        slopes = nan_array(data.shape[0])
         if subset is not None:
             data = data[subset]
 
@@ -2306,7 +2306,7 @@ class ProjectAnalyses:
             for i, unit in enumerate(activations):
                 for j, (lower, upper) in enumerate(zip(trial_bins, trial_bins[1:])):
                     in_trial = (df["trials"] >= lower) & (df["trials"] < upper)
-                    binned_activations[i, j] = np.mean(unit[in_trial])
+                    binned_activations[i, j] = np.nanmean(unit[in_trial])
 
         else:
             raise ValueError("Invalid value for x.")
@@ -2321,17 +2321,55 @@ class ProjectAnalyses:
             for i, unit in zip(subset, binned_activations):
                 mk_test = mk.original_test(unit, alpha=alpha)
                 trends[mk_test.trend].append(i)
+                slopes[i] = mk_test.slope
         else:
             for i, unit in enumerate(binned_activations):
                 mk_test = mk.original_test(unit, alpha=alpha)
                 trends[mk_test.trend].append(i)
+                slopes[i] = mk_test.slope
 
-        return trends, binned_activations
+        return trends, binned_activations, slopes
+
+    def compare_trend_slopes(self, mouse, session_pair=('Goals4', 'Goals3'), **kwargs):
+        trends = dict()
+        slopes = dict()
+
+        registered_ensembles = self.match_ensembles(mouse, session_pair)
+        for session_type in session_pair:
+            trends[session_type], _, slopes[session_type] = self.find_activity_trends(mouse, session_type, **kwargs)
+
+        fading_ensembles = np.asarray(trends[session_pair[0]]['decreasing'])
+        if fading_ensembles.size == 0:
+            return [], []
+        reference_ensembles = fading_ensembles[~registered_ensembles['poor_matches'][fading_ensembles]]
+        fading_ensembles_yesterday = registered_ensembles['matches'][reference_ensembles]
+        x = slopes[session_pair[0]][fading_ensembles]
+        y = slopes[session_pair[1]][fading_ensembles_yesterday]
+
+        return x, y
+
+    def compare_all_fading_ensemble_slopes(self, **kwargs):
+        reversal_slopes = []
+        training4_slopes = []
+        fig, ax = plt.subplots()
+        for age, color in zip(ages, age_colors):
+            for mouse in self.meta['grouped_mice'][age]:
+                x, y = self.compare_trend_slopes(mouse, **kwargs)
+                ax.scatter(x, y, edgecolor=color)
+
+                ax.set_xlabel('Ensemble activation slope on Reversal')
+                ax.set_ylabel('Ensemble activation slope on Training4')
+
+                reversal_slopes.extend(x)
+                training4_slopes.extend(y)
+
+        ax.axis('equal')
+
+        return reversal_slopes, training4_slopes
 
 
-
-    def find_proportion_changing_cells(self, mouse, session_type, ensemble_trends=None, x='trial', x_bin_size=6, z_threshold=None,
-                                       ensemble_trend='decreasing', cell_trend='decreasing'):
+    def find_proportion_changing_cells(self, mouse, session_type, ensemble_trends=None,
+                                       ensemble_trend='decreasing', cell_trend='decreasing', **kwargs):
         """
         Calculate the proportion of cells that follow a particular trend (no trend, decreasing, or increasing) that are members in
         ensembles that follow another trend (no trend, decreasing, or increasing).
@@ -2339,15 +2377,13 @@ class ProjectAnalyses:
         """
         # Give the option to pre-compute this.
         if ensemble_trends is None:
-            ensemble_trends = self.find_activity_trends(mouse, session_type, x=x, x_bin_size=x_bin_size, z_threshold=z_threshold,
-                                                        data_type='ensembles')[0]
+            ensemble_trends = self.find_activity_trends(mouse, session_type, **kwargs)[0]
 
         patterns = self.data[mouse][session_type].assemblies['patterns']
         prop_changing_cells = []
         for fading_ensemble in ensemble_trends[ensemble_trend]:
             ensemble_members = find_members(patterns[fading_ensemble])[1]
-            cell_trends = self.find_activity_trends(mouse, session_type, x=x, x_bin_size=x_bin_size,
-                                                    z_threshold=z_threshold, data_type='S', subset=ensemble_members)[0]
+            cell_trends = self.find_activity_trends(mouse, session_type, **kwargs, data_type='S', subset=ensemble_members)[0]
 
             prop_changing_cells.append(len(cell_trends[cell_trend]) / len(ensemble_members))
 
@@ -2588,9 +2624,9 @@ class ProjectAnalyses:
         thresh=2.5,
         trend_z_threshold=2.58,
     ):
-        assembly_trends, binned_activations = self.find_activity_trends(
+        assembly_trends = self.find_activity_trends(
             mouse, session_type, x=x, x_bin_size=x_bin_size, z_threshold=trend_z_threshold,
-        )
+        )[0]
 
         session = self.data[mouse][session_type]
         for assembly_number in assembly_trends[trend]:
