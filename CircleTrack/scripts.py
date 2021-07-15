@@ -564,15 +564,8 @@ class ProjectAnalyses:
                 current_rewarded_ports = behavior_data["rewarded_ports"]
                 other_ports = ~(previous_reward_ports + current_rewarded_ports)
 
-                perseverative_rate = np.sum(licks[:, previous_reward_ports]) / (
-                    np.sum(previous_reward_ports) * licks.shape[0]
-                )
-                perseverative_errors[age].append(perseverative_rate)
-
-                straight_up_wrong_rate = np.sum(licks[:, other_ports]) / (
-                    np.sum(other_ports) * licks.shape[0]
-                )
-                unforgiveable_errors[age].append(straight_up_wrong_rate)
+                perseverative_errors[age].append(np.mean(licks[:, previous_reward_ports]))
+                unforgiveable_errors[age].append(np.mean(licks[:, other_ports]))
 
         if show_plot:
             fig, axs = plt.subplots(1, 2, sharey=True)
@@ -1053,7 +1046,7 @@ class ProjectAnalyses:
             )
             for age in ages:
                 mean_reliabilities[session_type][age] = [
-                    np.mean(r) for r in reliabilities[session_type][age]
+                    np.nanmean(r) for r in reliabilities[session_type][age]
                 ]
 
         if show_plot:
@@ -1108,7 +1101,7 @@ class ProjectAnalyses:
 
     def correlate_field_reliability_to_performance(
         self,
-        performance_metric="CRs",
+        performance_metric="d_prime",
         session_types=("Goals4", "Reversal"),
         field_threshold=0.15,
     ):
@@ -2024,8 +2017,9 @@ class ProjectAnalyses:
         else:
             raise ValueError
 
-        if inds is not None:
-            neural_data = neural_data[inds]
+        if inds is None:
+            inds = range(neural_data.shape[0])
+        neural_data = neural_data[inds]
         n_frames = neural_data.shape[1]
 
         # If looking at the Reversal session, also
@@ -2130,6 +2124,7 @@ class ProjectAnalyses:
             titles=titles,
         )
 
+        return all_activity
 
     def lick_triggered_ensemble_activation(
         self,
