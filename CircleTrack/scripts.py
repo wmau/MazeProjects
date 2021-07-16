@@ -1542,6 +1542,82 @@ class ProjectAnalyses:
 
         return d, closest_ports
 
+    def plot_proportion_fading_ensembles_near_important_ports(self, show_plot=True,
+                                                              decompose_relevant_ports=True):
+        p_near = dict()
+        port_types = ['rewarded', 'previously_rewarded', 'other', 'relevant']
+
+        for age in ages:
+            p_near[age] = {key: [] for key in port_types}
+            for mouse in self.meta['grouped_mice'][age]:
+                # Find the closest ports for each ensemble.
+                closest_ports = (self.find_ensemble_port_locations(mouse, 'Reversal')[1])
+
+                trends = self.find_activity_trends(mouse, 'Reversal',
+                                                   data_type='ensembles')[0]
+
+                port_locations = {
+                    'rewarded': self.data[mouse]['Reversal'].behavior.data['rewarded_ports'],
+                    'previously_rewarded': self.data[mouse]['Goals4'].behavior.data['rewarded_ports'],
+                }
+                port_locations['other'] = ~(port_locations['previously_rewarded']
+                                            + port_locations['rewarded'])
+                port_locations['relevant'] = ~port_locations['other']
+
+                port_locations = {key: np.where(value)[0] for key, value in port_locations.items()}
+
+                try:
+                    for port_type in port_types:
+                        p_near[age][port_type].append(
+                            np.sum(
+                                i in port_locations[port_type]
+                                 for i in closest_ports[trends['decreasing']]
+                                 ) / len(trends['decreasing'])
+                        )
+
+                except ZeroDivisionError:
+                    for port_type in port_types:
+                        p_near[age][port_type].append(0)
+
+        if show_plot:
+            ports_to_plot = ['rewarded', 'previously_rewarded', 'other'] \
+                if decompose_relevant_ports else ['relevant', 'other']
+            fig, axs = plt.subplots(1, len(ports_to_plot), sharey=True, figsize=(7.6,6.75))
+            fig.subplots_adjust(wspace=0)
+
+            if decompose_relevant_ports:
+                titles = ['near rewarded ports',
+                          'near previously \nrewarded ports',
+                          'near other ports']
+            else:
+                titles = ['near relevant ports',
+                          'near other ports']
+
+            for ax, port, title in zip(axs,
+                             ports_to_plot,
+                             titles):
+                box = ax.boxplot([p_near[age][port] for age in ages],
+                                 labels=ages,
+                                 widths=0.75,
+                                 patch_artist=True,
+                                 zorder=0,
+                                 showfliers=False)
+                for patch, med, color in zip(box["boxes"], box["medians"], age_colors):
+                    patch.set_facecolor(color)
+                    med.set(color="k")
+
+                for i, (age, color) in enumerate(zip(ages, age_colors)):
+                    ax.scatter(jitter_x(np.ones_like(p_near[age][port])*(i+1)),
+                               p_near[age][port],
+                               color=color, zorder=1, edgecolor='k')
+
+                ax.set_title(title)
+
+            fig.suptitle('Fading ensembles')
+            axs[0].set_ylabel('Proportion')
+
+        return p_near
+
     def plot_ensemble_port_locations(self, session_type, show_plot=True):
         near_currently_rewarded = dict()
         near_never_rewarded = dict()
@@ -1601,17 +1677,6 @@ class ProjectAnalyses:
 
             axs[0].set_ylabel('Proportion')
             axs[1].legend()
-
-        pass
-
-    def fit_ensemble_spatial_decoder(
-            self,
-            mouse: str,
-            session_types: tuple,
-            classifier=GaussianNB,
-
-    ):
-        pass
 
     def fit_ensemble_lick_decoder(
         self,
@@ -1835,37 +1900,6 @@ class ProjectAnalyses:
         }
 
         return anova_dfs, df
-
-    # def ensemble_lick_decoding(self, mouse, session_type, licks_only=True):
-    #     session = self.data[mouse][session_type]
-    #     ensemble_activations = zscore(session.assemblies["activations"], axis=0).T
-    #     licks = np.asarray(session.behavior.data["df"]["lick_port"])
-    #
-    #     if licks_only:
-    #         licking = licks > -1
-    #         ensemble_activations = ensemble_activations[licking]
-    #         licks = licks[licking]
-    #
-    #     clf = GaussianNB()
-    #     cv = StratifiedKFold(n_splits=3)
-    #
-    #     score, _, p_value = permutation_test_score(
-    #         clf,
-    #         ensemble_activations,
-    #         licks,
-    #         scoring="accuracy",
-    #         cv=cv,
-    #         n_permutations=500,
-    #         n_jobs=6,
-    #     )
-    #
-    #     # splits = list(cv.split(ensemble_activations, licks))
-    #     # X_train = ensemble_activations[splits[0][0]]
-    #     # y_train = licks[splits[0][0]]
-    #     #
-    #     # clf.fit(X_train, y_train)
-    #
-    #     return ensemble_activations, licks
 
     def ensemble_feature_selector(
         self,
@@ -2125,113 +2159,6 @@ class ProjectAnalyses:
         )
 
         return all_activity
-
-    def lick_triggered_ensemble_activation(
-        self,
-        mouse,
-        session_type,
-        ensemble_number,
-        time_window=(2, 2),
-        plot_type="imshow",
-    ):
-        """
-        Get the ensemble activation conditioned on lick. Triggered only by the first lick in a bout of licks.
-
-        :parameters
-        ---
-        mouse: str
-            Mouse name.
-
-        session_type: str
-            Session type.
-
-        ensemble_number: int
-            Index of ensemble that you want to plot.
-
-        time_window: tuple
-            (seconds back, seconds ahead) of lick.
-
-        plot_type: str
-            'imshow' or 'line'
-
-        :return:
-        """
-        # Abbreviate references.
-        session = self.data[mouse][session_type]
-        licks = session.behavior.data["df"]["lick_port"]
-        rewarded = np.where(session.behavior.data["rewarded_ports"])[0]
-        ensemble_activation = session.assemblies["activations"][ensemble_number]
-
-        # If looking at the Reversal session, also
-        if session_type == "Reversal":
-            previously_rewarded = np.where(
-                self.data[mouse]["Goals4"].behavior.data["rewarded_ports"]
-            )[0]
-        else:
-            previously_rewarded = []
-
-        fps = 15
-        t_xaxis = np.arange(-time_window[0], time_window[1] + 1 / fps, 1 / fps)
-        time_window = [t * fps for t in time_window]
-        n_frames = len(ensemble_activation)
-
-        fig, axs = plt.subplots(4, 2, sharex=True, figsize=(7, 10.5))
-        activations = []
-        for port in range(8):
-            lick_clusters = cluster(
-                np.where(licks == port)[0], maxgap=15 * time_window[0]
-            )
-            lick_t0 = [lick_t[0] for lick_t in lick_clusters]
-
-            port_activations = []
-            for t0 in lick_t0:
-                window_idx = [t0 - time_window[0], t0 + time_window[1]]
-
-                if window_idx[0] < 0:
-                    activation = np.append(
-                        nan_array(abs(window_idx[0])),
-                        ensemble_activation[0 : window_idx[1]],
-                    )
-                else:
-                    activation = ensemble_activation[window_idx[0] : window_idx[1]]
-
-                # Handles edge cases where licks occur near the end of the session.
-                if window_idx[1] > n_frames:
-                    activation = np.append(
-                        activation, nan_array(window_idx[1] - n_frames)
-                    )
-                port_activations.append(activation)
-            activations.append(np.vstack(port_activations))
-
-        peak = max([np.max(a) for a in activations])
-        for port, (ax, activation) in enumerate(zip(axs.flatten(), activations)):
-            if plot_type == "line":
-                ax.plot(t_xaxis, activation)
-            elif plot_type == "imshow":
-                ax.imshow(
-                    activation,
-                    aspect="auto",
-                    extent=[t_xaxis[0], t_xaxis[-1], len(activation) + 1, 1],
-                    vmin=0,
-                    vmax=peak,
-                )
-            ax.axvline(x=0, color="r")
-
-            if port in rewarded:
-                title_color = "g"
-            elif port in previously_rewarded:
-                title_color = "orange"
-            else:
-                title_color = "k"
-            ax.set_title(f"Port #{port}", color=title_color)
-
-        fig.supxlabel("Time centered on lick [s]")
-
-        if plot_type == "line":
-            fig.supylabel("Ensemble activation [a.u.]")
-        elif plot_type == "imshow":
-            fig.supylabel("Lick #")
-        fig.suptitle(f"Ensemble #{ensemble_number}")
 
     def find_activity_trends(
         self, mouse, session_type, x="trial", z_threshold=None, x_bin_size=6,
