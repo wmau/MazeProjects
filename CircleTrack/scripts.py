@@ -587,6 +587,7 @@ class ProjectAnalyses:
                     color=color,
                     edgecolor='k',
                     zorder=1,
+                    s=50,
                 )
                     for i, (age, color) in enumerate(zip(ages, age_colors))]
 
@@ -727,9 +728,6 @@ class ProjectAnalyses:
             ax.imshow(overlaps)
 
         return overlaps
-
-    ############################ SINGLE CELL FUNCTIONS ############################
-
 
     ############################ PLACE FIELD FUNCTIONS ############################
     def map_placefields(self, mouse, session_types, neurons_from_session1=None):
@@ -1543,7 +1541,7 @@ class ProjectAnalyses:
         return d, closest_ports
 
     def plot_proportion_fading_ensembles_near_important_ports(self, show_plot=True,
-                                                              decompose_relevant_ports=True):
+                                                              alpha=0.01, decompose_relevant_ports=False):
         p_near = dict()
         port_types = ['rewarded', 'previously_rewarded', 'other', 'relevant']
 
@@ -1554,7 +1552,8 @@ class ProjectAnalyses:
                 closest_ports = (self.find_ensemble_port_locations(mouse, 'Reversal')[1])
 
                 trends = self.find_activity_trends(mouse, 'Reversal',
-                                                   data_type='ensembles')[0]
+                                                   data_type='ensembles',
+                                                   alpha=alpha)[0]
 
                 port_locations = {
                     'rewarded': self.data[mouse]['Reversal'].behavior.data['rewarded_ports'],
@@ -1607,9 +1606,9 @@ class ProjectAnalyses:
                     med.set(color="k")
 
                 for i, (age, color) in enumerate(zip(ages, age_colors)):
-                    ax.scatter(jitter_x(np.ones_like(p_near[age][port])*(i+1)),
+                    ax.scatter(jitter_x(np.ones_like(p_near[age][port])*(i+1), 0.1),
                                p_near[age][port],
-                               color=color, zorder=1, edgecolor='k')
+                               color=color, zorder=1, edgecolor='k', s=70)
 
                 ax.set_title(title)
 
@@ -1682,7 +1681,7 @@ class ProjectAnalyses:
         self,
         mouse: str,
         session_types: tuple,
-        classifier=GaussianNB,
+        classifier=RandomForestClassifier,
         licks_to_include='all',
         lag=-1,
         fps=15,
@@ -2160,6 +2159,14 @@ class ProjectAnalyses:
 
         return all_activity
 
+    def scrollplot_registered_neurons_port_vicinity(self, mouse, reference_session, plot_session,
+                                                    neurons_from_reference=None, detected='everyday'):
+        trimmed_map = self.get_cellreg_mappings(
+            mouse, (reference_session, plot_session), detected=detected, neurons_from_session1=neurons_from_reference
+        )[0]
+
+        self.scrollplot_port_vicinity_activity(mouse, plot_session, inds=trimmed_map.iloc[:,1].to_numpy(), data_type='S')
+
     def find_activity_trends(
         self, mouse, session_type, x="trial", z_threshold=None, x_bin_size=6,
             data_type='ensembles', subset=None, alpha=0.05,
@@ -2230,13 +2237,12 @@ class ProjectAnalyses:
             trial_bins = np.arange(0, session.behavior.data["ntrials"], x_bin_size)
             df = session.behavior.data["df"]
 
-            binned_activations = np.zeros(
-                (activations.shape[0], len(trial_bins))
+            binned_activations = nan_array(
+                (activations.shape[0], len(trial_bins)-1)
             )
-            for i, unit in enumerate(activations):
-                for j, (lower, upper) in enumerate(zip(trial_bins, trial_bins[1:])):
-                    in_trial = (df["trials"] >= lower) & (df["trials"] < upper)
-                    binned_activations[i, j] = np.nanmean(unit[in_trial])
+            for i, (lower, upper) in enumerate(zip(trial_bins, trial_bins[1:])):
+                in_trial = (df["trials"] >= lower) & (df["trials"] < upper)
+                binned_activations[:, i] = np.nanmean(activations[:, in_trial], axis=1)
 
         else:
             raise ValueError("Invalid value for x.")
@@ -2361,7 +2367,7 @@ class ProjectAnalyses:
 
     def plot_assembly_trends(
         self, x="trial", x_bin_size=6, z_threshold=None, data_type='ensembles',
-            show_plot=True
+            show_plot=True, alpha=0.01,
     ):
         session_types = self.meta["session_types"]
         session_labels = self.meta["session_labels"]
@@ -2385,6 +2391,7 @@ class ProjectAnalyses:
                     x_bin_size=x_bin_size,
                     z_threshold=z_threshold,
                     data_type=data_type,
+                    alpha=alpha,
                 )[0]
 
                 for h, trend in enumerate(trend_strs):
@@ -2437,11 +2444,12 @@ class ProjectAnalyses:
         sessions=("Goals4", "Reversal"),
         trend="decreasing",
         data_type='ensembles',
+        alpha=0.01,
         show_plot=True,
     ):
         ensemble_trends, ensemble_counts = self.plot_assembly_trends(
             x=x, x_bin_size=x_bin_size, z_threshold=z_threshold, data_type=data_type,
-            show_plot=False
+            show_plot=False, alpha=alpha,
         )
         p_changing = ensemble_counts.sel(trend=trend) / ensemble_counts.sum(dim="trend")
         p_changing_split_by_age = dict()
@@ -2473,7 +2481,8 @@ class ProjectAnalyses:
                     ax.plot(jitter_x([1, 2], 0.05), mouse_data,
                             'o-', color='k',
                             markerfacecolor=color,
-                            zorder=1)
+                            zorder=1,
+                            markersize=10)
 
                 if age == "aged":
                     ax.tick_params(labelleft=False)
@@ -2498,11 +2507,12 @@ class ProjectAnalyses:
         trend="decreasing",
         performance_metric="CRs",
         data_type='ensembles',
+        alpha=0.01,
         ax=None,
     ):
         ensemble_trends, ensemble_counts = self.plot_assembly_trends(
             x=x, x_bin_size=x_bin_size, z_threshold=z_threshold, data_type=data_type,
-            show_plot=False
+            show_plot=False, alpha=alpha,
         )
         p_changing = ensemble_counts.sel(trend=trend) / ensemble_counts.sum(dim="trend")
 
@@ -2529,7 +2539,8 @@ class ProjectAnalyses:
                 performance[age],
                 facecolors=c,
                 edgecolors="k",
-                alpha=0.5
+                alpha=0.5,
+                s=50,
             )
 
         ax.set_xlabel("Proportion of fading ensembles")
@@ -2539,7 +2550,11 @@ class ProjectAnalyses:
         p_changing = np.hstack([p_changing_split_by_age[age] for age in ages])
         perf = np.hstack([performance[age] for age in ages])
 
-        print(spearmanr(p_changing, perf))
+        r, pvalue = spearmanr(p_changing, perf)
+        msg = f'r = {np.round(r, 3)}, p = {np.round(pvalue, 3)}'
+        if pvalue < 0.05:
+            msg += '*'
+        print(msg)
 
         return p_changing_split_by_age, performance
 
@@ -2548,14 +2563,16 @@ class ProjectAnalyses:
         mouse,
         session_type,
         trend,
-        x="time",
-        x_bin_size=50,
+        x="trial",
+        x_bin_size=6,
         plot_type="temporal",
         thresh=2.5,
-        trend_z_threshold=2.58,
+        trend_z_threshold=None,
+        alpha=0.01,
     ):
         assembly_trends = self.find_activity_trends(
-            mouse, session_type, x=x, x_bin_size=x_bin_size, z_threshold=trend_z_threshold,
+            mouse, session_type, x=x, x_bin_size=x_bin_size,
+            z_threshold=trend_z_threshold, alpha=alpha,
         )[0]
 
         session = self.data[mouse][session_type]
@@ -2641,9 +2658,7 @@ class ProjectAnalyses:
         best_similarities = nan_array(
             assembly_matches.shape
         )  # (assemblies,) - best similarity for each assembly
-        z_similarities = zscore(
-            np.max(similarities, axis=0), axis=0
-        )  # (assemblies, assemblies) - z-scored similarities
+        z_similarities = np.stack([zscore(similarity) for similarity in similarities], axis=0) # (assemblies, assemblies) - z-scored similarities
 
         matched_patterns = np.zeros(
             (2, *patterns_iterable[0].shape)
@@ -2685,7 +2700,7 @@ class ProjectAnalyses:
             "matched_patterns": matched_patterns,
             "matched_activations": matched_activations,
             "z_similarities": z_similarities,
-            "poor_matches": ~np.any(z_similarities > 2.58, axis=1),
+            "poor_matches": np.sum([np.any(z > 2.58, axis=1) for z in z_similarities], axis=0) == 0,
         }
 
         return registered_ensembles
