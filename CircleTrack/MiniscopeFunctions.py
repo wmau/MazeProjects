@@ -463,6 +463,23 @@ class CalciumSession:
 
         return reliability
 
+    def port_reliability(self, neuron, even_split=False, splits=6, show_plot=True):
+        spatial_bins = np.linspace(0, 2*np.pi, 8)
+        S_binary = self.imaging['S_binary'][neuron]
+        df = self.behavior.data['df']
+        ntrials = self.behavior.data['ntrials']
+        in_bin = np.digitize(df['lin_position'],
+                             spatial_bins, right=False)
+
+        reliability_matrix = nan_array((ntrials, 8))
+        for trial in range(ntrials):
+            on_trial = df['trials'] == trial
+            for bin in range(8):
+                inds = on_trial & (in_bin==bin)
+                reliability_matrix[trial, bin] = np.sum(S_binary[inds])
+
+        return reliability_matrix
+
     def viz_spatial_trial_activity(self, neurons=range(10), preserve_neuron_idx=True):
         """
         Visualize single cell activity binned in spatial and separated
