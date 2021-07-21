@@ -57,6 +57,8 @@ from CircleTrack.utils import (
 )
 import pandas as pd
 import pingouin as pg
+from joblib import Parallel, delayed
+import multiprocessing as mp
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -855,7 +857,7 @@ class ProjectAnalyses:
 
         return r_values
 
-    def plot_rasters_by_day(
+    def scrollplot_rasters_by_day(
         self, mouse, session_types, neurons_from_session1=None, mode="scroll"
     ):
         """
@@ -1252,7 +1254,7 @@ class ProjectAnalyses:
             error_time_bin_size=error_time_bin_size,
             show_plot=False,
             predictors=predictors,
-        )
+        )[0]
         time_bins = range(len(decoding_errors['Training']))
 
         if axs is None:
@@ -1372,7 +1374,67 @@ class ProjectAnalyses:
             sem_errors = [np.nanstd(dist) / np.sqrt(dist.shape[0]) for dist in binned_d]
             ax.errorbar(time_bins, mean_errors, yerr=sem_errors)
 
-        return binned_d
+        return binned_d, d
+
+    def all_session_pairs_decoding_error(self, mouse, classifier=BernoulliNB(),
+                                         n_spatial_bins=36):
+        shape = (5,5)
+        decoding_error_matrix = nan_array(shape)
+        for i, session_pair in enumerate(product(self.meta['session_types'], repeat=2)):
+            if session_pair[0] != session_pair[1]:
+                decoding_error = self.find_decoding_error(mouse, session_pair,
+                                                          classifier=classifier,
+                                                          n_spatial_bins=n_spatial_bins,
+                                                          show_plot=False)[1]
+                row, col = np.unravel_index(i, shape)
+                decoding_error_matrix[row, col] = np.nanmean(decoding_error)
+
+        return decoding_error_matrix
+
+
+    def spatial_decoding_error_matrix(self, classifier=BernoulliNB(),
+                                      n_spatial_bins=36, overwrite=False,
+                                      saved_data=r'Z:\Will\RemoteReversal\Data\cross_session_spatial_decoding_error.pkl',
+                                      show_plot=True):
+        if overwrite:
+            decoding_error_matrix = dict()
+            n_cores = mp.cpu_count()
+            for age in ages:
+                mice_this_age = self.meta['grouped_mice'][age]
+
+                decoding_error_matrix[age]  = Parallel(n_jobs=n_cores)(
+                    delayed(self.all_session_pairs_decoding_error)(mouse, classifier, n_spatial_bins)
+                    for mouse in mice_this_age
+                )
+
+            with open(saved_data, 'wb') as file:
+                pkl.dump(decoding_error_matrix, file)
+        else:
+            with open(saved_data, 'rb') as file:
+                decoding_error_matrix = pkl.load(file)
+
+        if show_plot:
+            errors = dict()
+            for age in ['young', 'aged']:
+                errors[age] = []
+                for lag in np.arange(1,5):
+                    errors[age].append(np.diagonal(decoding_error_matrix[age],
+                                                   offset=lag, axis1=1, axis2=2).flatten())
+            fig, ax = plt.subplots()
+            for age, age_color in zip(ages, age_colors):
+                ax.errorbar(np.arange(1,5),
+                            [np.nanmean(x) for x in errors[age]],
+                            yerr=[sem(x) for x in errors[age]],
+                            color=age_color,
+                            capsize=2)
+                for i, data_points in enumerate(errors[age]):
+                    ax.scatter(jitter_x(np.ones_like(data_points)*(i+1.2), 0.03), data_points,
+                               color=age_color, edgecolor='k', alpha=0.5)
+
+            ax.set_xlabel('Day lag')
+            ax.set_ylabel('Mean decoding error \n across session pairs [spatial bins]')
+
+        return decoding_error_matrix
 
     ############################ ENSEMBLE FUNCTIONS ############################
     def count_ensembles(self, grouped=True, normalize=True):
@@ -1683,7 +1745,7 @@ class ProjectAnalyses:
         session_types: tuple,
         classifier=RandomForestClassifier,
         licks_to_include='all',
-        lag=-1,
+        lag=0,
         fps=15,
         **classifier_kwargs,
     ):
@@ -1742,7 +1804,7 @@ class ProjectAnalyses:
                                          classifier=RandomForestClassifier,
                                          licks_to_include='all',
                                          n_splits=6,
-                                         lag=-1,
+                                         lag=0,
                                          show_plot=True,
                                          ax=None,
                                          **classifier_kwargs):
@@ -2169,7 +2231,7 @@ class ProjectAnalyses:
 
     def find_activity_trends(
         self, mouse, session_type, x="trial", z_threshold=None, x_bin_size=6,
-            data_type='ensembles', subset=None, alpha=0.05,
+            data_type='ensembles', subset=None, alpha=0.01,
     ):
         """
         Find assembly "trends", whether they are increasing/decreasing in occurrence rate over the course
