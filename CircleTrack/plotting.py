@@ -77,6 +77,7 @@ def plot_raster(ScrollObj):
     axs[0].set_ylabel('Laps')
     axs[1].set_xlabel('Linearized position')
     axs[1].set_ylabel('Average transient rate')
+    [ax.axis('auto') for ax in axs]
 
     for ax in axs:
         for reward in ScrollObj.rewards:

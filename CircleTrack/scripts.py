@@ -11,7 +11,7 @@ from CaImaging.util import (
     distinct_colors,
 )
 from CaImaging.plotting import errorfill, beautify_ax, jitter_x
-from scipy.stats import spearmanr, zscore, circmean, kendalltau
+from scipy.stats import spearmanr, zscore, circmean, kendalltau, wilcoxon, mannwhitneyu
 from scipy.spatial import distance
 from CircleTrack.SessionCollation import MultiAnimal
 from CaImaging.CellReg import rearrange_neurons, trim_map, scrollplot_footprints
@@ -391,11 +391,11 @@ class ProjectAnalyses:
         # Get dimensions of new arrays.
         dims = {
             age: (len(self.meta["grouped_mice"][age]), sum(longest_sessions))
-            for age in ["aged", "young"]
+            for age in ages
         }
-        metrics = {key: nan_array(dims[key]) for key in ["aged", "young"]}
+        metrics = {key: nan_array(dims[key]) for key in ages}
 
-        for age in ["aged", "young"]:
+        for age in ages:
             for row, mouse in enumerate(self.meta["grouped_mice"][age]):
                 for border, session in zip(borders, self.meta["session_types"]):
                     metric_this_session = behavioral_performance.sel(
@@ -414,27 +414,69 @@ class ProjectAnalyses:
                 fig, ax = plt.subplots(figsize=(7.4, 5.7))
             else:
                 fig = ax.figure
-            for age, c in zip(["young", "aged"], age_colors):
-                ax.plot(metrics[age].T, color=c, alpha=0.3)
-                errorfill(
-                    range(metrics[age].shape[1]),
-                    np.nanmean(metrics[age], axis=0),
-                    sem(metrics[age], axis=0),
-                    ax=ax,
-                    color=c,
-                    label=age,
-                )
 
-            for session in borders[1:]:
-                ax.axvline(x=session, color="k")
-            ax.set_xticks(borders)
-            ax.set_xticklabels(np.insert(longest_sessions, 0, 0))
+            if window is not None:
+                for age, c in zip(ages, age_colors):
+                    ax.plot(metrics[age].T, color=c, alpha=0.3)
+                    errorfill(
+                        range(metrics[age].shape[1]),
+                        np.nanmean(metrics[age], axis=0),
+                        sem(metrics[age], axis=0),
+                        ax=ax,
+                        color=c,
+                        label=age,
+                    )
+
+                for session in borders[1:]:
+                    ax.axvline(x=session, color="k")
+                ax.set_xticks(borders)
+                ax.set_xticklabels(np.insert(longest_sessions, 0, 0))
+                ax.set_xlabel("Trial blocks")
+                _ = beautify_ax(ax)
+            else:
+                for age, c in zip(ages, age_colors):
+                    ax.plot(metrics[age].T, color=c, alpha=0.3)
+                    ax.errorbar(
+                        self.meta['session_labels'],
+                        np.nanmean(metrics[age], axis=0),
+                        sem(metrics[age], axis=0),
+                        color=c,
+                        label=age,
+                        capsize=5,
+                        linewidth=3,
+                    )
             ax.set_ylabel(ylabels[performance_metric])
-            ax.set_xlabel("Trial blocks")
-            _ = beautify_ax(ax)
             fig.legend()
 
-        return behavioral_performance, metrics
+        mice_ = np.hstack([np.repeat(self.meta['grouped_mice'][age],
+                                    len(self.meta['session_types']))
+                          for age in ages])
+        ages_ = np.hstack([np.repeat(age, metrics[age].size) for age in ages])
+        session_types_ = np.hstack([np.tile(self.meta['session_types'],
+                                           len(self.meta['grouped_mice'][age]))
+                                   for age in ages])
+        metric_ = np.hstack([metrics[age].flatten() for age in ages])
+        df = pd.DataFrame(
+            {'metric': metric_,
+             'session_types': session_types_,
+             'mice': mice_,
+             'age': ages_,
+             }
+        )
+
+        return behavioral_performance, metrics, df
+
+    def behavior_anova(self, performance_metric='CRs'):
+        df = self.plot_all_behavior(performance_metric=performance_metric,
+                                    window=None, strides=None)[2]
+
+        anova_df = pg.rm_anova(df, dv='metric', within=['age', 'session_types'],
+                               subject='mice')
+
+        pairwise_df = df.pairwise_ttests(dv='metric', between=['session_types', 'age'],
+                                         padjust='none', parametric=False)
+
+        return anova_df, pairwise_df
 
     def plot_best_performance(
         self,
@@ -940,7 +982,8 @@ class ProjectAnalyses:
         return daily_rasters
 
     def plot_spatial_info(
-        self, session_type, ax=None, show_plot=True, aggregate_mode="median"
+        self, session_type, ax=None, show_plot=True, aggregate_mode="median",
+            place_cells_only=False,
     ):
         if ax is None:
             fig, ax = plt.subplots()
@@ -954,6 +997,9 @@ class ProjectAnalyses:
             for mouse in self.meta["grouped_mice"][age]:
                 SIs = self.data[mouse][session_type].spatial.data["spatial_info_z"]
 
+                if place_cells_only:
+                    SIs = SIs[self.data[mouse][session_type].spatial.data['place_cells']]
+
                 if aggregate_mode == "median":
                     spatial_info[age].append(np.median(SIs))
                 elif aggregate_mode == "mean":
@@ -966,24 +1012,36 @@ class ProjectAnalyses:
                 [spatial_info[age] for age in ages],
                 patch_artist=True,
                 widths=0.75,
+                zorder=0,
+                showfliers=False,
             )
 
             for patch, med, color in zip(box["boxes"], box["medians"], age_colors):
                 patch.set_facecolor(color)
                 med.set(color="k")
 
+            for i, (age, age_color) in enumerate(zip(ages, age_colors)):
+                ax.scatter(
+                    jitter_x(np.ones_like(spatial_info[age])*(i+1)),
+                    spatial_info[age],
+                    color=age_color,
+                    zorder=1,
+                    edgecolor='k',
+                )
+
         return spatial_info
 
-    def plot_all_spatial_info(self, aggregate_mode="median"):
+    def plot_all_spatial_info(self, aggregate_mode="median", place_cells_only=False):
         fig, axs = plt.subplots(1, len(self.meta["session_types"]), sharey=True)
         fig.subplots_adjust(wspace=0)
 
-        median_spatial_infos = dict()
+        spatial_infos = dict()
         for ax, session_type, title in zip(
             axs, self.meta["session_types"], self.meta["session_labels"]
         ):
-            median_spatial_infos[session_type] = self.plot_spatial_info(
-                session_type, ax=ax, aggregate_mode=aggregate_mode
+            spatial_infos[session_type] = self.plot_spatial_info(
+                session_type, ax=ax, aggregate_mode=aggregate_mode,
+                place_cells_only=place_cells_only
             )
             ax.set_xticks([])
             ax.set_title(title)
@@ -995,7 +1053,44 @@ class ProjectAnalyses:
                 ylabel += " [z]"
                 ax.set_ylabel(ylabel)
 
-        return median_spatial_infos
+        # fig, ax = plt.subplots()
+        # for age, age_color in zip(ages, age_colors):
+        #     ax.plot(self.meta['session_labels'],
+        #             [median_spatial_infos[session_type][age]
+        #              for session_type in self.meta['session_types']],
+        #             color=age_color)
+
+        infos = []
+        ages_long = []
+        sessions_long = []
+        mice = []
+        for age in ages:
+            for session_type in self.meta['session_types']:
+                data = spatial_infos[session_type][age]
+                infos.extend(data)
+                ages_long.extend([age for i in range(len(data))])
+                sessions_long.extend([session_type for i in range(len(data))])
+                mice.extend(self.meta['grouped_mice'][age])
+
+        df = pd.DataFrame(
+            {'spatial_info': infos,
+             'age': ages_long,
+             'session_typea': sessions_long,
+             'mouse': mice,
+             }
+        )
+
+        return spatial_infos, df
+
+    def spatial_info_anova(self, aggregate_mode='median', place_cells_only=False):
+        spatial_infos, df = self.plot_all_spatial_info(aggregate_mode=aggregate_mode,
+                                                       place_cells_only=place_cells_only)
+
+        anova_df = pg.mixed_anova(df, dv='spatial_info', within='session_typea', between='age', subject='mouse')
+        pairwise_df = df.pairwise_ttests(dv='spatial_info', between=['session_typea', 'age'],
+                                         padjust='fdr_bh')
+
+        return anova_df, pairwise_df, df
 
     def plot_reliabilities(self, session_type, field_threshold=0.15, show_plot=True):
         reliabilities = {}
@@ -1269,7 +1364,7 @@ class ProjectAnalyses:
 
         return decoding_errors
 
-    def spatial_decoding_anova(
+    def spatial_decoding_anova_binned(
             self,
             classifier=BernoulliNB(),
             n_spatial_bins=36,
@@ -1308,7 +1403,10 @@ class ProjectAnalyses:
                 errors_arr = np.vstack(decoding_errors[age][session])
                 m = np.nanmean(errors_arr, axis=0)
                 se = sem(errors_arr, axis=0)
-                session_ax.errorbar(range(len(m)), m, yerr=se, color=color, capsize=1)
+                session_ax.errorbar(range(len(m)),
+                                    m,
+                                    yerr=se,
+                                    color=color, capsize=1)
 
         fig.supylabel('Mean decoding error (spatial bins)')
         fig.supxlabel('Time bins')
@@ -1398,14 +1496,14 @@ class ProjectAnalyses:
                                       show_plot=True):
         if overwrite:
             decoding_error_matrix = dict()
-            n_cores = mp.cpu_count()
             for age in ages:
                 mice_this_age = self.meta['grouped_mice'][age]
+                decoding_error_matrix[age] = nan_array((len(mice_this_age), 5, 5))
 
-                decoding_error_matrix[age]  = Parallel(n_jobs=n_cores)(
-                    delayed(self.all_session_pairs_decoding_error)(mouse, classifier, n_spatial_bins)
-                    for mouse in mice_this_age
-                )
+                for i, mouse in enumerate(self.meta['grouped_mice'][age]):
+                    decoding_error_matrix[age][i] = self.all_session_pairs_decoding_error(mouse,
+                                                                                          classifier=classifier,
+                                                                                          n_spatial_bins=n_spatial_bins)
 
             with open(saved_data, 'wb') as file:
                 pkl.dump(decoding_error_matrix, file)
@@ -1413,28 +1511,72 @@ class ProjectAnalyses:
             with open(saved_data, 'rb') as file:
                 decoding_error_matrix = pkl.load(file)
 
+        errors = dict()
+        for age in ['young', 'aged']:
+            errors[age] = []
+            for lag in np.arange(1,5):
+                errors[age].append(np.diagonal(decoding_error_matrix[age],
+                                               offset=lag, axis1=1, axis2=2).flatten())
+
         if show_plot:
-            errors = dict()
-            for age in ['young', 'aged']:
-                errors[age] = []
-                for lag in np.arange(1,5):
-                    errors[age].append(np.diagonal(decoding_error_matrix[age],
-                                                   offset=lag, axis1=1, axis2=2).flatten())
             fig, ax = plt.subplots()
             for age, age_color in zip(ages, age_colors):
                 ax.errorbar(np.arange(1,5),
                             [np.nanmean(x) for x in errors[age]],
                             yerr=[sem(x) for x in errors[age]],
                             color=age_color,
-                            capsize=2)
+                            capsize=2,
+                            linewidth=3)
                 for i, data_points in enumerate(errors[age]):
-                    ax.scatter(jitter_x(np.ones_like(data_points)*(i+1.2), 0.03), data_points,
+                    ax.scatter(jitter_x(np.ones_like(data_points)*(i+1.15), 0.03), data_points,
                                color=age_color, edgecolor='k', alpha=0.5)
 
-            ax.set_xlabel('Day lag')
+            ax.set_xlabel('Days apart')
             ax.set_ylabel('Mean decoding error \n across session pairs [spatial bins]')
+            ax.set_xticks(np.arange(1,5))
 
-        return decoding_error_matrix
+        return decoding_error_matrix, errors
+
+
+    def spatial_decoding_anova(self,
+                               classifier=BernoulliNB(),
+                               n_spatial_bins=36,
+                               overwrite=False,
+                               saved_data=r'Z:\Will\RemoteReversal\Data\cross_session_spatial_decoding_error.pkl',
+                               show_plot=True):
+        decoding_error_matrix, errors_sorted = \
+            self.spatial_decoding_error_matrix(
+                classifier=classifier,
+                n_spatial_bins=n_spatial_bins,
+                overwrite=overwrite,
+                saved_data=saved_data,
+                show_plot=show_plot,
+        )
+
+        lags, errors_long = dict(), dict()
+        for age in ages:
+            lags[age] = []
+            errors_long[age] = []
+            for lag, errors in enumerate(errors_sorted[age]):
+                lags[age].extend(np.ones_like(errors)*(lag+1))
+                errors_long[age].extend(errors)
+
+        ages_long = np.hstack([[age for i in range(len(errors_long[age]))] for age in ages])
+        errors_long = np.hstack([errors_long[age] for age in ages])
+        lags = np.hstack([lags[age] for age in ages])
+
+        df = pd.DataFrame(
+            {'errors': errors_long,
+             'lags': lags,
+             'ages': ages_long
+             }
+        )
+
+        anova_df = pg.anova(df, dv='errors', between=['lags', 'ages'])
+        pairwise_df = df.pairwise_ttests(dv='errors', between=['lags', 'ages'],
+                                         padjust='fdr_bh')
+
+        return anova_df, pairwise_df, df
 
     ############################ ENSEMBLE FUNCTIONS ############################
     def count_ensembles(self, grouped=True, normalize=True):
