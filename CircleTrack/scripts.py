@@ -1075,7 +1075,7 @@ class ProjectAnalyses:
         df = pd.DataFrame(
             {'spatial_info': infos,
              'age': ages_long,
-             'session_typea': sessions_long,
+             'session_types': sessions_long,
              'mouse': mice,
              }
         )
@@ -1086,8 +1086,8 @@ class ProjectAnalyses:
         spatial_infos, df = self.plot_all_spatial_info(aggregate_mode=aggregate_mode,
                                                        place_cells_only=place_cells_only)
 
-        anova_df = pg.mixed_anova(df, dv='spatial_info', within='session_typea', between='age', subject='mouse')
-        pairwise_df = df.pairwise_ttests(dv='spatial_info', between=['session_typea', 'age'],
+        anova_df = pg.mixed_anova(df, dv='spatial_info', within='session_types', between='age', subject='mouse')
+        pairwise_df = df.pairwise_ttests(dv='spatial_info', between=['session_types', 'age'],
                                          padjust='fdr_bh')
 
         return anova_df, pairwise_df, df
