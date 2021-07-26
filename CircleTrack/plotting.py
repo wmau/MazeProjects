@@ -212,3 +212,7 @@ def highlight_column(column, ax, **kwargs):
 
     return rect
 
+def color_boxes(boxes, colors):
+    for patch, med, color in zip(boxes["boxes"], boxes["medians"], colors):
+        patch.set_facecolor(color)
+        med.set(color="k")

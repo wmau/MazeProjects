@@ -29,7 +29,8 @@ from sklearn.inspection import permutation_importance
 from sklearn.feature_selection import SequentialFeatureSelector, RFECV
 import numpy as np
 import os
-from CircleTrack.plotting import plot_daily_rasters, spiral_plot, highlight_column, plot_port_activations
+from CircleTrack.plotting import plot_daily_rasters, spiral_plot, \
+    highlight_column, plot_port_activations, color_boxes
 from CaImaging.Assemblies import preprocess_multiple_sessions, lapsed_activation
 from CircleTrack.Assemblies import (
     plot_assembly,
@@ -448,21 +449,25 @@ class ProjectAnalyses:
             ax.set_ylabel(ylabels[performance_metric])
             fig.legend()
 
-        mice_ = np.hstack([np.repeat(self.meta['grouped_mice'][age],
-                                    len(self.meta['session_types']))
-                          for age in ages])
-        ages_ = np.hstack([np.repeat(age, metrics[age].size) for age in ages])
-        session_types_ = np.hstack([np.tile(self.meta['session_types'],
-                                           len(self.meta['grouped_mice'][age]))
-                                   for age in ages])
-        metric_ = np.hstack([metrics[age].flatten() for age in ages])
-        df = pd.DataFrame(
-            {'metric': metric_,
-             'session_types': session_types_,
-             'mice': mice_,
-             'age': ages_,
-             }
-        )
+        if window is None:
+            mice_ = np.hstack([np.repeat(self.meta['grouped_mice'][age],
+                                        len(self.meta['session_types']))
+                              for age in ages])
+            ages_ = np.hstack([np.repeat(age, metrics[age].size) for age in ages])
+            session_types_ = np.hstack([np.tile(self.meta['session_types'],
+                                               len(self.meta['grouped_mice'][age]))
+                                       for age in ages])
+            metric_ = np.hstack([metrics[age].flatten() for age in ages])
+
+            df = pd.DataFrame(
+                {'metric': metric_,
+                 'session_types': session_types_,
+                 'mice': mice_,
+                 'age': ages_,
+                 }
+            )
+        else:
+            df = None
 
         return behavioral_performance, metrics, df
 
@@ -475,7 +480,6 @@ class ProjectAnalyses:
 
         pairwise_df = df.pairwise_ttests(dv='metric', between=['session_types', 'age'],
                                          padjust='none', parametric=False)
-
         return anova_df, pairwise_df
 
     def plot_best_performance(
@@ -588,7 +592,7 @@ class ProjectAnalyses:
         ]
         fig.legend(handles=patches, loc="lower right")
 
-    def plot_perseverative_licking(self, show_plot=True):
+    def plot_perseverative_licking(self, show_plot=True, binarize=True):
         goals4 = "Goals4"
         reversal = "Reversal"
 
@@ -600,7 +604,11 @@ class ProjectAnalyses:
 
             for mouse in self.meta["grouped_mice"][age]:
                 behavior_data = self.data[mouse][reversal].behavior.data
-                licks = behavior_data["all_licks"] > 0
+
+                if binarize:
+                    licks = behavior_data["all_licks"] > 0
+                else:
+                    licks = behavior_data["all_licks"]
 
                 previous_reward_ports = self.data[mouse][goals4].behavior.data[
                     "rewarded_ports"
@@ -614,7 +622,8 @@ class ProjectAnalyses:
         if show_plot:
             fig, axs = plt.subplots(1, 2, sharey=True)
             fig.subplots_adjust(wspace=0)
-
+            ylabel = {True: 'Proportion of trials',
+                      False: 'Mean licks per trial'}
             for ax, rate, title in zip(
                 axs,
                 [perseverative_errors, unforgiveable_errors],
@@ -643,7 +652,7 @@ class ProjectAnalyses:
                 ax.set_title(title)
                 ax.set_xticks([])
 
-            axs[0].set_ylabel("Proportion of trials")
+            axs[0].set_ylabel(ylabel[binarize])
             patches = [
                 mpatches.Patch(facecolor=c, label=label, edgecolor="k")
                 for c, label in zip(["cornflowerblue", "r"], ["Young", "Aged"])
@@ -1537,6 +1546,32 @@ class ProjectAnalyses:
 
         return decoding_error_matrix, errors
 
+    def compare_decoding_accuracy(self, training_test_session):
+        decoding_error_matrix, errors = self.spatial_decoding_error_matrix(show_plot=False)
+
+        row = self.meta['session_types'].index(training_test_session[0])
+        col = self.meta['session_types'].index(training_test_session[1])
+
+        session_pair_errors = {}
+        for age in ages:
+            session_pair_errors[age] = decoding_error_matrix[age][:,row,col]
+
+        fig, ax = plt.subplots(figsize=(3.3, 4.8))
+        boxes = ax.boxplot([session_pair_errors[age] for age in ages],
+                           labels=ages,
+                           widths=0.75,
+                           patch_artist=True,
+                           zorder=0)
+        for i, (age, color) in enumerate(zip(ages, age_colors)):
+            ax.scatter(jitter_x(np.ones_like(session_pair_errors[age])*(i+1)),
+                       session_pair_errors[age], edgecolor='k', color=color, zorder=1)
+        color_boxes(boxes, age_colors)
+        ax.set_ylabel('Mean decoding error [spatial bins]')
+        ax.set_title(f'Trained on {training_test_session[0]} '
+                     f'\n Tested on {training_test_session[1]}')
+
+        return session_pair_errors
+
 
     def spatial_decoding_anova(self,
                                classifier=BernoulliNB(),
@@ -2102,7 +2137,14 @@ class ProjectAnalyses:
             for age in ages
         }
 
-        return anova_dfs, df
+        pairwise_dfs = {
+            age: pg.pairwise_ttests(dv='scores',
+                                    within='time_bins',
+                                    subject='mice',
+                                    data=df[df['age']==age])
+            for age in ages
+        }
+        return anova_dfs, pairwise_dfs, df
 
     def ensemble_feature_selector(
         self,
