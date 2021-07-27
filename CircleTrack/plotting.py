@@ -41,7 +41,7 @@ def plot_spiral(ScrollObj):
     this_marker_set = ScrollObj.markers[ScrollObj.current_position]
 
     colors = {True: 'g',
-              False: 'r',
+              False: 'gray',
               }
 
     ax.plot(lin_position, t)
@@ -61,7 +61,8 @@ def plot_spiral(ScrollObj):
 
 
 def plot_raster(ScrollObj):
-    attrs = ["rasters", "tuning_curves", "binary", "rewards"]
+    attrs = ["rasters", "tuning_curves", "binary", "port_bins",
+             "rewarded"]
     check_attrs(ScrollObj, attrs)
 
     axs = ScrollObj.ax
@@ -79,9 +80,12 @@ def plot_raster(ScrollObj):
     axs[1].set_ylabel('Average transient rate')
     [ax.axis('auto') for ax in axs]
 
+    port_colors = {True: 'g',
+                   False: 'gray',
+                   }
     for ax in axs:
-        for reward in ScrollObj.rewards:
-            ax.axvline(x=reward, color='r')
+        for port, rewarded in zip(ScrollObj.port_bins, ScrollObj.rewarded):
+            ax.axvline(x=port, color=port_colors[rewarded])
 
     ScrollObj.last_position = len(ScrollObj.rasters)
 

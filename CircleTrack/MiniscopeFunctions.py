@@ -271,8 +271,8 @@ class CalciumSession:
 
         behavior_data = self.behavior.data
 
-        reward_bins = find_reward_spatial_bins(behavior_data['df']['lin_position'],
-                                               np.asarray(behavior_data['lin_ports'])[behavior_data['rewarded_ports']],
+        port_bins = find_reward_spatial_bins(behavior_data['df']['lin_position'],
+                                               np.asarray(behavior_data['lin_ports']),
                                                spatial_bin_size_radians=self.spatial.meta['bin_size'])[0]
 
         cell_number_labels = [f"Cell #{n}" for n in neurons]
@@ -281,7 +281,8 @@ class CalciumSession:
             nrows=2,
             rasters=rasters,
             tuning_curves=tuning_curves,
-            rewards=reward_bins,
+            port_bins=port_bins,
+            rewarded=behavior_data['rewarded_ports'],
             binary=binary,
             titles=cell_number_labels,
             figsize=(5, 8),
@@ -327,7 +328,7 @@ class CalciumSession:
                          marker_legend='Ensemble activation')
         ax.set_title(f"Ensemble {assembly_number}")
         for rewarded, port in zip(behavior_data['rewarded_ports'], behavior_data['lin_ports']):
-            color = 'g' if rewarded else 'k'
+            color = 'g' if rewarded else 'gray'
             ax.axvline(x=port, color=color)
 
         return ax
