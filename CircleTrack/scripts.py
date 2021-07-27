@@ -475,12 +475,13 @@ class ProjectAnalyses:
         df = self.plot_all_behavior(performance_metric=performance_metric,
                                     window=None, strides=None)[2]
 
-        anova_df = pg.rm_anova(df, dv='metric', within=['age', 'session_types'],
-                               subject='mice')
+        anova_df = pg.mixed_anova(df, dv='metric', within='session_types',
+                                  between='age', subject='mice')
 
-        pairwise_df = df.pairwise_ttests(dv='metric', between=['session_types', 'age'],
-                                         padjust='none', parametric=False)
-        return anova_df, pairwise_df
+        pairwise_df = df.pairwise_ttests(dv='metric', between='age',
+                                         within='session_types', subject='mice',
+                                         padjust='none')
+        return anova_df, pairwise_df, df
 
     def plot_best_performance(
         self,
@@ -661,8 +662,8 @@ class ProjectAnalyses:
 
         return perseverative_errors, unforgiveable_errors
 
-    def plot_perseverative_licking_over_session(self, session_type='Reversal', window_size=10,
-                                   trial_interval=4, show_plot=True, binarize_licks=True):
+    def plot_perseverative_licking_over_session(self, session_type='Reversal', window_size=8,
+                                   trial_interval=3, show_plot=True, binarize_licks=True):
         perseverative_errors = dict()
         unforgiveable_errors = dict()
         for age in ages:
@@ -2081,10 +2082,11 @@ class ProjectAnalyses:
         :return:
         """
         scores = dict()
-        fig, axs = plt.subplots(2, 2, sharey=True,  figsize=(12,8.5))
+        fig, axs = plt.subplots(2, len(session_types),
+                                sharey=True, sharex=True, figsize=(12,8.5))
         time_bins = np.arange(n_splits)
 
-        mice_, session_pairs_, ages_, time_bins_ = [], [], [], []
+        mice_, decoded_session, ages_, time_bins_ = [], [], [], []
         for age, cohort_ax in zip(ages, axs):
             scores[age] = []
             for mouse in self.meta['grouped_mice'][age]:
@@ -2100,7 +2102,7 @@ class ProjectAnalyses:
                                                                     **classifier_kwargs)
 
                     scores[age].extend(scores_)
-                    session_pairs_.extend([session_pair for i in range(n_splits)])
+                    decoded_session.extend([session_pair[1] for i in range(n_splits)])
                     mice_.extend([mouse for i in range(n_splits)])
                     ages_.extend([age for i in range(n_splits)])
                     time_bins_.extend(time_bins)
@@ -2108,19 +2110,19 @@ class ProjectAnalyses:
         df = pd.DataFrame(
                 {'mice': mice_,
                  'age': ages_,
-                 'session_pairs': session_pairs_,
+                 'decoded_session': decoded_session,
                  'time_bins': time_bins_,
                  'scores': np.hstack([scores[age] for age in ages])
                  }
             )
-        means = df.groupby(['age', 'session_pairs', 'time_bins']).mean()
-        sem = df.groupby(['age', 'session_pairs', 'time_bins']).sem()
+        means = df.groupby(['age', 'decoded_session', 'time_bins']).mean()
+        sem = df.groupby(['age', 'decoded_session', 'time_bins']).sem()
 
         for age, row_ax, color in zip(ages, axs, age_colors):
             for session_pair, ax in zip(session_types, row_ax):
                 ax.errorbar(np.linspace(0, 1, n_splits),
-                            means.loc[age].loc[session_pair].to_numpy(),
-                            yerr=np.squeeze(sem.loc[age].loc[session_pair].to_numpy()),
+                            means.loc[age].loc[session_pair[1]].to_numpy(),
+                            yerr=np.squeeze(sem.loc[age].loc[session_pair[1]].to_numpy()),
                             capsize=2, color=color)
                 ax.set_title(f"{age}, trained on {session_pair[0].replace('Goals', 'Training')}"
                              f"\n tested on {session_pair[1].replace('Goals', 'Training')}")
@@ -2132,16 +2134,19 @@ class ProjectAnalyses:
         anova_dfs = {
             age: pg.rm_anova(df.loc[df['age']==age],
                              dv='scores',
-                             within=['time_bins', 'session_pairs'],
+                             within=['decoded_session', 'time_bins'],
                              subject='mice')
             for age in ages
         }
 
         pairwise_dfs = {
-            age: pg.pairwise_ttests(dv='scores',
+            age: {session: pg.pairwise_ttests(dv='scores',
                                     within='time_bins',
                                     subject='mice',
-                                    data=df[df['age']==age])
+                                    data=df[np.logical_and(df['age']==age,
+                                                           df['decoded_session']==session)],
+                                    padjust='fdr_bh')
+                  for session in np.unique(df['decoded_session'].values)}
             for age in ages
         }
         return anova_dfs, pairwise_dfs, df
