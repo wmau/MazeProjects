@@ -17,7 +17,7 @@ from CircleTrack.BehaviorFunctions import (
     sync_Arduino_outputs,
     clean_lick_detection,
     make_tracking_video,
-    get_trials
+    get_trials,
 )
 
 class Preprocess:
@@ -93,7 +93,6 @@ class Preprocess:
             Distance (velocity)
 
         """
-        self.behavior_df["trials"] = get_trials(self.behavior_df, do_linearize=False, circular_bin=False)
         self.behavior_df["distance"] = consecutive_dist(
             np.asarray((self.behavior_df.x, self.behavior_df.y)).T, zero_pad=True
         )
