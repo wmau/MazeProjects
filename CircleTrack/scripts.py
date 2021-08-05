@@ -2399,6 +2399,11 @@ class ProjectAnalyses:
             current_position=0,
             nrows=4,
             ncols=2,
+            subplot_kw={
+                'projection': 'rectilinear',
+                'sharey': True,
+                'sharex': True,
+                        },
             figsize=(7, 10.5),
             port_activations=all_activity,
             t_xaxis=t_xaxis,

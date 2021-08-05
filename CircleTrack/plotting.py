@@ -116,7 +116,7 @@ def plot_port_activations(ScrollObj):
                   aspect='auto',
                   cmap='Blues'
                   )
-        ax.axhline(y=lick_approach_sep, color='g')
+        ax.axhline(y=lick_approach_sep, color='k')
         ax.axvline(x=0, color='r')
 
         if port in rewarded:
