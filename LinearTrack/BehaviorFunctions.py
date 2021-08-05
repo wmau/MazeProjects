@@ -117,7 +117,7 @@ class Preprocess:
 
         self.behavior_df.to_csv(fpath, index=False)
 
-    def auto_find_outliers(self, velocity_threshold=40):
+    def quick_manual_correct(self, velocity_threshold=40):
         jump_frames = np.where((self.behavior_df["distance"] > velocity_threshold))[0]
         while any(jump_frames):
             self.correct_position(jump_frames[0])
@@ -257,16 +257,6 @@ class Preprocess:
         if event.xdata < 0:
             event.xdata = 0
         self.correct_position(int(np.round(event.xdata)))
-
-    def plot_lin_position(self):
-        """
-        Plots the linearized position for the whole session, color-coded by trial.
-
-        """
-        for trial in range(int(max(self.behavior_df["trials"]))):
-            plt.plot(
-                self.behavior_df["lin_position"][self.behavior_df["trials"] == trial]
-            )
 
     def plot_trial(self, trial):
         """

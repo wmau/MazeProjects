@@ -31,6 +31,7 @@ tkroot = tk.Tk()
 tkroot.withdraw()
 from tkinter import filedialog
 from scipy.ndimage import gaussian_filter1d
+from skimage.feature import blob_doh
 
 
 def make_tracking_video(
@@ -777,7 +778,7 @@ class Preprocess:
 
         self.behavior_df.to_csv(fpath, index=False)
 
-    def auto_find_outliers(self, velocity_threshold=40):
+    def quick_manual_correct(self, velocity_threshold=40):
         jump_frames = np.where((self.behavior_df["distance"] > velocity_threshold))[0]
         while any(jump_frames):
             self.correct_position(jump_frames[0])
@@ -787,6 +788,62 @@ class Preprocess:
                 0]
 
             self.save()
+
+    def autocorrect_outliers(self, velocity_threshold=40,
+                             blob_threshold=30,
+                             show_plot=False):
+        reference = self.get_reference()
+        jump_frames = np.where((self.behavior_df["distance"] > velocity_threshold))[0]
+
+        cap = cv2.VideoCapture(self.paths["BehaviorVideo"], cv2.CAP_FFMPEG)
+        if show_plot:
+            fig, ax = plt.subplots()
+        for frame_num in jump_frames:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+            ret, frame = cap.read()
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            difference = reference-frame
+
+            blobs = blob_doh(difference > blob_threshold,
+                             max_sigma=50, threshold=0.05)
+
+            if len(blobs) >= 1:
+                if show_plot:
+                    ax.cla()
+                    ax.imshow(frame)
+                    ax.scatter(self.behavior_df.loc[frame_num, "x"],
+                               self.behavior_df.loc[frame_num, "y"],
+                               marker='+',
+                               color='r')
+                    ax.scatter(blobs[0,0], blobs[0,1],
+                               marker='+', color='g')
+
+                self.behavior_df.loc[frame_num, "x"] = blobs[0,0]
+                self.behavior_df.loc[frame_num, "y"] = blobs[0,1]
+
+        self.preprocess()
+        self.save()
+
+    def get_reference(self):
+        cap = cv2.VideoCapture(self.paths["BehaviorVideo"], cv2.CAP_FFMPEG)
+        ret, frame = cap.read()
+        (h, w) = frame.shape[:2]
+        total_nframes = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        nframes = 100
+        frames = np.random.randint(0, total_nframes, nframes)
+        collection = np.zeros((nframes, h, w))
+
+        for i, frame_num in enumerate(frames):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+            ret, frame = cap.read()
+
+            if ret:
+                collection[i] = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        cap.release()
+
+        return np.median(collection, axis=0)
+
 
     def get_timestamps(self):
         if not self.v4:
@@ -952,7 +1009,7 @@ class Preprocess:
 
 
 class BehaviorSession:
-    def __init__(self, folder=None, pix_per_cm=6.56):
+    def __init__(self, folder=None, pix_per_cm=6.21):
         """
         Contains many useful analyses for single session data.
 
@@ -1412,6 +1469,6 @@ def dlc_to_csv(folder: str):
 
 
 if __name__ == "__main__":
-    folder = r"Z:\Will\RemoteReversal\Data\Fornax\2021_02_25_RecentReversal\10_04_05"
-    B = BehaviorSession(folder)
+    P = Preprocess(r'Z:\Will\PSAMReversal\PSAM_5\2021_07_29_Goals1\15_49_37')
+    P.autocorrect_outliers()
     pass
