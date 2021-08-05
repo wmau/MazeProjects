@@ -2,7 +2,7 @@ from CircleTrack.BehaviorFunctions import BehaviorSession
 import matplotlib.pyplot as plt
 import numpy as np
 from CaImaging.util import sync_data, nan_array, ScrollPlot, \
-    sync_cameras_v4, concat_avis
+    sync_cameras_v4, concat_avis, open_minian
 from CaImaging.Miniscope import get_transient_timestamps
 from util import Session_Metadata, find_timestamp_file
 from CircleTrack.BehaviorFunctions import linearize_trajectory, make_tracking_video
@@ -632,7 +632,7 @@ class CalciumSession:
         else:
             markerlines, stemlines = pattern_ax.stem(
                 range(len(pattern)),
-                np.sort(np.abs(pattern))[::-1],
+                np.sort(pattern)[::-1],
                 "b",
                 orientation="horizontal",
                 basefmt=" ",
@@ -680,6 +680,7 @@ class CalciumSession:
                             frames=frames,
                             fps=60)
 
+
 def nan_corrupted_frames(miniscope_folder, C, S, frames):
     bad_frames_folder = os.path.join(miniscope_folder, "bad_frames")
     if os.path.exists(bad_frames_folder):
@@ -697,7 +698,18 @@ def nan_corrupted_frames(miniscope_folder, C, S, frames):
 
     return C, S
 
+def spot_check_minian(folder):
+    data = open_minian(folder)
+    spike_times = get_transient_timestamps(data["S"],
+                                           thresh_type="eps")[0]
 
+    fig, axs = plt.subplots(2, 1, sharex=True, figsize=(8,10))
+    axs[0].eventplot(spike_times, color='k')
+    axs[0].set_ylabel("Neurons", rotation=-90)
+    axs[0].set_yticks([0, len(spike_times)])
+    axs[1].plot(data.motion)
+
+    return data
 
 if __name__ == "__main__":
     folder = r"Z:\Will\RemoteReversal\Data\Fornax\2021_02_24_Goals4\09_06_18"
