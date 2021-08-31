@@ -77,6 +77,8 @@ session_types = {
         "CircleTrackRecall",
     ],
     "RemoteReversal": ["Goals1", "Goals2", "Goals3", "Goals4", "Reversal"],
+    "PSAMReversal": ["Goals1", "Goals2", "Goals3", "Goals4", "Reversal"],
+
 }
 
 aged_mice = [
@@ -87,14 +89,28 @@ aged_mice = [
     "Virgo",
     "Ymir",
     "Atlas",
+    "PSAM_1",
+    "PSAM_2",
+    "PSAM_3",
 ]
 
+PSEM_mice = ['PSAM_2',
+             'PSAM_3',
+             'PSAM_5',
+             'PSAM_6',
+             'PSAM_7',
+             'PSAM_8',
+             'PSAM_10']
+
 ages = ["young", "aged"]
+PSAM_groups = ["vehicle", "PSEM"]
 age_colors = ["cornflowerblue", "r"]
+PSAM_colors = ['silver', 'coral']
 
 
-class ProjectAnalyses:
-    def __init__(self, mice, project_name="RemoteReversal", behavior_only=False):
+class RecentReversal:
+    def __init__(self, mice, project_name="RemoteReversal",
+                 behavior_only=False):
         # Collect data from all mice and sessions.
         self.data = MultiAnimal(
             mice, project_name=project_name, behavior_only=behavior_only
@@ -122,42 +138,35 @@ class ProjectAnalyses:
         }
 
         # Get spatial fields of the assemblies.
-        for mouse in self.meta["mice"]:
-            for session_type in self.meta["session_types"]:
-                session = self.data[mouse][session_type]
-                folder = session.meta["folder"]
+        if not behavior_only:
+            for mouse in self.meta["mice"]:
+                for session_type in self.meta["session_types"]:
+                    session = self.data[mouse][session_type]
+                    folder = session.meta["folder"]
 
-                if session.meta["local"]:
-                    folder = get_equivalent_local_path(folder)
-                fpath = os.path.join(folder, "AssemblyFields.pkl")
+                    if session.meta["local"]:
+                        folder = get_equivalent_local_path(folder)
+                    fpath = os.path.join(folder, "AssemblyFields.pkl")
 
-                try:
-                    with open(fpath, "rb") as file:
-                        session.assemblies["fields"] = pkl.load(file)
-                except:
-                    behavior = session.behavior.data["df"]
-                    session.assemblies["fields"] = PlaceFields(
-                        np.asarray(behavior["t"]),
-                        np.asarray(behavior["x"]),
-                        np.asarray(behavior["y"]),
-                        session.assemblies["activations"],
-                        bin_size=session.spatial.meta["bin_size"],
-                        circular=True,
-                        shuffle_test=True,
-                        fps=session.spatial.meta["fps"],
-                        velocity_threshold=0,
-                    )
+                    try:
+                        with open(fpath, "rb") as file:
+                            session.assemblies["fields"] = pkl.load(file)
+                    except:
+                        behavior = session.behavior.data["df"]
+                        session.assemblies["fields"] = PlaceFields(
+                            np.asarray(behavior["t"]),
+                            np.asarray(behavior["x"]),
+                            np.asarray(behavior["y"]),
+                            session.assemblies["activations"],
+                            bin_size=session.spatial.meta["bin_size"],
+                            circular=True,
+                            shuffle_test=True,
+                            fps=session.spatial.meta["fps"],
+                            velocity_threshold=0,
+                        )
 
-                    with open(fpath, "wb") as file:
-                        pkl.dump(session.assemblies["fields"], file)
-
-        # for mouse in mice:
-        #     S_list = [self.data[mouse][session].data['imaging']['S']
-        #               for session in self.meta['session_types]]
-        #
-        #     cell_map = self.data[mouse]['CellReg'].map
-        #
-        #     rearranged = rearrange_neurons(cell_map, S_list)
+                        with open(fpath, "wb") as file:
+                            pkl.dump(session.assemblies["fields"], file)
 
     ############################ HELPER FUNCIONS ############################
     def rearrange_neurons(self, mouse, session_types, data_type, detected="everyday"):
@@ -264,7 +273,8 @@ class ProjectAnalyses:
 
         return ax
 
-    def plot_behavior(self, mouse, window=8, strides=2, show_plot=True, ax=None):
+    def plot_behavior(self, mouse, window=8, strides=2,
+                      show_plot=True, ax=None):
         """
         Plot behavioral performance (hits, correct rejections, d') for
         one mouse.
@@ -732,7 +742,15 @@ class ProjectAnalyses:
                 ax.set_ylabel(ylabel)
         return perseverative_errors, unforgiveable_errors
 
+    def compare_trial_count(self, session_type):
+        trials = {age: [self.data[mouse][session_type].behavior.data['ntrials']
+                        for mouse in self.meta['grouped_mice'][age]]
+                  for age in ages}
+
+        return trials
+
     ############################ OVERLAP FUNCTIONS ############################
+
     def find_all_overlaps(self, show_plot=True):
         """
         Wrapper function for find_percent_overlap, run this per mouse.
@@ -4079,6 +4097,9 @@ class ProjectAnalyses:
     #     return median_r, criterion
 
 
+
+
+
 if __name__ == "__main__":
     # mice = [
     #     # "Betelgeuse_Scope25",
@@ -4108,7 +4129,7 @@ if __name__ == "__main__":
     # #B.spiral_scrollplot_assemblies('Castor_Scope05', 'CircleTrackReversal1')
     # lapsed_assemblies, spiking = B.plot_lapsed_assemblies('Castor_Scope05', ('CircleTrackGoals2','CircleTrackReversal1'))
 
-    RR = ProjectAnalyses(
+    RR = RecentReversal(
         [
             "Fornax",
             "Gemini",
@@ -4119,7 +4140,7 @@ if __name__ == "__main__":
             "Naiad",
             "Oberon",
             "Puck",
-            "Rhea",
+            #"Rhea",
             "Sao",
             "Titania",
             "Umbriel",
