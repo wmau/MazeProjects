@@ -105,12 +105,12 @@ class Database:
     def populate_mice(self):
         mouse_info = pd.read_csv(mouse_csv)
         for project in self.project_folders:
-            mice = [
+            mice_ = [
                 (os.path.split(f.path)[-1],) for f in os.scandir(project) if f.is_dir()
             ]
 
             mice = [
-                tuple(mouse_info[mouse_info['Name'] == mouse[0]].values[0]) for mouse in mice
+                tuple(mouse_info[mouse_info['Name'] == mouse[0]].values[0]) for mouse in mice_
             ]
 
             self.cursor.executemany(

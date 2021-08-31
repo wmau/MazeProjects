@@ -17,8 +17,23 @@ from CircleTrack.BehaviorFunctions import (
     sync_Arduino_outputs,
     clean_lick_detection,
     make_tracking_video,
-    get_trials,
 )
+def find_water_ports_LT(behavior_df):
+    ports = {'x': np.zeros(2),
+             'y': np.zeros(2),
+             }
+    ports = pd.DataFrame(ports)
+
+    for port in range(2):
+        licking = behavior_df["lick_port"] == port
+
+        x = np.median(behavior_df.loc[licking, "x"])
+        y = np.median(behavior_df.loc[licking, "y"])
+
+        ports.loc[port, "x"] = x
+        ports.loc[port, "y"] = y
+
+    return ports
 
 class Preprocess:
     def __init__(
@@ -82,7 +97,8 @@ class Preprocess:
             # This is likely from mistracking. Interpolate those data points.
             self.interp_mistracks()
 
-            self.behavior_df = clean_lick_detection(self.behavior_df)
+            self.behavior_df = clean_lick_detection(self.behavior_df,
+                                                    linear_track=True)
             self.preprocess()
 
     def preprocess(self):
@@ -93,6 +109,8 @@ class Preprocess:
             Distance (velocity)
 
         """
+        self.behavior_df["trials"], self.behavior_df['direction'] = \
+            get_trials(self.behavior_df.x)
         self.behavior_df["distance"] = consecutive_dist(
             np.asarray((self.behavior_df.x, self.behavior_df.y)).T, zero_pad=True
         )
@@ -116,7 +134,7 @@ class Preprocess:
 
         self.behavior_df.to_csv(fpath, index=False)
 
-    def quick_manual_correct(self, velocity_threshold=40):
+    def quick_manual_correct(self, velocity_threshold=15):
         jump_frames = np.where((self.behavior_df["distance"] > velocity_threshold))[0]
         while any(jump_frames):
             self.correct_position(jump_frames[0])
@@ -279,10 +297,64 @@ class Preprocess:
             self.folder, start=start, stop=stop, output_fname=fname, fps=fps
         )
 
+def get_trials(x, nbins=16):
+    # Bin position.
+    bins = np.linspace(min(x), max(x), nbins)
+    binned_position = np.digitize(x, bins)
+    bins = np.unique(binned_position)
+
+    # For each bin number, get timestamps when the mouse was in that bin.
+    indices = [np.where(binned_position == this_bin)[0] for this_bin in bins]
+
+    # Preallocate the trial array.
+    trials = np.full(binned_position.shape, np.nan)
+    direction = np.full(binned_position.shape, np.nan, dtype=object)
+
+    trial_start = 0     # Trial starts on first frame.
+
+    # Where is the mouse placed on the track? If closer to the left side,
+    # the first trial ends when the mouse enters the rightmost bin.
+    start_i = {'left': 0,
+               'right': -2}
+    stop_i = {'left': -2,
+              'right': 0}
+    if bins[0] < nbins/2:
+        start_side = 'left'
+    else:
+        start_side = 'right'
+
+    # For a larg enumber of trials...
+    for trial_number in range(500):
+        # Find the frames where the mouse is in a certain bin.
+        start_bin_frames = indices[start_i[start_side]]
+        stop_bin_frames = indices[stop_i[start_side]]
+
+        # Find when the mouse enters the start bin and the stop bin.
+        enter_start = start_bin_frames[np.argmax(start_bin_frames > trial_start)]
+        trial_end = stop_bin_frames[np.argmax(stop_bin_frames > enter_start)]
+
+        # Switch sides.
+        if start_side == 'right':
+            start_side = 'left'
+        else:
+            start_side = 'right'
+
+        # Assign the trial number.
+        if np.all(np.isnan(trials[trial_start:trial_end])):
+            trials[trial_start:trial_end] = trial_number
+            direction[trial_start:trial_end] = start_side
+        else:
+            trials[np.isnan(trials)] = trial_number - 1
+            break
+
+        # Start the next trial when the last trial ends.
+        trial_start = trial_end
+
+    return trials.astype(int), direction
+
 if __name__ == '__main__':
     P = Preprocess(
-        r'Z:\Will\LinearTrack\Data\Miranda'
-        r'\2021_03_08_LinearTrackShaping1\10_04_48')
-    P.find_outliers()
+        r'Z:\Will\LinearTrack\Data\Atlas\2021_05_24_LinearTrack1\09_51_14')
+    #P.find_outliers()
 
     pass

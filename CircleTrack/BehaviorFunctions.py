@@ -24,6 +24,7 @@ from numpy.lib.stride_tricks import sliding_window_view
 
 from CircleTrack.plotting import spiral_plot, highlight_column
 from CircleTrack.utils import circle_sizes
+from LinearTrack.BehaviorFunctions import find_water_ports_LT
 from util import grab_paths, Session_Metadata, find_timestamp_file
 import tkinter as tk
 
@@ -32,7 +33,6 @@ tkroot.withdraw()
 from tkinter import filedialog
 from scipy.ndimage import gaussian_filter1d
 from skimage.feature import blob_doh
-
 
 def make_tracking_video(
     session_folder,
@@ -321,7 +321,8 @@ def find_water_ports(behavior_df, use_licks=True):
     return ports, port_angles
 
 
-def clean_lick_detection(behavior_df, threshold=80):
+def clean_lick_detection(behavior_df, linear_track=False,
+                         threshold=80):
     """
     Clean lick detection data by checking that the mouse is near the port during
     a detected lick.
@@ -337,7 +338,10 @@ def clean_lick_detection(behavior_df, threshold=80):
     ---
     behavior_df: cleaned DataFrame after eliminating false positives.
     """
-    ports = find_water_ports(behavior_df)[0]
+    if not linear_track:
+        ports = find_water_ports(behavior_df)[0]
+    else:
+        ports = find_water_ports_LT(behavior_df)
 
     lick_frames = behavior_df[behavior_df.lick_port > -1]
     for i, frame in lick_frames.iterrows():
@@ -1063,6 +1067,7 @@ class BehaviorSession:
             self.meta["behavior_timestamps"] = pd.read_csv(
                 self.meta["paths"]["timestamps"], sep="\t"
             )
+        self.meta['local'] = False
 
         self.meta["fps"] = self.get_fps()
 
