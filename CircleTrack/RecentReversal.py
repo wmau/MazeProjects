@@ -582,10 +582,11 @@ class RecentReversal:
             "CRs": "Correct rejection rate",
             "hits": "Hit rate",
         }
+        performance = dict()
         for ax, session, title in zip(
             axs, self.meta["session_types"], self.meta["session_labels"]
         ):
-            self.plot_best_performance(
+            performance[session] = self.plot_best_performance(
                 session_type=session,
                 ax=ax,
                 window=window,
@@ -602,6 +603,48 @@ class RecentReversal:
             for c, label in zip(["cornflowerblue", "r"], ["Young", "Aged"])
         ]
         fig.legend(handles=patches, loc="lower right")
+
+        return performance
+
+    def compare_rewards(self, session_type):
+        reward_rate = {age: [] for age in ages}
+
+        for age in ages:
+            for mouse in self.meta['grouped_mice'][age]:
+                n_drinks = self.data[mouse][session_type].behavior.data['n_drinks']
+                n_trials = self.data[mouse][session_type].behavior.data['ntrials']
+
+                rr = (np.sum(n_drinks) / 2) / n_trials
+                reward_rate[age].append(rr)
+
+        self.scatter_box(reward_rate, ylabel='Reward rate')
+
+        return reward_rate
+
+    def scatter_box(self, data, ylabel='', ax=None):
+        if ax is None:
+            fig, ax = plt.subplots()
+        boxes = ax.boxplot([data[age] for age in ages],
+                           widths=0.75, showfliers=False, zorder=0, patch_artist=True)
+
+        [ax.scatter(
+            jitter_x(np.ones_like(data[age])*(i+1), 0.05),
+            data[age],
+            color=color,
+            edgecolor='k',
+            zorder=1,
+            s=50,
+        )
+            for i, (age, color) in enumerate(zip(ages,
+                                                 age_colors))]
+
+        for patch, med, color in zip(
+                boxes["boxes"], boxes["medians"], age_colors
+        ):
+            patch.set_facecolor(color)
+            med.set(color="k")
+        ax.set_xticks([])
+        ax.set_ylabel(ylabel)
 
     def plot_perseverative_licking(self, show_plot=True, binarize=True):
         goals4 = "Goals4"
@@ -746,6 +789,8 @@ class RecentReversal:
         trials = {age: [self.data[mouse][session_type].behavior.data['ntrials']
                         for mouse in self.meta['grouped_mice'][age]]
                   for age in ages}
+
+        self.scatter_box(trials, 'Trials')
 
         return trials
 
@@ -4096,39 +4141,7 @@ class RecentReversal:
     #
     #     return median_r, criterion
 
-
-
-
-
 if __name__ == "__main__":
-    # mice = [
-    #     # "Betelgeuse_Scope25",
-    #     # "Alcor_Scope20",
-    #     "Castor_Scope05",
-    #     # "Draco_Scope02",
-    #     "Encedalus_Scope14",
-    #     "Fornax",
-    #     "Hydra",
-    #     "Io",
-    #     #"Janus",
-    #     "Kalyke",
-    #     "Lyra",
-    #     # "M1",
-    #     # "M2",
-    #     # "M3",
-    #     # "M4",
-    # ]
-    # # B = BatchBehaviorAnalyses(mice)
-    # # B.plot_learning_trials_per_mouse()
-    # # B.plot_all_session_licks()
-    # # B.plot_all_sdts(1)
-    # # B.compare_d_prime(8, 'CircleTrackReversal1', 'CircleTrackReversal2')
-    #
-    # B = ProjectAnalyses(mice)
-    # B.correlate_stability_to_reversal()
-    # #B.spiral_scrollplot_assemblies('Castor_Scope05', 'CircleTrackReversal1')
-    # lapsed_assemblies, spiking = B.plot_lapsed_assemblies('Castor_Scope05', ('CircleTrackGoals2','CircleTrackReversal1'))
-
     RR = RecentReversal(
         [
             "Fornax",

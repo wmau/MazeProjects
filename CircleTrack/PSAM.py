@@ -60,6 +60,8 @@ class PSAM:
         self.data = MultiAnimal(mice, project_name='PSAMReversal',
                                 behavior_only=True)
 
+
+
         self.meta = {
             "session_types": session_types['PSAMReversal'],
             "mice": mice,
@@ -303,10 +305,11 @@ class PSAM:
             "CRs": "Correct rejection rate",
             "hits": "Hit rate",
         }
+        performance = dict()
         for ax, session, title in zip(
                 axs, self.meta["session_types"], self.meta["session_labels"]
         ):
-            self.plot_best_performance(
+            performance[session] = self.plot_best_performance(
                 session_type=session,
                 ax=ax,
                 window=window,
@@ -323,6 +326,8 @@ class PSAM:
             for c, label in zip(PSAM_colors, PSAM_groups)
         ]
         fig.legend(handles=patches, loc="lower right")
+
+        return performance
 
     def plot_perseverative_licking(self, show_plot=True, binarize=True):
         goals4 = "Goals4"
@@ -394,20 +399,71 @@ class PSAM:
 
         return perseverative_errors, unforgiveable_errors
 
+    def scatter_box(self, data, ylabel='', ax=None):
+        if ax is None:
+            fig, ax = plt.subplots()
+        boxes = ax.boxplot([data[inj] for inj in PSAM_groups],
+                           widths=0.75, showfliers=False, zorder=0, patch_artist=True)
+
+        [ax.scatter(
+            jitter_x(np.ones_like(data[inj])*(i+1), 0.05),
+            data[inj],
+            color=color,
+            edgecolor='k',
+            zorder=1,
+            s=50,
+        )
+            for i, (inj, color) in enumerate(zip(PSAM_groups,
+                                                 PSAM_colors))]
+
+        for patch, med, color in zip(
+                boxes["boxes"], boxes["medians"], PSAM_colors
+        ):
+            patch.set_facecolor(color)
+            med.set(color="k")
+        ax.set_xticks([])
+        ax.set_ylabel(ylabel)
+
     def compare_trial_count(self, session_type):
         trials = {inj: [self.data[mouse][session_type].data['ntrials']
                         for mouse in self.meta['grouped_mice'][inj]]
                   for inj in PSAM_groups}
 
+        self.scatter_box(trials, 'Trials')
+
         return trials
 
-    def compare_licks(self, session_type):
-        licks = {inj: [np.sum(self.data[mouse][session_type].data['all_licks'])
-                        for mouse in self.meta['grouped_mice'][inj]]
-                  for inj in PSAM_groups}
+    def compare_licks(self, session_type, exclude_rewarded=False):
+        licks = {inj: [] for inj in PSAM_groups}
+        for inj in PSAM_groups:
+            for mouse in self.meta['grouped_mice'][inj]:
+                if exclude_rewarded:
+                    ports = ~self.data[mouse][session_type].data['rewarded_ports']
+                else:
+                    ports = np.ones_like(self.data[mouse][session_type].data['rewarded_ports'],
+                                         dtype=bool)
+                licks[inj].append(np.sum(self.data[mouse]
+                                         [session_type].data['all_licks'][:,ports]))
+
+        self.scatter_box(licks, ylabel='Licks')
 
         return licks
 
+    def compare_rewards(self, session_type):
+        reward_rate = {inj: [] for inj in PSAM_groups}
+
+        for inj in PSAM_groups:
+            for mouse in self.meta['grouped_mice'][inj]:
+                n_drinks = self.data[mouse][session_type].data['n_drinks']
+                n_trials = self.data[mouse][session_type].data['ntrials']
+
+                rr = (np.sum(n_drinks) / 2) / n_trials
+                reward_rate[inj].append(rr)
+
+        self.scatter_box(reward_rate, ylabel='Reward rate')
+
+        return reward_rate
+
 if __name__ == '__main__':
-    mice = ['PSAM_' + str(i) for i in np.arange(5,13)]
+    mice = ['PSAM_' + str(i) for i in np.arange(6,13)]
     P = PSAM(mice)
