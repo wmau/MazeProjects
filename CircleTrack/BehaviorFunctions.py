@@ -24,7 +24,6 @@ from numpy.lib.stride_tricks import sliding_window_view
 
 from CircleTrack.plotting import spiral_plot, highlight_column
 from CircleTrack.utils import circle_sizes
-from LinearTrack.BehaviorFunctions import find_water_ports_LT
 from util import grab_paths, Session_Metadata, find_timestamp_file
 import tkinter as tk
 
@@ -240,7 +239,8 @@ def sync_Arduino_outputs(
             continue
 
         val = row.Data
-        behavior_df.at[behav_frame, "lick_port"] = val
+        if val != -1:
+            behavior_df.at[behav_frame, "lick_port"] = val
         if val == -1 or val == "Water":
             behavior_df.at[behav_frame, "water"] = True
 
@@ -251,7 +251,7 @@ def sync_Arduino_outputs(
     return behavior_df, Arduino_data
 
 
-def find_water_ports(behavior_df, use_licks=True):
+def find_water_ports(behavior_df, linear_track=False, use_licks=True):
     """
     Use the x and y extrema to locate water port locations. Requires that the
     maze be positioned so that a port is at the 12 o'clock position. Which port
@@ -277,8 +277,16 @@ def find_water_ports(behavior_df, use_licks=True):
 
     # Calculate port locations.
     ports = {}
-    ports["x"] = radius * np.cos(port_angles) + center[0]
-    ports["y"] = radius * np.sin(port_angles) + center[1]
+
+    if linear_track:
+        ports = {'x': np.zeros(2),
+                 'y': np.zeros(2),
+                 }
+        n_ports = 2
+    else:
+        ports["x"] = radius * np.cos(port_angles) + center[0]
+        ports["y"] = radius * np.sin(port_angles) + center[1]
+        n_ports = 8
     ports = pd.DataFrame(ports)
 
     # So actually the above was an overly complicated way to find the ports
@@ -287,7 +295,7 @@ def find_water_ports(behavior_df, use_licks=True):
     # find where the mouse licked. Default to the above if mouse doesn't lick
     # at particular ports.
     if use_licks:
-        for port in range(8):
+        for port in range(n_ports):
             licking = behavior_df["lick_port"] == port
 
             if not np.any(licking):
@@ -338,10 +346,10 @@ def clean_lick_detection(behavior_df, linear_track=False,
     ---
     behavior_df: cleaned DataFrame after eliminating false positives.
     """
-    if not linear_track:
-        ports = find_water_ports(behavior_df)[0]
-    else:
-        ports = find_water_ports_LT(behavior_df)
+    ports = find_water_ports(behavior_df,
+                             linear_track=linear_track)[0]
+    if linear_track:
+        behavior_df[behavior_df.lick_port > 2] = -1
 
     lick_frames = behavior_df[behavior_df.lick_port > -1]
     for i, frame in lick_frames.iterrows():
@@ -456,11 +464,13 @@ def find_rewarded_ports(behavior_df):
         raise KeyError("Run sync_Arduino_outputs and clean_lick_detection first.")
 
     # Get index one before water delivery (the lick that triggered it).
-    one_before = np.where(behavior_df.water)[0]
+    water = np.where(behavior_df.water)[0]
+    one_before = np.where(behavior_df.water)[0] - 1
 
     # Find unique port numbers.
     water_delivered = np.asarray(
-        [np.sum(behavior_df.loc[one_before, "lick_port"] == i) for i in range(8)]
+        [np.sum(behavior_df.loc[np.union1d(one_before,
+                                           water), "lick_port"] == i) for i in range(8)]
     )
     rewarded_ports = np.where(water_delivered > 0.2 * np.std(water_delivered))[0]
 
@@ -682,6 +692,22 @@ def approach_speed(
 
     return approaches
 
+def undo_lick_cleaning(folder, rename_old=True):
+    behav_cam = 1
+    miniscope_cam = 0
+    subtract_offset = False
+
+    P = Preprocess(folder, behav_cam, miniscope_cam, subtract_offset)
+    df = sync_Arduino_outputs(folder, behav_cam, miniscope_cam,
+                              subtract_offset=subtract_offset)[0]
+    P.behavior_df['lick_port'] = df['lick_port']
+    P.behavior_df['water'] = df['water']
+
+    if rename_old:
+        new_fname = os.path.join(folder, 'PreprocessedBehavior_old.csv')
+        os.rename(P.paths['PreprocessedBehavior'], new_fname)
+
+    P.final_save()
 
 class Preprocess:
     def __init__(
@@ -740,7 +766,6 @@ class Preprocess:
                 miniscope_cam=miniscope_cam,
                 subtract_offset=subtract_offset,
             )[0]
-            self.behavior_df = clean_lick_detection(self.behavior_df)
 
             # Find timestamps where the mouse seemingly teleports to a new location.
             # This is likely from mistracking. Interpolate those data points.
@@ -781,6 +806,10 @@ class Preprocess:
             fpath = os.path.join(path, fname)
 
         self.behavior_df.to_csv(fpath, index=False)
+
+    def final_save(self):
+        self.behavior_df = clean_lick_detection(self.behavior_df)
+        self.save()
 
     def quick_manual_correct(self, velocity_threshold=40):
         jump_frames = np.where((self.behavior_df["distance"] > velocity_threshold))[0]
@@ -1022,6 +1051,9 @@ class BehaviorSession:
         folder: str
             Directory pertaining to a single session. If not specified, a
             dialog box will appear for you to navigate to the folder.
+
+        pix_per_cm: float
+            Number of pixels per cm. 6.21 for the newest ROI, 6.56 for the older.
 
         Useful methods:
             plot_licks(): Plots the trajectory and licks in a spiral pattern.

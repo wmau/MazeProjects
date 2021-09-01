@@ -18,22 +18,6 @@ from CircleTrack.BehaviorFunctions import (
     clean_lick_detection,
     make_tracking_video,
 )
-def find_water_ports_LT(behavior_df):
-    ports = {'x': np.zeros(2),
-             'y': np.zeros(2),
-             }
-    ports = pd.DataFrame(ports)
-
-    for port in range(2):
-        licking = behavior_df["lick_port"] == port
-
-        x = np.median(behavior_df.loc[licking, "x"])
-        y = np.median(behavior_df.loc[licking, "y"])
-
-        ports.loc[port, "x"] = x
-        ports.loc[port, "y"] = y
-
-    return ports
 
 class Preprocess:
     def __init__(
@@ -134,7 +118,7 @@ class Preprocess:
 
         self.behavior_df.to_csv(fpath, index=False)
 
-    def quick_manual_correct(self, velocity_threshold=15):
+    def quick_manual_correct(self, velocity_threshold=20):
         jump_frames = np.where((self.behavior_df["distance"] > velocity_threshold))[0]
         while any(jump_frames):
             self.correct_position(jump_frames[0])
@@ -142,6 +126,8 @@ class Preprocess:
             jump_frames = np.where(
                 (self.behavior_df["distance"] > velocity_threshold))[
                 0]
+
+            self.save()
 
     def get_timestamps(self):
         if not self.v4:
@@ -216,7 +202,7 @@ class Preprocess:
         while plt.get_fignums():
             plt.waitforbuttonpress()
 
-        #self.preprocess()
+        self.preprocess()
 
     def correct(self, event):
         """
@@ -354,7 +340,7 @@ def get_trials(x, nbins=16):
 
 if __name__ == '__main__':
     P = Preprocess(
-        r'Z:\Will\LinearTrack\Data\Atlas\2021_05_24_LinearTrack1\09_51_14')
+        r'Z:\Will\LinearTrack\Data\Miranda\2021_03_12_LinearTrack3\09_58_05')
     #P.find_outliers()
 
     pass
