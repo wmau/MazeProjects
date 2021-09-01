@@ -10,7 +10,7 @@ import pandas as pd
 mouse_csv = r"Z:\Will\mouse_info.csv"
 
 class Database:
-    def __init__(self, directory=r"Z:\Will", db_name="database.sqlite",
+    def __init__(self, directory=r"D:", db_name="database.sqlite",
                  from_scratch=False):
         self.directory = directory
         self.db_path = os.path.join(self.directory, db_name)

@@ -4,7 +4,7 @@ from CaImaging.CellReg import CellRegObj
 from CircleTrack.sql import Database
 import os
 
-directory = r'Z:\Will'
+directory = r'D:'
 db_fname = 'database.sqlite'
 
 def MultiSession(mouse, project_name='Drift',
