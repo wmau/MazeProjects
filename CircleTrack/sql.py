@@ -204,5 +204,6 @@ class Database:
 
 
 if __name__ == "__main__":
-    with Database(from_scratch=True) as db:
+    # Make the database on csstorage then move it to a local drive.
+    with Database(directory=r'Z:\Will', from_scratch=True) as db:
         db.create()
