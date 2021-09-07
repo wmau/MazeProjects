@@ -108,6 +108,7 @@ def sync(
     timestamp_path,
     miniscope_cam=5,
     behav_cam=1,
+    convert_to_np=True,
 ):
     """
     Synchronizes minian and behavior files. Does specific correction
@@ -144,6 +145,7 @@ def sync(
         timestamp_path,
         miniscope_cam=miniscope_cam,
         behav_cam=behav_cam,
+        convert_to_np=convert_to_np,
     )
 
     # Find all water delivery frames and relocate them to the

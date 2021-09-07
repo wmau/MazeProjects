@@ -17,6 +17,8 @@ from CircleTrack.BehaviorFunctions import (
     sync_Arduino_outputs,
     clean_lick_detection,
     make_tracking_video,
+    find_water_ports,
+    find_rewarded_ports,
 )
 
 class Preprocess:
@@ -81,8 +83,8 @@ class Preprocess:
             # This is likely from mistracking. Interpolate those data points.
             self.interp_mistracks()
 
-            self.behavior_df = clean_lick_detection(self.behavior_df,
-                                                    linear_track=True)
+            # self.behavior_df = clean_lick_detection(self.behavior_df,
+            #                                         linear_track=True)
             self.preprocess()
 
     def preprocess(self):
@@ -118,7 +120,13 @@ class Preprocess:
 
         self.behavior_df.to_csv(fpath, index=False)
 
-    def quick_manual_correct(self, velocity_threshold=20):
+    def final_save(self):
+        self.behavior_df = clean_lick_detection(self.behavior_df,
+                                                linear_track=True)
+
+        self.save()
+
+    def quick_manual_correct(self, velocity_threshold=25):
         jump_frames = np.where((self.behavior_df["distance"] > velocity_threshold))[0]
         while any(jump_frames):
             self.correct_position(jump_frames[0])
@@ -331,12 +339,147 @@ def get_trials(x, nbins=16):
             direction[trial_start:trial_end] = start_side
         else:
             trials[np.isnan(trials)] = trial_number - 1
+            direction[np.isnan(trials)] = start_side
             break
 
         # Start the next trial when the last trial ends.
         trial_start = trial_end
 
     return trials.astype(int), direction
+
+class BehaviorSession:
+    def __init__(self, folder=None, pix_per_cm=6.3):
+        """
+        Contains many useful analyses for single session data.
+
+        :parameter
+        ---
+        folder: str
+            Directory pertaining to a single session. If not specified, a
+            dialog box will appear for you to navigate to the folder.
+
+        pix_per_cm: float
+            Number of pixels per cm. 6.21 for the newest ROI, 6.56 for the older.
+
+        Useful methods:
+            plot_licks(): Plots the trajectory and licks in a spiral pattern.
+
+            port_approaches(): Plots speed or acceleration within a time
+                window centered around the arrival to each port.
+
+            sdt_trials(): Gets the hit/miss/false alarm/correct rejection rate
+                for each port. Currently in beta.
+
+        """
+        # If folder is not specified, open a dialog box.
+        self.meta = dict()
+        if folder is None:
+            self.meta["folder"] = filedialog.askdirectory()
+        else:
+            self.meta["folder"] = folder
+
+        # Find paths.
+        self.meta["paths"] = Session_Metadata(self.meta["folder"]).meta_dict
+        self.meta["paths"]["PreprocessedBehavior"] = os.path.join(
+            self.meta["folder"], "PreprocessedBehavior.csv"
+        )
+
+        # Determine if this was a recording with the new QT system.
+        self.meta["v4"] = (
+            True if type(self.meta["paths"]["timestamps"]) is list else False
+        )
+
+        # Try loading a presaved csv.
+        self.data = dict()
+        try:
+            self.data["df"] = pd.read_csv(self.meta["paths"]["PreprocessedBehavior"])
+        except:
+            raise FileNotFoundError("Run Preprocess() first.")
+
+        # Get timing information.
+        if self.meta["v4"]:
+            self.meta["behavior_timestamps"] = pd.read_csv(
+                find_timestamp_file(self.meta["paths"]["timestamps"], "BehavCam")
+            )
+        else:
+            self.meta["behavior_timestamps"] = pd.read_csv(
+                self.meta["paths"]["timestamps"], sep="\t"
+            )
+        self.meta['local'] = False
+
+        self.meta["fps"] = self.get_fps()
+
+        # Convert x, y, and distance values to cm.
+        self.data["df"]["x"] = self.data["df"]["x"] / pix_per_cm
+        self.data["df"]["y"] = self.data["df"]["y"] / pix_per_cm
+        self.data["df"]["distance"] = self.data["df"]["distance"] / pix_per_cm
+
+        # Number of laps run.
+        self.data["ntrials"] = max(self.data["df"]["trials"] + 1)
+
+        # Amount of time spent per trial (in frames).
+        self.data["frames_per_trial"] = np.bincount(self.data["df"]["trials"])
+
+        # Find water ports.
+        self.data["ports"], self.data["lin_ports"] = find_water_ports(self.data["df"],
+                                                                      linear_track=True,
+                                                                      use_licks=True)
+        self.data["n_drinks"] = self.count_drinks()
+
+
+    def get_fps(self):
+        """
+        Get sampling frequency of behavior video. We don't trust the
+        cv2 method for extracting fps from video files. Instead,
+        count time intervals in between video frames in timeStamp.csv.
+
+        :return:
+        """
+        # Take difference.
+        if self.meta["v4"]:
+            key = "Time Stamp (ms)"
+        else:
+            key = "sysClock"
+
+        interframe_intervals = np.diff(self.meta["behavior_timestamps"][key].iloc[1:])
+
+        # Inter-frame interval in milliseconds.
+        mean_interval = np.mean(interframe_intervals)
+        fps = round(1 / (mean_interval / 1000))
+
+        return fps
+
+    def count_drinks(self):
+        """
+        Count number of rewards retrieved per trial.
+
+        :return:
+        """
+        n_rewards = []
+        for trial in range(self.data["ntrials"]):
+            water_deliveries = np.sum(
+                self.data["df"].loc[self.data["df"]["trials"] == trial]["water"]
+            )
+            n_rewards.append(water_deliveries)
+
+        return np.asarray(n_rewards)
+
+    def plot_licks(self):
+        """
+        Plots licks as a line plot.
+
+        :return:
+        """
+        fig, ax = plt.subplots()
+        ax.plot(
+            self.data["all_licks"][:, self.data["rewarded_ports"]], "cornflowerblue"
+        )
+        ax.plot(
+            self.data["all_licks"][:, ~self.data["rewarded_ports"]], "gray", alpha=0.6
+        )
+        ax.set_xlabel("Trials")
+        ax.set_ylabel("Licks")
+
 
 if __name__ == '__main__':
     P = Preprocess(
