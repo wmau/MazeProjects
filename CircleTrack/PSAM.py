@@ -1,5 +1,6 @@
 import numpy as np
 from CircleTrack.SessionCollation import MultiAnimal
+from CircleTrack.BehaviorFunctions import BehaviorSession
 import matplotlib.pyplot as plt
 import xarray as xr
 from CaImaging.util import nan_array, sem
@@ -58,7 +59,7 @@ PSAM_colors = ['silver', 'coral']
 class PSAM:
     def __init__(self, mice):
         self.data = MultiAnimal(mice, project_name='PSAMReversal',
-                                behavior_only=True)
+                                SessionFunction=BehaviorSession)
 
 
 

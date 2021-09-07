@@ -1,5 +1,6 @@
 from CircleTrack.BehaviorFunctions import BehaviorSession
 from CircleTrack.MiniscopeFunctions import CalciumSession
+from LinearTrack.BehaviorFunctions import BehaviorSession as LTBehaviorSession
 from CaImaging.CellReg import CellRegObj
 from CircleTrack.sql import Database
 import os
@@ -8,12 +9,10 @@ directory = r'D:'
 db_fname = 'database.sqlite'
 
 def MultiSession(mouse, project_name='Drift',
-                 behavior_only=True,
-                 directory=directory, db_fname=db_fname):
-    if behavior_only:
-        SessionFunction = BehaviorSession
-    else:
-        SessionFunction = CalciumSession
+                 directory=directory, db_fname=db_fname,
+                 SessionFunction=CalciumSession,
+                 session_types=None,
+                 **kwargs):
 
     db = Database(directory, db_fname)
     sql_str = """
@@ -27,9 +26,13 @@ def MultiSession(mouse, project_name='Drift',
     """
     results = db.execute(sql_str, (mouse, project_name))
 
+    if session_types is None:
+        session_types = [r[0] for r in results]
+
     S = dict()
     for session_type, folder in results:
-        S[session_type] = SessionFunction(folder)
+        if session_type in session_types:
+            S[session_type] = SessionFunction(folder, **kwargs)
 
     sql_str = """
         SELECT project.path
@@ -51,13 +54,17 @@ def MultiSession(mouse, project_name='Drift',
     return S
 
 
-def MultiAnimal(mice, project_name='Drift', behavior_only=True):
+def MultiAnimal(mice, project_name='Drift',
+                SessionFunction=CalciumSession,
+                session_types=None):
     sessions_by_mouse = dict()
 
     for mouse in mice:
         print(f"Loading data from {mouse}")
         sessions_by_mouse[mouse] = MultiSession(
-            mouse, project_name=project_name, behavior_only=behavior_only
+            mouse, project_name=project_name,
+            SessionFunction=SessionFunction,
+            session_types=session_types,
         )
 
     return sessions_by_mouse

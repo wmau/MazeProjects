@@ -14,6 +14,7 @@ from CaImaging.plotting import errorfill, beautify_ax, jitter_x
 from scipy.stats import spearmanr, zscore, circmean, kendalltau, wilcoxon, mannwhitneyu
 from scipy.spatial import distance
 from CircleTrack.SessionCollation import MultiAnimal
+from CircleTrack.MiniscopeFunctions import CalciumSession
 from CaImaging.CellReg import rearrange_neurons, trim_map, scrollplot_footprints
 from sklearn.naive_bayes import BernoulliNB, GaussianNB
 from sklearn.model_selection import (
@@ -113,7 +114,8 @@ class RecentReversal:
                  behavior_only=False):
         # Collect data from all mice and sessions.
         self.data = MultiAnimal(
-            mice, project_name=project_name, behavior_only=behavior_only
+            mice, project_name=project_name,
+            SessionFunction=CalciumSession,
         )
 
         # Define session types here. Watch out for typos.
@@ -3461,7 +3463,7 @@ class RecentReversal:
         session_type: str
             Session name (Goals1, 2, 3, 4, or Reversal).
 
-        spatial_bin_size_radians: float
+        spatial_bin_size: float
             Spatial bin size in radians. Should be the same as the one run with PlaceFields() for consistency.
 
         show_plot: bool
