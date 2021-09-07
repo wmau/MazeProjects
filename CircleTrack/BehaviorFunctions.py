@@ -247,7 +247,9 @@ def sync_Arduino_outputs(
     # Not sure what this is for tbh.
     behavior_df.loc[behavior_df["lick_port"] == "Water", "lick_port"] = -1
 
-    behavior_df = behavior_df.astype({"frame": int, "water": bool, "lick_port": int})
+    behavior_df = behavior_df.astype({"frame": int,
+                                      "water": bool,
+                                      "lick_port": int})
     return behavior_df, Arduino_data
 
 
@@ -349,7 +351,7 @@ def clean_lick_detection(behavior_df, linear_track=False,
     ports = find_water_ports(behavior_df,
                              linear_track=linear_track)[0]
     if linear_track:
-        behavior_df[behavior_df.lick_port > 2] = -1
+        behavior_df.loc[behavior_df.lick_port > 2, 'lick_port'] = -1
 
     lick_frames = behavior_df[behavior_df.lick_port > -1]
     for i, frame in lick_frames.iterrows():
