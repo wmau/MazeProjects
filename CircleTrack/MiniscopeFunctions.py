@@ -1,9 +1,10 @@
 from CircleTrack.BehaviorFunctions import BehaviorSession
 import matplotlib.pyplot as plt
 import numpy as np
-from CaImaging.util import sync_data, nan_array, ScrollPlot, \
-    sync_cameras_v4, concat_avis, open_minian
-from CaImaging.Miniscope import get_transient_timestamps
+from CaImaging.util import nan_array, ScrollPlot, \
+    sync_cameras_v4
+from CaImaging.Miniscope import get_transient_timestamps, \
+    nan_corrupted_frames
 from util import Session_Metadata, find_timestamp_file
 from CircleTrack.BehaviorFunctions import linearize_trajectory, make_tracking_video
 from CircleTrack.plotting import plot_spiral, plot_raster, spiral_plot
@@ -27,10 +28,8 @@ from CircleTrack.Assemblies import (
 )
 
 hv.extension("bokeh")
-from bokeh.plotting import show
 from itertools import product
 from scipy.stats import spearmanr, zscore
-from matplotlib import colors
 
 
 class CalciumSession:
@@ -680,36 +679,6 @@ class CalciumSession:
                             frames=frames,
                             fps=60)
 
-
-def nan_corrupted_frames(miniscope_folder, C, S, frames):
-    bad_frames_folder = os.path.join(miniscope_folder, "bad_frames")
-    if os.path.exists(bad_frames_folder):
-        bad_frames = [
-            int(os.path.splitext(fname)[0]) for fname in os.listdir(bad_frames_folder)
-        ]
-        n_frames = len(bad_frames)
-        print(f"{n_frames} bad frames found. Correcting...")
-
-        match = np.asarray([x in bad_frames for x in frames])
-        C[:, match] = np.nan
-        S[:, match] = np.nan
-    else:
-        pass
-
-    return C, S
-
-def spot_check_minian(folder):
-    data = open_minian(folder)
-    spike_times = get_transient_timestamps(data["S"],
-                                           thresh_type="eps")[0]
-
-    fig, axs = plt.subplots(2, 1, sharex=True, figsize=(8,10))
-    axs[0].eventplot(spike_times, color='k')
-    axs[0].set_ylabel("Neurons", rotation=-90)
-    axs[0].set_yticks([0, len(spike_times)])
-    axs[1].plot(data.motion)
-
-    return data
 
 if __name__ == "__main__":
     folder = r"Z:\Will\RemoteReversal\Data\Fornax\2021_02_24_Goals4\09_06_18"
