@@ -16,8 +16,8 @@ class CalciumSession:
     def __init__(
             self,
             session_folder,
-            spatial_bin_size=1.905,
-            nbins=50,
+            spatial_bin_size=1.905, # ~1.905 cm for 50 bins, use None
+            nbins=None,
             S_std_thresh=1,
             velocity_threshold=4,
             place_cell_alpha=0.001,
@@ -121,7 +121,8 @@ class CalciumSession:
                 np.asarray(self.behavior.data["df"]["x"]),
                 np.zeros_like(self.behavior.data["df"]["x"]),
                 self.imaging["S"],
-                nbins=nbins,
+                bin_size=self.meta['spatial_bin_size'],
+                nbins=self.meta['nbins'],
                 circular=False,
                 linearized=True,
                 fps=self.behavior.meta["fps"],
@@ -205,7 +206,7 @@ class CalciumSession:
         bin_edges = spatial_bin(
             lin_position,
             filler,
-            nbins=nbins,
+            nbins=self.meta['nbins'],
             one_dim=True,
         )[1]
 
