@@ -44,7 +44,7 @@ def MultiSession(mouse, project_name='Drift',
     """
     results = db.execute(sql_str, (project_name,))
 
-    if SessionFunction == CalciumSession:
+    if SessionFunction not in [BehaviorSession, LTBehaviorSession]:
         cellreg_path = os.path.join(results[0][0], mouse, 'SpatialFootprints', 'CellRegResults')
         try:
             S["CellReg"] = CellRegObj(cellreg_path)
