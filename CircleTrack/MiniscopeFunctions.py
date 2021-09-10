@@ -517,7 +517,7 @@ class CalciumSession:
         Correlate trial pairs of spatial ratemaps.
 
         :return
-        corr_matrix: (trial, trial) np.array
+        corr_matrices: (trial, trial) np.array
             Correlation matrix.
         """
         # Change the axes of the fields from (cell, trial, spatial bin)

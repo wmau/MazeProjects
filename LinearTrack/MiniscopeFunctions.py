@@ -4,7 +4,7 @@ import os
 import matplotlib.pyplot as plt
 from LinearTrack.BehaviorFunctions import BehaviorSession
 from util import Session_Metadata, find_timestamp_file
-from CircleTrack.plotting import plot_raster
+from LinearTrack.plotting import plot_raster, plot_directional_raster
 from CircleTrack.utils import sync, get_equivalent_local_path, find_reward_spatial_bins
 from CaImaging.Miniscope import get_transient_timestamps, nan_corrupted_frames
 from CaImaging.PlaceFields import PlaceFields
@@ -268,20 +268,12 @@ class CalciumSession:
 
         tuning_curves = self.spatial.data["placefields_normalized"][neurons]
 
-        behavior_data = self.behavior.data
-
-        port_bins = find_reward_spatial_bins(behavior_data['df']['x'],
-                                             np.asarray(behavior_data['lin_ports']),
-                                             spatial_bin_size_radians=self.spatial.meta['bin_size'])[0]
-
         cell_number_labels = [f"Cell #{n}" for n in neurons]
         self.raster_plot = ScrollPlot(
             plot_raster,
             nrows=2,
             rasters=rasters,
             tuning_curves=tuning_curves,
-            port_bins=port_bins,
-            rewarded=[1, 1],
             binary=binary,
             titles=cell_number_labels,
             figsize=(5, 8),
@@ -289,3 +281,36 @@ class CalciumSession:
 
         return self.raster_plot
 
+    def scrollplot_directional_rasters(self, neurons=None):
+        if neurons is None:
+            neurons = range(self.imaging["n_neurons"])
+
+        rasters = self.spatial.data["rasters"][neurons]
+        directions = self.behavior.data["df"]["direction"]
+        trials = self.behavior.data["df"]["trials"]
+
+        split_rasters = {}
+        tuning_curves = {}
+        for direction in ['left','right']:
+            xward_trials = np.unique(trials[directions==direction])
+            split_rasters[direction] = nan_array((len(neurons), len(xward_trials), rasters.shape[2]))
+            tuning_curves[direction] = nan_array((len(neurons), rasters.shape[2]))
+
+            for i, raster in enumerate(rasters):
+                split_rasters[direction][i] = raster[xward_trials]
+                tuning_curves[direction][i] = np.nanmean(raster[xward_trials], axis=0)
+
+        cell_number_labels = [f"Cell #{n}" for n in neurons]
+
+        self.raster_plot = ScrollPlot(
+            plot_directional_raster,
+            subplot_kw={"sharey": "row"},
+            nrows=2,
+            ncols=2,
+            rasters=split_rasters,
+            tuning_curves=tuning_curves,
+            titles=cell_number_labels,
+            figsize=(10, 8),
+        )
+
+        pass
