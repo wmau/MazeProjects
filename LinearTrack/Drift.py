@@ -10,6 +10,8 @@ from CaImaging.CellReg import rearrange_neurons, trim_map
 from scipy.stats import spearmanr, pearsonr
 from CaImaging.util import nan_array
 from itertools import product
+from CaImaging.plotting import jitter_x
+import matplotlib.patches as mpatches
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -56,6 +58,41 @@ class Drift:
         self.meta["aged"] = {
             mouse: True if mouse in aged_mice else False for mouse in self.meta["mice"]
         }
+
+    def scatter_box(self, data, ylabel='', ax=None, fig=None,
+                    categories=ages, colors=age_colors):
+        if ax is None:
+            fig, ax = plt.subplots()
+        boxes = ax.boxplot([data[i] for i in categories],
+                           widths=0.75, showfliers=False, zorder=0, patch_artist=True)
+
+        [ax.scatter(
+            jitter_x(np.ones_like(data[category])*(i+1), 0.05),
+            data[category],
+            color=color,
+            edgecolor='k',
+            zorder=1,
+            s=50,
+        )
+            for i, (category, color) in enumerate(zip(categories,
+                                                      colors))]
+
+        for patch, med, color in zip(
+                boxes["boxes"], boxes["medians"], colors
+        ):
+            patch.set_facecolor(color)
+            med.set(color="k")
+        ax.set_xticks([])
+        ax.set_ylabel(ylabel)
+        fig.tight_layout()
+
+        patches = [
+            mpatches.Patch(facecolor=c, label=label, edgecolor="k")
+            for c, label in zip(colors, categories)
+        ]
+        fig.legend(handles=patches, loc="lower right")
+
+        return fig, ax
 
     def rearrange_neurons(self, mouse, session_types, data_type, detected="everyday"):
         """
@@ -121,16 +158,56 @@ class Drift:
 
         return trimmed_map, global_idx, session_list
 
-    def PV_corr_all_mice(self, nbins=26, normalize_by_occ=True):
-        corr_matrices = dict()
+    def corr_drift_rate_to_behavior(self, corr_matrices,
+                                    performance_metric='CRs'):
+        drift_rates = self.get_drift_rate(corr_matrices)
         for mouse in self.meta['mice']:
-            print(f'Analyzing {mouse}...')
-            corr_matrices[mouse] = self.session_pairwise_PV_corr(mouse, nbins=nbins,
-                                                                 normalize_by_occ=normalize_by_occ)
+            self.circle_data[mouse]['Reversal'].sdt_trials(
+                rolling_window=None,
+                plot=False,
+            )
 
-        return corr_matrices
+        r = dict()
+        fig, ax = plt.subplots()
+        ylabels = {
+            'd_prime': "d'",
+            'CRs': 'Correct rejection rate',
+            'hits': 'Hit rate',
+        }
+        for age, color in zip(ages, age_colors):
+            performance = [self.circle_data[mouse]['Reversal'].sdt[performance_metric]
+                           for mouse in self.meta['grouped_mice'][age]]
+            rates = [drift_rates[mouse]
+                     for mouse in self.meta['grouped_mice'][age]]
 
-    def PV_corr_all_mice_efficient(self, nbins=26, normalize_by_occ=True):
+            ax.scatter(rates, performance, color=color)
+
+            r[age] = spearmanr(rates, performance)
+        ax.set_xlabel('Drift rate [more negative = more drift]')
+        ax.set_ylabel(ylabels[performance_metric])
+
+        performance = [self.circle_data[mouse]['Reversal'].sdt[performance_metric]
+                       for mouse in self.meta['mice']]
+        rates = [drift_rates[mouse]
+                 for mouse in self.meta['mice']]
+
+        r['overall'] = spearmanr(rates, performance)
+
+        return r
+
+
+    def compare_drift_rates(self, corr_matrices):
+        drift_rates = self.get_drift_rate(corr_matrices)
+        drift_rate_ages = {age: [drift_rates[mouse]
+                                 for mouse in self.meta['grouped_mice'][age]] for age in ages}
+
+        fig, ax = self.scatter_box(drift_rate_ages,
+                                   ylabel='Drift rates '
+                                          '[more negative = more drift]')
+
+        return drift_rate_ages
+
+    def PV_corr_all_mice(self, nbins=26, normalize_by_occ=True):
         corr_matrices = dict()
         for mouse in self.meta['mice']:
             print(f'Analyzing {mouse}...')
@@ -139,6 +216,75 @@ class Drift:
 
         return corr_matrices
 
+    def plot_corr_matrix(self, corr_matrices):
+        fig, axs = plt.subplots(2,2, figsize=(8,9))
+
+        matrices = []
+        for row_ax, age in zip(axs, ages):
+            for ax, direction in zip(row_ax, directions):
+                matrix = np.nanmean([corr_matrices[mouse][direction]
+                                     for mouse in self.meta['grouped_mice'][age]], axis=0)
+
+                matrices.append(matrix)
+                ax.imshow(matrix)
+                ax.set_title(age)
+                ax.set_xlabel('Day')
+                ax.set_ylabel('Day')
+
+        min_clim = np.min(matrices)
+        max_clim = np.max(matrices)
+
+        for ax in axs.flatten():
+            for im in ax.get_images():
+                im.set_clim(min_clim, max_clim)
+
+        fig.subplots_adjust(right=0.8)
+        cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+        fig.colorbar(im, cax=cbar_ax)
+        #fig.tight_layout()
+
+
+    def get_diagonals(self, corr_matrices):
+        data = {}
+        for mouse in self.meta['mice']:
+            data[mouse] = {
+                'coefs': [],
+                'day_lag': [],
+            }
+            for i in range(len(self.meta['session_types'])):
+                rhos = np.hstack(
+                    [np.diag(corr_matrices[mouse][direction], k=i)
+                     for direction in directions]
+                )
+
+                if i != 0:
+                    more_rhos = np.hstack(
+                        [np.diag(corr_matrices[mouse][direction], k=-i)
+                         for direction in directions]
+                    )
+                    rhos = np.hstack((rhos, more_rhos))
+
+                data[mouse]['coefs'].extend(rhos)
+                data[mouse]['day_lag'].extend(np.ones_like(rhos)*i)
+
+        return data
+
+    def plot_one_drift_rate(self, mouse, corr_matrices):
+        data = self.get_diagonals(corr_matrices)
+        fig, ax = plt.subplots()
+        ax.scatter(data[mouse]['day_lag'], data[mouse]['coefs'])
+        ax.set_xticks(range(len(self.meta['session_types'])))
+        ax.set_xlabel('Day lag')
+        ax.set_ylabel('PV correlation [rho]')
+
+    def get_drift_rate(self, corr_matrices):
+        data = self.get_diagonals(corr_matrices)
+        drift_rates = {mouse: spearmanr(data[mouse]['day_lag'],
+                                        data[mouse]['coefs'],
+                                        nan_policy='omit')[0]
+                       for mouse in self.meta['mice']}
+
+        return drift_rates
 
     def session_pairwise_PV_corr_efficient(self, mouse,
                                            nbins=26, normalize_by_occ=True,
@@ -262,8 +408,15 @@ class Drift:
 
     def get_split_trial_pfs(self, mouse, session_type, nbins=51, neurons=None,
                             normalize_by_occ=True, show_plot=False):
+        """
+        Split the session in half by taking every other trial and computing
+        place fields. Note that one trial is in one direction (trial 0 = left,
+        trial 1 = right, trial 2 = left), so we taking every 4 trials by
+        that definition.
+        """
         session = self.lt_data[mouse][session_type]
 
+        # Get relevant behavioral data.
         x = session.behavior.data['df']['x']
         running = session.spatial.data['running']
         session_directions = session.behavior.data['df']['direction']
@@ -284,6 +437,7 @@ class Drift:
             trial: {direction: [] for direction in directions}
             for trial in ['even', 'odd']
         }
+        # Figure out which trial to start on for left and right directions.
         start_trial = {
             direction: min(trials[session_directions==direction])
             for direction in directions
@@ -293,6 +447,8 @@ class Drift:
             for direction in directions:
                 trials_to_include = range(start_trial[direction] + trial_offset,
                                           session.behavior.data['ntrials'], 4)
+
+                # Only take running in one direction and in the list of trials.
                 mask = np.logical_and(running, session_directions==direction)
                 mask = np.logical_and(mask, np.in1d(trials, trials_to_include))
                 position = x[mask]
@@ -325,15 +481,39 @@ class Drift:
         if show_plot:
             orders = {direction: np.argsort(np.argmax(pfs['even'][direction], axis=1))
                       for direction in directions}
-            fig, axs = plt.subplots(2,2)
+            fig, axs = plt.subplots(2,2, figsize=(8,6))
             for row, direction in zip(axs, directions):
                 for ax, trial_type in zip(row, ['even', 'odd']):
                     ax.imshow(pfs[trial_type][direction][orders[direction]], aspect='auto')
+                    ax.set_title(f'{direction}ward {trial_type} trials')
+            fig.supylabel('Neuron #')
+            fig.supxlabel('Linearized position')
+
 
         return pfs
 
     def get_directional_pfs(self, mouse, session_type, nbins=51, neurons=None,
                             normalize_by_occ=True):
+        """
+        Get place fields for both left and right directions in a single session.
+
+        :parameters
+        ---
+        mouse: str
+            Mouse name.
+
+        session_type: str
+            Session name (e.g., 'LinearTrack1').
+
+        nbins: int
+            Number of spatial bins.
+
+        neurons: array-like or None
+            Neurons to include. If None, include all neurons.
+
+        normalize_by_occ: bool
+            Normalize by occupancy.
+        """
         session = self.lt_data[mouse][session_type]
 
         # Get x position and running timestamps.
@@ -354,9 +534,11 @@ class Drift:
 
         pfs = {direction: [] for direction in directions}
         for direction in directions:
+            # Only get running epochs and when moving in one of the two directions.
             mask = np.logical_and(running, session_directions==direction)
             position = x[mask]
 
+            # Get occupancy map.
             if normalize_by_occ:
                 occupancy_map = spatial_bin(
                     position,
