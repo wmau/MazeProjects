@@ -11,7 +11,8 @@ from CaImaging.util import (
     distinct_colors,
 )
 from CaImaging.plotting import errorfill, beautify_ax, jitter_x
-from scipy.stats import spearmanr, zscore, circmean, kendalltau, wilcoxon, mannwhitneyu
+from scipy.stats import spearmanr, zscore, \
+    circmean, kendalltau, wilcoxon, mannwhitneyu, pearsonr
 from scipy.spatial import distance
 from CircleTrack.SessionCollation import MultiAnimal
 from CircleTrack.MiniscopeFunctions import CalciumSession
@@ -623,7 +624,7 @@ class RecentReversal:
 
         return reward_rate
 
-    def scatter_box(self, data, ylabel='', ax=None):
+    def scatter_box(self, data, ylabel='', ax=None, fig=None):
         if ax is None:
             fig, ax = plt.subplots()
         boxes = ax.boxplot([data[age] for age in ages],
@@ -849,6 +850,218 @@ class RecentReversal:
         return overlaps
 
     ############################ PLACE FIELD FUNCTIONS ############################
+    def get_placefields(self, mouse, session_type, nbins=125):
+        session = self.data[mouse][session_type]
+        existing_pfs = session.spatial.data['placefields']
+        if existing_pfs.shape[1] == nbins:
+            pf = existing_pfs
+        else:
+            PF = PlaceFields(
+                np.asarray(session.behavior.data["df"]["t"]),
+                np.asarray(session.behavior.data["df"]["x"]),
+                np.zeros_like(session.behavior.data["df"]["x"]),
+                session.imaging["S"],
+                bin_size=None,
+                nbins=nbins,
+                circular=False,
+                linearized=True,
+                fps=session.behavior.meta["fps"],
+                shuffle_test=False,
+                velocity_threshold=session.spatial.meta['velocity_threshold'],
+            )
+            pf = PF.data['placefields']
+
+        return pf
+
+    def get_split_trial_pfs(self, mouse, session_type, nbins=125,
+                              show_plot=False):
+        session = self.data[mouse][session_type]
+        existing_rasters = session.spatial.data['rasters']
+
+        if existing_rasters.shape[2] == nbins:
+            rasters = existing_rasters
+        else:
+            rasters = session.spatial_activity_by_trial(nbins)[0]
+
+        split_rasters = {
+            'even': rasters[:, ::2, :],
+            'odd': rasters[:, 1::2, :]
+        }
+        split_pfs = {
+            trial_type: np.nanmean(split_rasters[trial_type], axis=1)
+            for trial_type in ['even', 'odd']
+        }
+
+        if show_plot:
+            order = np.argsort(np.argmax(split_pfs['even'], axis=1))
+            fig, axs = plt.subplots(1,2, figsize=(8,6))
+            for ax, trial_type in zip(axs, ['even', 'odd']):
+                ax.imshow(split_pfs[trial_type][order], aspect='auto')
+                ax.set_title(f'{trial_type} trials')
+            fig.supylabel('Neuron #')
+            fig.supxlabel('Linearized position')
+
+        return split_pfs
+
+    def session_pairwise_PV_corr_efficient(self, mouse,
+                                           nbins=125,
+                                           corr='spearman',
+                                           show_plot=False):
+        pfs = {}
+        for session in self.meta['session_types']:
+            pfs[session] = self.get_placefields(mouse, session, nbins=nbins)
+
+        corr_fun = spearmanr if corr=='spearman' else pearsonr
+
+        shape = (len(self.meta['session_types']),
+                 len(self.meta['session_types']))
+        corr_matrix = nan_array(shape)
+        for i, session_pair in enumerate(product(self.meta['session_types'],
+                                                 repeat=2)):
+            same_session = session_pair[0] == session_pair[1]
+            row, col = np.unravel_index(i, shape)
+
+            if same_session:
+                split_pfs = self.get_split_trial_pfs(mouse,
+                                                     session_pair[0],
+                                                     nbins=nbins)
+                even, odd = [split_pfs[trial_type].T
+                             for trial_type in ['even', 'odd']]
+
+                rhos = []
+                for x, y in zip(even, odd):
+                    rhos.append(corr_fun(x,y, nan_policy='omit')[0])
+
+            else:
+                trimmed_map = np.asarray(self.get_cellreg_mappings(mouse, session_pair,
+                                                                   detected='everyday')[0])
+                s1, s2 = [pfs[session][neurons].T
+                          for neurons, session in zip(trimmed_map.T, session_pair)]
+
+                rhos = []
+                for x,y in zip(s1, s2):
+                    rhos.append(corr_fun(x,y, nan_policy='omit')[0])
+
+            corr_matrix[row, col] = np.nanmean(rhos)
+
+        if show_plot:
+            fig, ax = plt.subplots()
+            ax.imshow(corr_matrix)
+
+        return corr_matrix
+
+    def PV_corr_all_mice(self, nbins=30):
+        corr_matrices = dict()
+        for mouse in self.meta['mice']:
+            print(f'Analyzing {mouse}...')
+            corr_matrices[mouse] = self.session_pairwise_PV_corr_efficient(mouse, nbins=nbins)
+
+        return corr_matrices
+
+    def plot_corr_matrix(self, corr_matrices):
+        fig, axs = plt.subplots(1,2, figsize=(9,5))
+
+        matrices = []
+        for ax, age in zip(axs, ages):
+            matrix = np.nanmean([corr_matrices[mouse]
+                                 for mouse in self.meta['grouped_mice'][age]], axis=0)
+
+            matrices.append(matrix)
+            ax.imshow(matrix)
+            ax.set_title(f'{age}')
+            ax.set_xlabel('Day')
+            ax.set_ylabel('Day')
+
+        min_clim = np.min(matrices)
+        max_clim = np.max(matrices)
+
+        for ax in axs.flatten():
+            for im in ax.get_images():
+                im.set_clim(min_clim, max_clim)
+
+        fig.subplots_adjust(right=0.8)
+        cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+        cbar = fig.colorbar(im, cax=cbar_ax)
+        cbar.set_label('Mean PV correlation [Spearman rho]')
+
+    def get_diagonals(self, corr_matrices):
+        data = {}
+        for mouse in self.meta['mice']:
+            data[mouse] = {
+                'coefs': [],
+                'day_lag': [],
+            }
+            for i in range(len(self.meta['session_types'])):
+                rhos = np.diag(corr_matrices[mouse], k=i)
+
+                data[mouse]['coefs'].extend(rhos)
+                data[mouse]['day_lag'].extend(np.ones_like(rhos)*i)
+
+            data[mouse]['coefs'] = np.asarray(data[mouse]['coefs'])
+            data[mouse]['day_lag'] = np.asarray(data[mouse]['day_lag'])
+
+        return data
+
+    def compare_PV_corrs(self, corr_matrices):
+        data = self.get_diagonals(corr_matrices)
+        n_sessions = len(self.meta['session_types'])
+        PV_corrs = {}
+        for day_lag in range(n_sessions):
+            PV_corrs[day_lag] = dict()
+            for age in ages:
+                PV_corrs[day_lag][age] = []
+                for mouse in self.meta['grouped_mice'][age]:
+                    coefs = data[mouse]['coefs'][data[mouse]['day_lag'] == day_lag]
+                    coefs = coefs[~np.isnan(coefs)]
+                    PV_corrs[day_lag][age].extend(coefs)
+
+        fig, axs = plt.subplots(1, n_sessions, sharey=True, figsize=(10.5, 5))
+        for day_lag, ax in enumerate(axs):
+            self.scatter_box(PV_corrs[day_lag], ax=ax, fig=fig)
+            ax.set_title(f'{day_lag} days apart')
+        axs[0].set_ylabel('PV correlation [Spearman rho]')
+        fig.tight_layout()
+
+        return PV_corrs
+
+    def corr_PV_corr_to_behavior(self, corr_matrices, performance_metric):
+        performance = self.plot_all_behavior(window=None, strides=None,
+                                             show_plot=False,
+                                             performance_metric=performance_metric)[2]
+        PV_corrs = {mouse: np.diag(corr_matrices[mouse], k=4)[0]
+                    for mouse in self.meta['mice']}
+        PV_corrs_grouped = {
+            age: [np.diag(corr_matrices[mouse], k=4)[0]
+                  for mouse in self.meta['grouped_mice'][age]]
+            for age in ages
+        }
+        PV_corrs = [PV_corrs[mouse] for mouse in self.meta['mice']]
+
+        reversal_performances = performance[
+            performance['session_types']=='Reversal']
+        performances = reversal_performances['metric'].tolist()
+        performances_grouped = {
+            age: [reversal_performances[reversal_performances['mice']==mouse]['metric'].values[0]
+                  for mouse in self.meta['grouped_mice'][age]]
+            for age in ages
+        }
+
+        fig, ax = plt.subplots()
+        ylabels = {
+            'hits': 'Hit rate',
+            'CRs': 'Correct rejection rate',
+            'd_prime': "d'"
+        }
+        for age, color in zip(ages, age_colors):
+            ax.scatter(PV_corrs_grouped[age],
+                       performances_grouped[age], color=color)
+            ax.set_ylabel(ylabels[performance_metric])
+            ax.set_xlabel('PV correlation [Spearman rho]')
+
+        r, pvalue = spearmanr(PV_corrs, performances)
+
+        return r, pvalue
+
     def map_placefields(self, mouse, session_types, neurons_from_session1=None):
         # Get neurons and cell registration mappings.
         trimmed_map, global_idx = self.get_cellreg_mappings(
