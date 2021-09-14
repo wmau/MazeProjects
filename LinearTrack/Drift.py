@@ -8,17 +8,23 @@ from CaImaging.Behavior import spatial_bin
 from sklearn.impute import SimpleImputer
 from CaImaging.CellReg import rearrange_neurons, trim_map
 from scipy.stats import spearmanr, pearsonr
-from CaImaging.util import nan_array
+from CaImaging.util import nan_array, sem
 from itertools import product
 from CaImaging.plotting import jitter_x
 import matplotlib.patches as mpatches
+import xarray as xr
+import pandas as pd
+from CaImaging.plotting import errorfill, beautify_ax
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
 plt.rcParams["text.usetex"] = False
 plt.rcParams.update({"font.size": 12})
 
-session_types = ['LinearTrack' + str(i) for i in np.arange(1,6)]
+session_types = {
+    'lineartrack': ['LinearTrack' + str(i) for i in np.arange(1,6)],
+    'circletrack': ["Goals1", "Goals2", "Goals3", "Goals4", "Reversal"],
+}
 directions = ['left', 'right']
 ages = ["young", "aged"]
 age_colors = ["cornflowerblue", "r"]
@@ -40,7 +46,7 @@ class Drift:
     def __init__(self, mice):
         self.lt_data = MultiAnimal(mice, project_name='LinearTrack',
                                    SessionFunction=CalciumSession,
-                                   session_types=session_types)
+                                   session_types=session_types['lineartrack'])
 
         self.circle_data = MultiAnimal(mice, project_name='RemoteReversal',
                                        SessionFunction=BehaviorSession)
@@ -58,6 +64,12 @@ class Drift:
         self.meta["aged"] = {
             mouse: True if mouse in aged_mice else False for mouse in self.meta["mice"]
         }
+
+        self.meta["session_labels"] = {
+            'circletrack': [session_type.replace("Goals", "Training")
+                            for session_type in self.meta["session_types"]['circletrack']],
+            'lineartrack': self.meta['session_types']['lineartrack']
+    }
 
     def scatter_box(self, data, ylabel='', ax=None, fig=None,
                     categories=ages, colors=age_colors):
@@ -195,15 +207,213 @@ class Drift:
 
         return r
 
+    def plot_all_behavior(
+            self,
+            window=6,
+            strides=2,
+            ax=None,
+            performance_metric="d_prime",
+            show_plot=True,
+            trial_limit=None,
+    ):
+        # Preallocate array.
+        behavioral_performance_arr = np.zeros(
+            (3, len(self.meta["mice"]), len(self.meta["session_types"]['circletrack'])),
+            dtype=object,
+        )
+        categories = ["hits", "CRs", "d_prime"]
 
-    def compare_drift_rates(self, corr_matrices):
+        # Fill array with hits/CRs/d' x mouse x session data.
+        for j, mouse in enumerate(self.meta["mice"]):
+            for k, session_type in enumerate(self.meta["session_types"]['circletrack']):
+                session = self.circle_data[mouse][session_type]
+                session.sdt_trials(
+                    rolling_window=window,
+                    trial_interval=strides,
+                    plot=False,
+                    trial_limit=trial_limit,
+                )
+
+                for i, key in enumerate(categories):
+                    behavioral_performance_arr[i, j, k] = session.sdt[key]
+
+        # Place into xarray.
+        behavioral_performance = xr.DataArray(
+            behavioral_performance_arr,
+            dims=("metric", "mouse", "session"),
+            coords={
+                "metric": categories,
+                "mouse": self.meta["mice"],
+                "session": self.meta["session_types"]['circletrack'],
+            },
+        )
+
+        # Make awkward array of all mice and sessions. Begin by
+        # finding the longest session for each mouse and session.
+        longest_sessions = [
+            max(
+                [
+                    len(i)
+                    for i in behavioral_performance.sel(
+                    metric="d_prime", session=session
+                ).values.tolist()
+                ]
+            )
+            for session in self.meta["session_types"]['circletrack']
+        ]
+        # This will tell us where to draw session borders.
+        borders = np.cumsum(longest_sessions)
+        borders = np.insert(borders, 0, 0)
+
+        # Get dimensions of new arrays.
+        dims = {
+            age: (len(self.meta["grouped_mice"][age]), sum(longest_sessions))
+            for age in ages
+        }
+        metrics = {key: nan_array(dims[key]) for key in ages}
+
+        for age in ages:
+            for row, mouse in enumerate(self.meta["grouped_mice"][age]):
+                for border, session in zip(borders,
+                                           self.meta["session_types"]['circletrack']):
+                    metric_this_session = behavioral_performance.sel(
+                        metric=performance_metric, mouse=mouse, session=session
+                    ).values.tolist()
+                    length = len(metric_this_session)
+                    metrics[age][row, border : border + length] = metric_this_session
+
+        if show_plot:
+            ylabels = {
+                "d_prime": "d'",
+                "CRs": "Correct rejection rate",
+                "hits": "Hit rate",
+            }
+            if ax is None:
+                fig, ax = plt.subplots(figsize=(7.4, 5.7))
+            else:
+                fig = ax.figure
+
+            if window is not None:
+                for age, c in zip(ages, age_colors):
+                    ax.plot(metrics[age].T, color=c, alpha=0.3)
+                    errorfill(
+                        range(metrics[age].shape[1]),
+                        np.nanmean(metrics[age], axis=0),
+                        sem(metrics[age], axis=0),
+                        ax=ax,
+                        color=c,
+                        label=age,
+                    )
+
+                for session in borders[1:]:
+                    ax.axvline(x=session, color="k")
+                ax.set_xticks(borders)
+                ax.set_xticklabels(np.insert(longest_sessions, 0, 0))
+                ax.set_xlabel("Trial blocks")
+                _ = beautify_ax(ax)
+            else:
+                for age, c in zip(ages, age_colors):
+                    ax.plot(metrics[age].T, color=c, alpha=0.3)
+                    ax.errorbar(
+                        self.meta['session_labels']['circletrack'],
+                        np.nanmean(metrics[age], axis=0),
+                        sem(metrics[age], axis=0),
+                        color=c,
+                        label=age,
+                        capsize=5,
+                        linewidth=3,
+                    )
+            ax.set_ylabel(ylabels[performance_metric])
+            fig.legend()
+
+        if window is None:
+            mice_ = np.hstack([np.repeat(self.meta['grouped_mice'][age],
+                                         len(self.meta['session_types']['circletrack']))
+                               for age in ages])
+            ages_ = np.hstack([np.repeat(age, metrics[age].size) for age in ages])
+            session_types_ = np.hstack([np.tile(self.meta['session_types']['circletrack'],
+                                                len(self.meta['grouped_mice'][age]))
+                                        for age in ages])
+            metric_ = np.hstack([metrics[age].flatten() for age in ages])
+
+            df = pd.DataFrame(
+                {'metric': metric_,
+                 'session_types': session_types_,
+                 'mice': mice_,
+                 'age': ages_,
+                 }
+            )
+        else:
+            df = None
+
+        return behavioral_performance, metrics, df
+
+
+    def get_learning_rate_mouse(self, mouse, performance,
+                                performance_metric):
+        data = performance.sel(mouse=mouse, session='Reversal',
+                               metric=performance_metric).values.tolist()
+
+        rate = spearmanr(range(len(data)), data)[0]
+
+        return rate
+
+    def get_learning_rates(self, performance_metric, window=6, strides=2):
+        performance = self.plot_all_behavior(performance_metric=performance_metric,
+                                             window=window, strides=strides,
+                                             show_plot=False)[0]
+        rates = dict()
+        for mouse in self.meta['mice']:
+            rates[mouse] = self.get_learning_rate_mouse(mouse, performance,
+                                                        performance_metric)
+
+        return rates
+
+    def corr_drift_rate_to_learning_rate(self, corr_matrices,
+                                         performance_metric,
+                                         window=6, strides=2):
+        learning_rates = self.get_learning_rates(performance_metric,
+                                                 window=window, strides=strides)
+
+        drift_rates_grouped = self.compare_drift_rates(corr_matrices,
+                                                       show_plot=False)
+
+        fig, ax = plt.subplots()
+        learning_rates_grouped = {
+            age: [learning_rates[mouse]
+                  for mouse in self.meta['grouped_mice'][age]]
+            for age in ages
+        }
+
+        ylabel = {
+            'hits': 'Reversal hit learning rate',
+            'CRs': 'Reversal correct rejection learning rate',
+            'd_prime': "Reversal d' learning rate"
+        }
+        for age, color in zip(ages, age_colors):
+            ax.scatter(drift_rates_grouped[age],
+                       learning_rates_grouped[age],
+                       color=color)
+        ax.set_ylabel(ylabel[performance_metric])
+        ax.set_xlabel('Drift rate [more negative = more drift]')
+
+
+        drift_rates = drift_rates_grouped['young'] + drift_rates_grouped['aged']
+        learning_rates = learning_rates_grouped['young'] + learning_rates_grouped['aged']
+
+        r, pvalue = spearmanr(drift_rates, learning_rates)
+
+        return r, pvalue
+
+    def compare_drift_rates(self, corr_matrices, show_plot=True):
         drift_rates = self.get_drift_rate(corr_matrices)
         drift_rate_ages = {age: [drift_rates[mouse]
                                  for mouse in self.meta['grouped_mice'][age]] for age in ages}
 
-        fig, ax = self.scatter_box(drift_rate_ages,
-                                   ylabel='Drift rates '
-                                          '[more negative = more drift]')
+        if show_plot:
+            fig, ax = self.scatter_box(drift_rate_ages,
+                                       ylabel='Drift rates '
+                                              '[more negative = more drift]')
 
         return drift_rate_ages
 
@@ -227,7 +437,7 @@ class Drift:
 
                 matrices.append(matrix)
                 ax.imshow(matrix)
-                ax.set_title(age)
+                ax.set_title(f'{age}, {direction}ward trials')
                 ax.set_xlabel('Day')
                 ax.set_ylabel('Day')
 
@@ -240,7 +450,8 @@ class Drift:
 
         fig.subplots_adjust(right=0.8)
         cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
-        fig.colorbar(im, cax=cbar_ax)
+        cbar = fig.colorbar(im, cax=cbar_ax)
+        cbar.set_label('Mean PV correlation [Spearman rho]')
         #fig.tight_layout()
 
 
@@ -251,7 +462,7 @@ class Drift:
                 'coefs': [],
                 'day_lag': [],
             }
-            for i in range(len(self.meta['session_types'])):
+            for i in range(len(self.meta['session_types']['lineartrack'])):
                 rhos = np.hstack(
                     [np.diag(corr_matrices[mouse][direction], k=i)
                      for direction in directions]
@@ -267,13 +478,38 @@ class Drift:
                 data[mouse]['coefs'].extend(rhos)
                 data[mouse]['day_lag'].extend(np.ones_like(rhos)*i)
 
+            data[mouse]['coefs'] = np.asarray(data[mouse]['coefs'])
+            data[mouse]['day_lag'] = np.asarray(data[mouse]['day_lag'])
+
         return data
+
+    def compare_PV_corrs(self, corr_matrices):
+        data = self.get_diagonals(corr_matrices)
+        n_sessions = len(self.meta['session_types']['lineartrack'])
+        PV_corrs = {}
+        for day_lag in range(n_sessions):
+            PV_corrs[day_lag] = dict()
+            for age in ages:
+                PV_corrs[day_lag][age] = []
+                for mouse in self.meta['grouped_mice'][age]:
+                    coefs = data[mouse]['coefs'][data[mouse]['day_lag'] == day_lag]
+                    coefs = coefs[~np.isnan(coefs)]
+                    PV_corrs[day_lag][age].extend(coefs)
+
+        fig, axs = plt.subplots(1, n_sessions, sharey=True, figsize=(10.5, 5))
+        for day_lag, ax in enumerate(axs):
+            self.scatter_box(PV_corrs[day_lag], ax=ax, fig=fig)
+            ax.set_title(f'{day_lag} days apart')
+        axs[0].set_ylabel('PV correlation [Spearman rho]')
+        fig.tight_layout()
+
+        return PV_corrs
 
     def plot_one_drift_rate(self, mouse, corr_matrices):
         data = self.get_diagonals(corr_matrices)
         fig, ax = plt.subplots()
         ax.scatter(data[mouse]['day_lag'], data[mouse]['coefs'])
-        ax.set_xticks(range(len(self.meta['session_types'])))
+        ax.set_xticks(range(len(self.meta['session_types']['lineartrack'])))
         ax.set_xlabel('Day lag')
         ax.set_ylabel('PV correlation [rho]')
 
@@ -290,7 +526,7 @@ class Drift:
                                            nbins=26, normalize_by_occ=True,
                                            corr='spearman'):
         pfs = {}
-        for session in self.meta['session_types']:
+        for session in self.meta['session_types']['lineartrack']:
             try:
                 pfs[session] = self.get_directional_pfs(mouse, session, nbins=nbins,
                                                         normalize_by_occ=normalize_by_occ)
@@ -298,9 +534,11 @@ class Drift:
                 pass
         corr_fun = spearmanr if corr=='spearman' else pearsonr
 
-        shape = (len(session_types), len(session_types))
+        shape = (len(session_types['lineartrack']),
+                 len(session_types['lineartrack']))
         corr_matrix = {direction: nan_array(shape) for direction in directions}
-        for i, session_pair in enumerate(product(session_types, repeat=2)):
+        for i, session_pair in enumerate(product(session_types['lineartrack'],
+                                                 repeat=2)):
             same_session = session_pair[0] == session_pair[1]
             row, col = np.unravel_index(i, shape)
 
@@ -344,9 +582,11 @@ class Drift:
                                  nbins=51,
                                  normalize_by_occ=True,
                                  corr='spearman'):
-        shape = (len(session_types), len(session_types))
+        shape = (len(session_types['lineartrack']),
+                 len(session_types['lineartrack']))
         corr_matrix = {direction: nan_array(shape) for direction in directions}
-        for i, session_pair in enumerate(product(session_types, repeat=2)):
+        for i, session_pair in enumerate(product(session_types['lineartrack'],
+                                                 repeat=2)):
             try:
                 rhos = self.PV_corr(mouse, session_pair, nbins=nbins, normalize_by_occ=normalize_by_occ, corr=corr)
 
