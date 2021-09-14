@@ -468,13 +468,6 @@ class Drift:
                      for direction in directions]
                 )
 
-                if i != 0:
-                    more_rhos = np.hstack(
-                        [np.diag(corr_matrices[mouse][direction], k=-i)
-                         for direction in directions]
-                    )
-                    rhos = np.hstack((rhos, more_rhos))
-
                 data[mouse]['coefs'].extend(rhos)
                 data[mouse]['day_lag'].extend(np.ones_like(rhos)*i)
 
@@ -728,7 +721,6 @@ class Drift:
                     ax.set_title(f'{direction}ward {trial_type} trials')
             fig.supylabel('Neuron #')
             fig.supxlabel('Linearized position')
-
 
         return pfs
 
