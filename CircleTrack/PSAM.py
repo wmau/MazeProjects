@@ -28,7 +28,7 @@ session_types = {
 
 }
 
-# Exclude PSAM4 and PSAM5 because they never learned
+# Exclude PSAM4, PSAM5, and PSAM15 because they never learned
 # (poor Goals4 performance).
 PSEM_mice = ['PSAM_2',
              'PSAM_3',
@@ -36,7 +36,9 @@ PSEM_mice = ['PSAM_2',
              'PSAM_6',
              'PSAM_7',
              'PSAM_8',
-             'PSAM_10']
+             'PSAM_10',
+             'PSAM_13',
+             'PSAM_17']
 
 aged_mice = [
     "Gemini",
@@ -79,7 +81,7 @@ class PSAM:
 
     def plot_all_behavior(
             self,
-            window=8,
+            window=6,
             strides=2,
             ax=None,
             performance_metric="d_prime",
@@ -466,5 +468,5 @@ class PSAM:
         return reward_rate
 
 if __name__ == '__main__':
-    mice = ['PSAM_' + str(i) for i in np.arange(6,13)]
+    mice = ['PSAM_' + str(i) for i in np.arange(6,18)]
     P = PSAM(mice)

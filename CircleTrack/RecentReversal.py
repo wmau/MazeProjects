@@ -345,7 +345,7 @@ class RecentReversal:
 
     def plot_all_behavior(
         self,
-        window=8,
+        window=6,
         strides=2,
         ax=None,
         performance_metric="d_prime",

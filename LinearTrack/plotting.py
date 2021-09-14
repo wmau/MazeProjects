@@ -32,8 +32,11 @@ def plot_directional_raster(ScrollObj):
     tuning_curves = ScrollObj.tuning_curves
     fig = ScrollObj.fig
 
+    vmax = np.max([rasters[direction][ScrollObj.current_position]
+                   for direction in ['left','right']])
     for i, direction in enumerate(['left', 'right']):
-        axs[0, i].imshow(rasters[direction][ScrollObj.current_position], cmap='gray')
+        axs[0, i].imshow(rasters[direction][ScrollObj.current_position],
+                         cmap='gray', vmax=vmax)
         axs[1, i].plot(tuning_curves[direction][ScrollObj.current_position])
         axs[0, i].set_title(f'{direction}ward trials')
 
