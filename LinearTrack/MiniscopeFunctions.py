@@ -187,7 +187,7 @@ class CalciumSession:
 
         return corrected_C, corrected_S
 
-    def spatial_activity_by_trial(self):
+    def spatial_activity_by_trial(self, nbins=None):
         """
         Plot activity trial by trial, binned in linearized space.
 
@@ -203,10 +203,12 @@ class CalciumSession:
         lin_position = np.asarray(behavior_df["x"])
         running = self.spatial.data["running"]
         filler = np.zeros_like(lin_position)
+        if nbins is None:
+            nbins = self.meta['nbins']
         bin_edges = spatial_bin(
             lin_position,
             filler,
-            nbins=self.meta['nbins'],
+            nbins=nbins,
             one_dim=True,
         )[1]
 
