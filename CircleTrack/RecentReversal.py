@@ -577,8 +577,15 @@ class RecentReversal:
         window=None,
         performance_metric="CRs",
         downsample_trials=False,
+        sessions=None,
     ):
-        fig, axs = plt.subplots(1, len(self.meta["session_types"]), sharey=True)
+        if sessions is None:
+            sessions = self.meta['session_types']
+
+        session_labels = [self.meta['session_labels'][self.meta['session_types'].index(session)]
+                          for session in sessions]
+
+        fig, axs = plt.subplots(1, len(sessions), sharey=True)
         fig.subplots_adjust(wspace=0)
         ylabels = {
             "d_prime": "d'",
@@ -587,7 +594,7 @@ class RecentReversal:
         }
         performance = dict()
         for ax, session, title in zip(
-            axs, self.meta["session_types"], self.meta["session_labels"]
+            axs, sessions, session_labels
         ):
             performance[session] = self.plot_best_performance(
                 session_type=session,
@@ -598,12 +605,11 @@ class RecentReversal:
             )
             ax.set_xticks([])
             ax.set_title(title)
-            if session == "Goals1":
-                ax.set_ylabel(ylabels[performance_metric])
+        axs[0].set_ylabel(ylabels[performance_metric])
 
         patches = [
             mpatches.Patch(facecolor=c, label=label, edgecolor="k")
-            for c, label in zip(["cornflowerblue", "r"], ["Young", "Aged"])
+            for c, label in zip(age_colors, ages)
         ]
         fig.legend(handles=patches, loc="lower right")
 
@@ -959,7 +965,7 @@ class RecentReversal:
         return corr_matrices
 
     def plot_corr_matrix(self, corr_matrices):
-        fig, axs = plt.subplots(1,2, figsize=(9,5))
+        fig, axs = plt.subplots(1,2, figsize=(12,5))
 
         matrices = []
         for ax, age in zip(axs, ages):
@@ -971,7 +977,11 @@ class RecentReversal:
             ax.set_title(f'{age}')
             ax.set_xlabel('Day')
             ax.set_ylabel('Day')
-
+            ax.set_xticks(range(len(self.meta['session_types'])))
+            ax.set_yticks(range(len(self.meta['session_types'])))
+            ax.set_xticklabels(self.meta['session_labels'], rotation=90)
+            ax.set_yticklabels(self.meta['session_labels'])
+        fig.tight_layout()
         min_clim = np.min(matrices)
         max_clim = np.max(matrices)
 
@@ -1023,6 +1033,86 @@ class RecentReversal:
         fig.tight_layout()
 
         return PV_corrs
+
+    def plot_session_PV_corr_comparisons(self, corr_matrices,
+                                         session_pairs=(
+                                                 ('Goals3', 'Goals4'),
+                                                 ('Goals4', 'Reversal')
+                                         )
+                                         ):
+        """
+        For the specified sessions, plot the PV correlation coefficient between those sessions,
+        separated by age.
+
+        :param session_types:
+        :return:
+        """
+        data = {session_pair: dict() for session_pair in session_pairs}
+        for session_pair in session_pairs:
+            s1 = self.meta['session_types'].index(session_pair[0])
+            s2 = self.meta['session_types'].index(session_pair[1])
+            data[session_pair] = dict()
+            for age in ages:
+                data[session_pair][age] = []
+                for mouse in self.meta['grouped_mice'][age]:
+                    data[session_pair][age].append(corr_matrices[mouse][s1,s2])
+
+        fig, axs = plt.subplots(1, len(session_pairs), sharey=True)
+        for ax, age, color in zip(axs, ages, age_colors):
+            boxes = ax.boxplot([data[session_pair][age] for session_pair in session_pairs],
+                               widths=0.75, showfliers=False, zorder=0, patch_artist=True)
+
+            [ax.scatter(
+                jitter_x(np.ones_like(data[session_pair][age])*(i+1), 0.05),
+                         data[session_pair][age],
+                         color=color,
+                         edgecolor='k',
+                         zorder=1,
+                         s=50,
+                         )
+                for i, session_pair in enumerate(session_pairs)
+            ]
+
+            for patch, med in zip(boxes["boxes"], boxes["medians"]):
+                patch.set_facecolor(color)
+                med.set(color="k")
+            ax.set_xticklabels([f'{session_pair[0].replace("Goals", "Training")} vs. \n'
+                                f'{session_pair[1].replace("Goals", "Training")}'
+                                for session_pair in session_pairs], rotation=45)
+            ax.set_title(age)
+        axs[0].set_ylabel('Spatial PV correlation coefficients')
+        fig.tight_layout()
+
+        return data
+
+    def compare_drift_rates(self, corr_matrices, show_plot=True):
+        drift_rates = self.get_drift_rate(corr_matrices)
+        drift_rate_ages = {age: [drift_rates[mouse]
+                                 for mouse in self.meta['grouped_mice'][age]] for age in ages}
+
+        if show_plot:
+            self.scatter_box(drift_rate_ages,
+                             ylabel='Drift rates '
+                                    '[more negative = more drift]')
+
+        return drift_rate_ages
+
+    def get_drift_rate(self, corr_matrices):
+        data = self.get_diagonals(corr_matrices)
+        drift_rates = {mouse: spearmanr(data[mouse]['day_lag'],
+                                        data[mouse]['coefs'],
+                                        nan_policy='omit')[0]
+                       for mouse in self.meta['mice']}
+
+        return drift_rates
+
+    def plot_one_drift_rate(self, mouse, corr_matrices):
+        data = self.get_diagonals(corr_matrices)
+        fig, ax = plt.subplots()
+        ax.scatter(data[mouse]['day_lag'], data[mouse]['coefs'])
+        ax.set_xticks(range(len(self.meta['session_types']['lineartrack'])))
+        ax.set_xlabel('Day lag')
+        ax.set_ylabel('PV correlation [rho]')
 
     def corr_PV_corr_to_behavior(self, corr_matrices, performance_metric):
         performance = self.plot_all_behavior(window=None, strides=None,
@@ -1419,7 +1509,8 @@ class RecentReversal:
         return reliabilities
 
     def plot_reliabilities_comparisons(
-        self, session_types=("Goals4", "Reversal"), field_threshold=0.15, show_plot=True
+        self, session_types=("Goals4", "Reversal"), field_threshold=0.5,
+            show_plot=True
     ):
         reliabilities = {}
         mean_reliabilities = {session_type: dict() for session_type in session_types}
@@ -1460,27 +1551,19 @@ class RecentReversal:
                 ax.set_xticks(label_positions)
                 ax.set_xticklabels(mice, rotation=45)
 
-            fig, axs = plt.subplots(1, 2, sharey=True)
+            fig, axs = plt.subplots(1, len(session_types), sharey=True)
             fig.subplots_adjust(wspace=0)
 
-            for age, ax, color in zip(ages, axs, age_colors):
-                boxes = ax.boxplot(
-                    [
-                        mean_reliabilities[session_type][age]
-                        for session_type in session_types
-                    ],
-                    patch_artist=True,
-                )
-
-                for patch, med in zip(boxes["boxes"], boxes["medians"]):
-                    patch.set_facecolor(color)
-                    med.set(color="k")
-                ax.set_xticklabels(session_types, rotation=45)
-
-                if age == "young":
-                    ax.set_ylabel("Mean place field reliability")
+            for session_type, ax in zip(session_types, axs):
+                ylabel = "Mean place field reliability" \
+                    if session_type == session_types[0] else None
+                self.scatter_box(mean_reliabilities[session_type],
+                                 ylabel=ylabel,
+                                 ax=ax)
+                ax.set_title(session_type)
 
         return reliabilities, mean_reliabilities
+
 
     def correlate_field_reliability_to_performance(
         self,
@@ -3067,15 +3150,19 @@ class RecentReversal:
             fig, ax = plt.subplots()
 
         ylabels = {"CRs": "Correct rejection rate", "hits": "Hit rate", "d_prime": "d'"}
-        for age, c in zip(ages, ["cornflowerblue", "r"]):
+        for age, c in zip(ages, age_colors):
+            prop_fading = np.asarray(p_changing_split_by_age[age], dtype=float)
+            perf = performance[age]
             ax.scatter(
-                p_changing_split_by_age[age],
-                performance[age],
+                prop_fading, perf,
                 facecolors=c,
                 edgecolors="k",
                 alpha=0.5,
                 s=50,
             )
+            z = np.polyfit(prop_fading, perf, 1)
+            y_hat = np.poly1d(z)(prop_fading)
+            ax.plot(prop_fading, y_hat, color=c, alpha=0.5)
 
         ax.set_xlabel("Proportion of fading ensembles")
         ax.set_ylabel(ylabels[performance_metric])
