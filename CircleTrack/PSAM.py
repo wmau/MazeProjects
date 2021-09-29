@@ -456,19 +456,6 @@ class PSAM:
 
         return licks
 
-    def compare_rewards(self, session_type):
-        reward_rate = {inj: [] for inj in PSAM_groups}
-
-        for inj in PSAM_groups:
-            for mouse in self.meta['grouped_mice'][inj]:
-                n_drinks = self.data[mouse][session_type].data['n_drinks']
-                n_trials = self.data[mouse][session_type].data['ntrials']
-
-                rr = (np.sum(n_drinks) / 2) / n_trials
-                reward_rate[inj].append(rr)
-
-        self.scatter_box(reward_rate, ylabel='Reward rate')
-
 
 if __name__ == '__main__':
     mice = ['PSAM_' + str(i) for i in np.arange(6,18)]
