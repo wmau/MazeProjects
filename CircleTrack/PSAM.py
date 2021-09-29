@@ -25,7 +25,6 @@ session_types = {
     ],
     "RemoteReversal": ["Goals1", "Goals2", "Goals3", "Goals4", "Reversal"],
     "PSAMReversal": ["Goals1", "Goals2", "Goals3", "Goals4", "Reversal"],
-
 }
 
 # Exclude PSAM4, PSAM5, and PSAM15 because they never learned
@@ -300,8 +299,14 @@ class PSAM:
             window=None,
             performance_metric="CRs",
             downsample_trials=False,
+            sessions=None,
     ):
-        fig, axs = plt.subplots(1, len(self.meta["session_types"]), sharey=True)
+        if sessions is None:
+            sessions = self.meta['session_types']
+
+        session_labels = [self.meta['session_labels'][self.meta['session_types'].index(session)]
+                          for session in sessions]
+        fig, axs = plt.subplots(1, len(sessions), sharey=True)
         fig.subplots_adjust(wspace=0)
         ylabels = {
             "d_prime": "d'",
@@ -310,7 +315,7 @@ class PSAM:
         }
         performance = dict()
         for ax, session, title in zip(
-                axs, self.meta["session_types"], self.meta["session_labels"]
+                axs, sessions, session_labels
         ):
             performance[session] = self.plot_best_performance(
                 session_type=session,
@@ -321,8 +326,7 @@ class PSAM:
             )
             ax.set_xticks([])
             ax.set_title(title)
-            if session == "Goals1":
-                ax.set_ylabel(ylabels[performance_metric])
+        axs[0].set_ylabel(ylabels[performance_metric])
 
         patches = [
             mpatches.Patch(facecolor=c, label=label, edgecolor="k")
@@ -465,7 +469,6 @@ class PSAM:
 
         self.scatter_box(reward_rate, ylabel='Reward rate')
 
-        return reward_rate
 
 if __name__ == '__main__':
     mice = ['PSAM_' + str(i) for i in np.arange(6,18)]

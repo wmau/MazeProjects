@@ -62,7 +62,7 @@ def plot_assembly(
         sorted_spike_times = spike_times
 
     activation_ax.plot(activation, linewidth=2, color='r')
-    activation_ax.set_ylabel("Activation strength [a.u.]")
+    activation_ax.set_ylabel("Activation strength [a.u.]", color='r')
     activation_ax.set_xlabel("Frame #")
     spikes_ax.eventplot(sorted_spike_times, color="k", alpha=0.2)
     spikes_ax.set_ylabel("Neurons", rotation=-90)
