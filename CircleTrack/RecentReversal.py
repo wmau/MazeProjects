@@ -536,6 +536,11 @@ class RecentReversal:
 
         if show_plot:
             label_axes = True
+            ylabels = {
+                'CRs': 'Correct rejection rate',
+                'hits': 'Hit rate',
+                'd_prime': "d'"
+            }
             if ax is None:
                 fig, ax = plt.subplots(figsize=(3, 4.75))
             else:
@@ -566,8 +571,8 @@ class RecentReversal:
             if label_axes:
                 ax.set_xticks([1, 2])
                 ax.set_xticklabels(["Young", "Aged"])
-                ax.set_ylabel(f"Best {performance_metric}")
-                ax = beautify_ax(ax)
+                ax.set_ylabel(ylabels[performance_metric])
+                #ax = beautify_ax(ax)
                 plt.tight_layout()
 
         return best_performance
@@ -873,7 +878,7 @@ class RecentReversal:
                 linearized=True,
                 fps=session.behavior.meta["fps"],
                 shuffle_test=False,
-                velocity_threshold=session.spatial.meta['velocity_threshold'],
+                velocity_threshold=session.spatial.meta['threshold'],
             )
             pf = PF.data['placefields']
 
@@ -964,16 +969,22 @@ class RecentReversal:
 
         return corr_matrices
 
-    def plot_corr_matrix(self, corr_matrices):
-        fig, axs = plt.subplots(1,2, figsize=(12,5))
+    def plot_corr_matrix(self, corr_matrices, ages_to_plot=ages):
+        fig, axs = plt.subplots(1, len(ages_to_plot), figsize=(12,5))
+        both_ages = True
+        try:
+            len(axs)
+        except:
+            both_ages = False
+            axs = [axs]
 
         matrices = []
-        for ax, age in zip(axs, ages):
+        for ax, age in zip(axs, ages_to_plot):
             matrix = np.nanmean([corr_matrices[mouse]
                                  for mouse in self.meta['grouped_mice'][age]], axis=0)
 
             matrices.append(matrix)
-            ax.imshow(matrix)
+            im = ax.imshow(matrix)
             ax.set_title(f'{age}')
             ax.set_xlabel('Day')
             ax.set_ylabel('Day')
@@ -985,9 +996,10 @@ class RecentReversal:
         min_clim = np.min(matrices)
         max_clim = np.max(matrices)
 
-        for ax in axs.flatten():
-            for im in ax.get_images():
-                im.set_clim(min_clim, max_clim)
+        if both_ages:
+            for ax in axs.flatten():
+                for im in ax.get_images():
+                    im.set_clim(min_clim, max_clim)
 
         fig.subplots_adjust(right=0.8)
         cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
@@ -2141,6 +2153,50 @@ class RecentReversal:
 
         return d, closest_ports
 
+    def ensemble_density_increase(self, mouse,
+                                  session_pair=('Goals4', 'Reversal')):
+        #First, find the ports that ensembles fired closest to.
+        d = dict()
+        closest_ports = dict()
+        for session in session_pair:
+            d[session], closest_ports[session] = \
+                self.find_ensemble_port_locations(mouse, session)
+
+        # Get the port numbers of the future rewarded ports during
+        # Reversal.
+        future_rewards = np.where(self.data[mouse][session_pair[1]].behavior.data['rewarded_ports'])[0]
+
+        # Find proportion of ensembles that fire at those ports during both
+        # sessions.
+        p_firing_at_future_reward = np.sum(np.in1d(closest_ports[session_pair[0]],
+                                                   future_rewards)) \
+                                    / len(closest_ports[session_pair[0]])
+
+        # Find proportion of ensembles that fire at those ports during Reversal.
+        p_firing_at_current_reward = np.sum(np.in1d(closest_ports[session_pair[1]],
+                                                    future_rewards)) \
+                                    / len(closest_ports[session_pair[1]])
+
+        return p_firing_at_future_reward, p_firing_at_current_reward
+
+    def ensemble_density_increase_all_mice(self, session_pair=('Goals4','Reversal')):
+        ens_density = dict()
+        labels = [session.replace('Goals', 'Training')
+                  for session in session_pair]
+        for age in ages:
+            ens_density[age] = nan_array((len(self.meta['grouped_mice'][age]), 2))
+
+            for i, mouse in enumerate(self.meta['grouped_mice'][age]):
+                pre, post = self.ensemble_density_increase(mouse, session_pair)
+                ens_density[age][i] = np.hstack((pre, post))
+
+        fig, axs = plt.subplots(1,2, sharey=True, figsize=(6.5, 7))
+        for ax, age, c in zip(axs, ages, age_colors):
+            ax.plot(labels, ens_density[age].T, color=c)
+            ax.set_xticklabels(labels, rotation=45)
+        axs[0].set_ylabel('Proportion of ensembles active near Reversal goals')
+
+
     def plot_proportion_fading_ensembles_near_important_ports(self, show_plot=True,
                                                               alpha=0.01, decompose_relevant_ports=False):
         p_near = dict()
@@ -2883,7 +2939,7 @@ class RecentReversal:
 
         return trends, binned_activations, slopes
 
-    def compare_trend_slopes(self, mouse, session_pair=('Goals4', 'Goals3'), **kwargs):
+    def compare_trend_slopes(self, mouse, session_pair=('Goals4', 'Reversal'), **kwargs):
         trends = dict()
         slopes = dict()
 
@@ -3042,7 +3098,7 @@ class RecentReversal:
                 trend="decreasing"
             ) / assembly_counts.sum(dim="trend")
 
-            for c, age in zip(["r", "k"], ["aged", "young"]):
+            for c, age in zip(["r", "k"], ages):
                 ax.plot(
                     session_labels,
                     p_decreasing.sel(mouse=self.meta["grouped_mice"][age]).T,
@@ -3084,7 +3140,7 @@ class RecentReversal:
             }
             fig, axs = plt.subplots(1, 2, figsize=(7, 6), sharey=True)
             fig.subplots_adjust(wspace=0)
-            for ax, age, color in zip(axs, ages, ["cornflowerblue", "r"]):
+            for ax, age, color in zip(axs, ages, age_colors):
                 boxes = ax.boxplot(
                     p_changing_split_by_age[age], patch_artist=True, widths=0.75,
                     zorder=0, showfliers=False,
@@ -3799,7 +3855,7 @@ class RecentReversal:
 
         if running_only:
             velocity_threshold = self.data[mouse][session_type].meta[
-                "velocity_threshold"
+                "threshold"
             ]
         else:
             velocity_threshold = 0
@@ -4239,7 +4295,8 @@ class RecentReversal:
 
         return ensemble_field_rhos
 
-    def correlate_ensemble_fields_across_ages(self, session_pair, ax=None):
+    def correlate_ensemble_fields_across_ages(self, session_pair,
+                                              ax=None):
         """
         For a pair of sessions, correlate each registered ensemble per mouse.
         Take the median across ensembles for each mouse and group them into
