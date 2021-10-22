@@ -813,14 +813,29 @@ class Preprocess:
         self.behavior_df = clean_lick_detection(self.behavior_df)
         self.save()
 
-    def quick_manual_correct(self, velocity_threshold=40):
-        jump_frames = np.where((self.behavior_df["distance"] > velocity_threshold))[0]
+    def quick_manual_correct(self, threshold=40, mode='velocity', greater_than=True):
+        if mode == 'velocity':
+            jump_frames = np.where((self.behavior_df["distance"] > threshold))[0]
+        elif mode == 'radii':
+            radii = linearize_trajectory(self.behavior_df)[1]
+
+            if greater_than:
+                jump_frames = np.where(radii > threshold)[0]
+            else:
+                jump_frames = np.where(radii < threshold)[0]
+
         while any(jump_frames):
             self.correct_position(jump_frames[0])
 
-            jump_frames = np.where(
-                (self.behavior_df["distance"] > velocity_threshold))[
-                0]
+            if mode == 'velocity':
+                jump_frames = np.where((self.behavior_df["distance"] > threshold))[0]
+            elif mode == 'radii':
+                radii = linearize_trajectory(self.behavior_df)[1]
+
+                if greater_than:
+                    jump_frames = np.where(radii > threshold)[0]
+                else:
+                    jump_frames = np.where(radii < threshold)[0]
 
             self.save()
 
@@ -1044,7 +1059,7 @@ class Preprocess:
 
 
 class BehaviorSession:
-    def __init__(self, folder=None, pix_per_cm=6.21):
+    def __init__(self, folder=None, pix_per_cm=6.56):
         """
         Contains many useful analyses for single session data.
 
