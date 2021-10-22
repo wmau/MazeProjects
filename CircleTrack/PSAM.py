@@ -258,6 +258,11 @@ class PSAM:
 
         if show_plot:
             label_axes = True
+            ylabels = {
+                'CRs': 'Correct rejection rate',
+                'hits': 'Hit rate',
+                'd_prime': "d'"
+            }
             if ax is None:
                 fig, ax = plt.subplots(figsize=(3, 4.75))
             else:
@@ -288,8 +293,8 @@ class PSAM:
             if label_axes:
                 ax.set_xticks([1, 2])
                 ax.set_xticklabels(PSAM_groups)
-                ax.set_ylabel(f"Best {performance_metric}")
-                ax = beautify_ax(ax)
+                ax.set_ylabel(ylabels[performance_metric])
+                #ax = beautify_ax(ax)
                 plt.tight_layout()
 
         return best_performance
@@ -335,6 +340,44 @@ class PSAM:
         fig.legend(handles=patches, loc="lower right")
 
         return performance
+
+    def plot_behavior_grouped(self,
+                              window=None,
+                              performance_metric='d_prime',
+                              sessions=None):
+        if sessions is None:
+            sessions = self.meta['session_types']
+
+        session_labels = [self.meta['session_labels'][self.meta['session_types'].index(session)]
+                          for session in sessions]
+
+        performance_all = nan_array((len(self.meta['mice']),
+                                     len(sessions)))
+
+        for i, session in enumerate(sessions):
+            performance = self.plot_best_performance(
+                session_type=session,
+                window=window,
+                performance_metric=performance_metric,
+                show_plot=False,
+            )
+
+            performance['vehicle'].extend(performance['PSEM'])
+            performance_all[:,i] = performance['vehicle']
+
+        ylabel = {
+            'CRs': 'Correct rejection rate',
+            'hits': 'Hit rate',
+            'd_prime': "d'"
+        }
+        fig, ax = plt.subplots(figsize=(4,5))
+        ax.plot(performance_all.T, color='gray', alpha=0.5)
+        errorfill(session_labels, np.mean(performance_all, axis=0),
+                  sem(performance_all, axis=0), ax=ax)
+        [tick.set_rotation(45) for tick in ax.get_xticklabels()]
+        ax.set_ylabel(ylabel[performance_metric])
+        fig.tight_layout()
+
 
     def plot_perseverative_licking(self, show_plot=True, binarize=True):
         goals4 = "Goals4"
