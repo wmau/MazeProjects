@@ -813,3 +813,25 @@ if __name__ == '__main__':
             ]
     D = Drift(mice)
     D.session_pairwise_PV_corr_efficient('Ymir')
+
+    import pickle as pkl
+    with open(r'Z:\Will\RemoteReversal\Data\PV_corr_matrices.pkl', 'rb') as file:
+        CT_corr_matrices = pkl.load(file)
+
+    with open(r'Z:\Will\LinearTrack\Data\PV_corr_matrix.pkl', 'rb') as file:
+        LT_corr_matrices = pkl.load(file)
+
+    drift_rates_LT = D.get_drift_rate(LT_corr_matrices)
+    drift_rates_CT = RR.get_drift_rate(CT_corr_matrices)
+    fig, ax = plt.subplots(figsize=(4,5))
+    for age, color in zip(['young', 'aged'], ['cornflowerblue', 'r']):
+        for mouse in RR.meta['grouped_mice'][age]:
+            try:
+                ax.plot([0, 1], [drift_rates_LT[mouse], drift_rates_CT[mouse]], c=color)
+            except:
+                ax.scatter(1, drift_rates_CT[mouse], c=color)
+
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(['Linear track', 'Circle track'])
+    ax.set_ylabel('Drift rate')
+    fig.tight_layout()
