@@ -40,7 +40,7 @@ class CalciumSession:
             "spatial_bin_size": spatial_bin_size,
             "nbins": nbins,
             "S_std_thresh": S_std_thresh,
-            "velocity_threshold": velocity_threshold,
+            "threshold": velocity_threshold,
             "local": local,
         }
 

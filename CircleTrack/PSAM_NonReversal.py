@@ -386,5 +386,5 @@ class PSAM:
 
 
 if __name__ == '__main__':
-    mice = ['PSAM_' + str(i) for i in np.arange(6,18)]
+    mice = ['PSAM_' + str(i) for i in np.arange(7,18)]
     P = PSAM(mice)
