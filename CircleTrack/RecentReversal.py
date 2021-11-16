@@ -836,7 +836,7 @@ class RecentReversal:
 
         return overlaps
 
-    def find_percent_overlap(self, mouse, show_plot=True):
+    def get_all_overlaps_mouse(self, mouse, show_plot=True):
         n_sessions = len(self.meta["session_types"])
         r, c = np.indices((n_sessions, n_sessions))
         overlaps = np.ones((n_sessions, n_sessions))
@@ -846,19 +846,82 @@ class RecentReversal:
             c.flatten(),
         ):
             if i != j:
-                overlap_map = self.get_cellreg_mappings(
-                    mouse, session_pair, detected="first_day"
-                )[0]
-
-                n_neurons_reactivated = np.sum(overlap_map.iloc[:, 1] != -9999)
-                n_neurons_first_day = len(overlap_map)
-                overlaps[i, j] = n_neurons_reactivated / n_neurons_first_day
+                overlaps[i, j] = self.find_overlap_session_pair(
+                    mouse, session_pair
+                )
 
         if show_plot:
             fig, ax = plt.subplots()
             ax.imshow(overlaps)
 
         return overlaps
+
+    def find_overlap_session_pair(self, mouse, session_pair):
+        overlap_map = self.get_cellreg_mappings(
+            mouse, session_pair, detected='first_day'
+        )[0]
+
+        n_neurons_reactivated = np.sum(overlap_map.iloc[:, 1] != -9999)
+        n_neurons_first_day = len(overlap_map)
+
+        overlap = n_neurons_reactivated / n_neurons_first_day
+
+        return overlap
+
+    def find_overlaps(self, session_pair):
+        overlaps = {mouse: self.find_overlap_session_pair(mouse, session_pair)
+                    for mouse in self.meta['mice']}
+
+        return overlaps
+
+    def plot_overlaps(self, session_pair1, session_pair2):
+        """
+        Plots the proportion overlap of detected neurons between a session pair
+        between two session pairs. Basically compares the overlap in one
+        session pair to the overlap in another session pair.
+
+        :parameters
+        ---
+        session_pair1, session_pair2: tuples
+            Two session pairs that you want to compare.
+
+        :returns
+        ---
+        overlaps: list of dicts
+            [session_pair1 dict {mouse: overlap proportion},
+             session_pair2 dict {mouse: overlap proportion},
+             ]
+
+        overlaps_grouped: dict
+            {age: np.array(mouse, session_pair)}
+
+        """
+        overlaps = [self.find_overlaps(session_pair)
+                    for session_pair in [session_pair1, session_pair2]]
+        xlabels = [f'{session_pair[0]} x \n {session_pair[1]}'
+                   for session_pair in [session_pair1, session_pair2]]
+        fig, ax = plt.subplots(figsize=(3,6))
+        overlaps_grouped = dict()
+        for color, age in zip(age_colors, ages):
+            overlaps_grouped[age] = []
+            for mouse in self.meta['grouped_mice'][age]:
+                overlaps_this_mouse = [overlap[mouse]
+                                       for overlap in overlaps]
+                ax.plot(xlabels,
+                        overlaps_this_mouse,
+                        color=color)
+
+                overlaps_grouped[age].append(overlaps_this_mouse)
+
+            overlaps_grouped[age] = np.vstack(overlaps_grouped[age])
+
+        for tick in ax.get_xticklabels():
+            tick.set_rotation(45)
+
+        ax.set_ylabel('Overlap [proportion]')
+        fig.tight_layout()
+
+        return overlaps, overlaps_grouped
 
     ############################ PLACE FIELD FUNCTIONS ############################
     def get_placefields(self, mouse, session_type, nbins=125):
@@ -1612,7 +1675,51 @@ class RecentReversal:
 
         return pvalue
 
-    ############################ DECODER FUNCTIONS ############################
+    def snakeplot_placefields(self, mouse, session, order=None, neurons=None, ax=None,
+                              normalize=True, show_plot=True):
+        session = self.data[mouse][session].spatial.data
+        if neurons is None:
+            neurons = np.arange(0, session['n_neurons'])
+        if order is None:
+            order = np.argsort(session['placefield_centers'][neurons])
+
+        placefields = session['placefields_normalized'][neurons][order]
+
+        if show_plot:
+            if normalize:
+                placefields = placefields / np.max(placefields, axis=1, keepdims=True)
+            if ax is None:
+                fig, ax = plt.subplots(figsize=(5,5.5))
+            ax.imshow(placefields)
+            ax.axis('tight')
+            ax.set_ylabel('Neuron #')
+            ax.set_xlabel('Location')
+        else:
+            ax = None
+
+        return ax, placefields, order
+
+
+    def snakeplot_matched_placefields(self, mouse, session_types, sort_by_session=None):
+        trimmed_map = self.get_cellreg_mappings(mouse, session_types, detected='everyday', neurons_from_session1=None)[0]
+        trimmed_map = np.asarray(trimmed_map)
+        age = 'aged' if mouse in self.meta['grouped_mice']['aged'] else 'young'
+
+        session_labels = [self.meta['session_labels'][self.meta['session_types'].index(session)]
+                          for session in session_types]
+        fig, axs = plt.subplots(1, len(session_types))
+        ax, placefields, order = self.snakeplot_placefields(mouse, session_types[sort_by_session],
+                                                            neurons=trimmed_map[:,sort_by_session],
+                                                            show_plot=False)
+
+        for i, (ax, label, session_type) in enumerate(zip(axs, session_labels, session_types)):
+            self.snakeplot_placefields(mouse, session_type, neurons=trimmed_map[:,i], order=order, ax=ax)
+            ax.set_title(label)
+        fig.suptitle(f'{mouse}, {age}')
+        fig.tight_layout()
+
+
+############################ DECODER FUNCTIONS ############################
     def decode_place(
         self,
         mouse,
@@ -3182,6 +3289,7 @@ class RecentReversal:
         data_type='ensembles',
         alpha=0.01,
         ax=None,
+        ages_to_plot=None,
     ):
         ensemble_trends, ensemble_counts = self.plot_assembly_trends(
             x=x, x_bin_size=x_bin_size, z_threshold=z_threshold, data_type=data_type,
@@ -3206,23 +3314,32 @@ class RecentReversal:
             fig, ax = plt.subplots()
 
         ylabels = {"CRs": "Correct rejection rate", "hits": "Hit rate", "d_prime": "d'"}
-        for age, c in zip(ages, age_colors):
+        if ages_to_plot is None:
+            ages_to_plot = ages
+            plot_colors = age_colors
+        else:
+            plot_colors = [age_colors[ages.index(ages_to_plot)]]
+            if type(ages_to_plot) is str:
+                ages_to_plot = [ages_to_plot]
+
+        for age, c in zip(ages_to_plot, plot_colors):
             prop_fading = np.asarray(p_changing_split_by_age[age], dtype=float)
             perf = performance[age]
             ax.scatter(
                 prop_fading, perf,
                 facecolors=c,
                 edgecolors="k",
-                alpha=0.5,
                 s=50,
             )
             z = np.polyfit(prop_fading, perf, 1)
             y_hat = np.poly1d(z)(prop_fading)
-            ax.plot(prop_fading, y_hat, color=c, alpha=0.5)
+            ax.plot(prop_fading, y_hat, color=c)
 
         ax.set_xlabel("Proportion of fading ensembles")
         ax.set_ylabel(ylabels[performance_metric])
-        ax.legend(["Young", "Aged"], loc='lower right')
+
+        if ages_to_plot is None:
+            ax.legend(ages_to_plot, loc='lower right')
 
         p_changing = np.hstack([p_changing_split_by_age[age] for age in ages])
         perf = np.hstack([performance[age] for age in ages])
