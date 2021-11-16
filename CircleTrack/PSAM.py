@@ -37,7 +37,13 @@ PSEM_mice = ['PSAM_2',
              'PSAM_8',
              'PSAM_10',
              'PSAM_13',
-             'PSAM_17']
+             'PSAM_17',
+             'PSAM_19',
+             'PSAM_20',
+             'PSAM_24',
+             'PSAM_25',
+             'PSAM_26',
+             'PSAM_27']
 
 aged_mice = [
     "Gemini",
@@ -373,7 +379,7 @@ class PSAM:
         fig, ax = plt.subplots(figsize=(4,5))
         ax.plot(performance_all.T, color='gray', alpha=0.5)
         errorfill(session_labels, np.mean(performance_all, axis=0),
-                  sem(performance_all, axis=0), ax=ax)
+                  sem(performance_all, axis=0), ax=ax, color='k')
         [tick.set_rotation(45) for tick in ax.get_xticklabels()]
         ax.set_ylabel(ylabel[performance_metric])
         fig.tight_layout()
