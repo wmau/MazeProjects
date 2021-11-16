@@ -11,8 +11,15 @@ from CaImaging.util import (
     distinct_colors,
 )
 from CaImaging.plotting import errorfill, beautify_ax, jitter_x
-from scipy.stats import spearmanr, zscore, \
-    circmean, kendalltau, wilcoxon, mannwhitneyu, pearsonr
+from scipy.stats import (
+    spearmanr,
+    zscore,
+    circmean,
+    kendalltau,
+    wilcoxon,
+    mannwhitneyu,
+    pearsonr,
+)
 from scipy.spatial import distance
 from CircleTrack.SessionCollation import MultiAnimal
 from CircleTrack.MiniscopeFunctions import CalciumSession
@@ -31,8 +38,13 @@ from sklearn.inspection import permutation_importance
 from sklearn.feature_selection import SequentialFeatureSelector, RFECV
 import numpy as np
 import os
-from CircleTrack.plotting import plot_daily_rasters, spiral_plot, \
-    highlight_column, plot_port_activations, color_boxes
+from CircleTrack.plotting import (
+    plot_daily_rasters,
+    spiral_plot,
+    highlight_column,
+    plot_port_activations,
+    color_boxes,
+)
 from CaImaging.Assemblies import preprocess_multiple_sessions, lapsed_activation
 from CircleTrack.Assemblies import (
     plot_assembly,
@@ -80,7 +92,6 @@ session_types = {
     ],
     "RemoteReversal": ["Goals1", "Goals2", "Goals3", "Goals4", "Reversal"],
     "PSAMReversal": ["Goals1", "Goals2", "Goals3", "Goals4", "Reversal"],
-
 }
 
 aged_mice = [
@@ -96,26 +107,20 @@ aged_mice = [
     "PSAM_3",
 ]
 
-PSEM_mice = ['PSAM_2',
-             'PSAM_3',
-             'PSAM_5',
-             'PSAM_6',
-             'PSAM_7',
-             'PSAM_8',
-             'PSAM_10']
+PSEM_mice = ["PSAM_2", "PSAM_3", "PSAM_5", "PSAM_6", "PSAM_7", "PSAM_8", "PSAM_10"]
 
 ages = ["young", "aged"]
 PSAM_groups = ["vehicle", "PSEM"]
 age_colors = ["cornflowerblue", "r"]
-PSAM_colors = ['silver', 'coral']
+PSAM_colors = ["silver", "coral"]
 
 
 class RecentReversal:
-    def __init__(self, mice, project_name="RemoteReversal",
-                 behavior_only=False):
+    def __init__(self, mice, project_name="RemoteReversal", behavior_only=False):
         # Collect data from all mice and sessions.
         self.data = MultiAnimal(
-            mice, project_name=project_name,
+            mice,
+            project_name=project_name,
             SessionFunction=CalciumSession,
         )
 
@@ -276,8 +281,7 @@ class RecentReversal:
 
         return ax
 
-    def plot_behavior(self, mouse, window=8, strides=2,
-                      show_plot=True, ax=None):
+    def plot_behavior(self, mouse, window=8, strides=2, show_plot=True, ax=None):
         """
         Plot behavioral performance (hits, correct rejections, d') for
         one mouse.
@@ -451,7 +455,7 @@ class RecentReversal:
                 for age, c in zip(ages, age_colors):
                     ax.plot(metrics[age].T, color=c, alpha=0.3)
                     ax.errorbar(
-                        self.meta['session_labels'],
+                        self.meta["session_labels"],
                         np.nanmean(metrics[age], axis=0),
                         sem(metrics[age], axis=0),
                         color=c,
@@ -463,37 +467,54 @@ class RecentReversal:
             fig.legend()
 
         if window is None:
-            mice_ = np.hstack([np.repeat(self.meta['grouped_mice'][age],
-                                        len(self.meta['session_types']))
-                              for age in ages])
+            mice_ = np.hstack(
+                [
+                    np.repeat(
+                        self.meta["grouped_mice"][age], len(self.meta["session_types"])
+                    )
+                    for age in ages
+                ]
+            )
             ages_ = np.hstack([np.repeat(age, metrics[age].size) for age in ages])
-            session_types_ = np.hstack([np.tile(self.meta['session_types'],
-                                               len(self.meta['grouped_mice'][age]))
-                                       for age in ages])
+            session_types_ = np.hstack(
+                [
+                    np.tile(
+                        self.meta["session_types"], len(self.meta["grouped_mice"][age])
+                    )
+                    for age in ages
+                ]
+            )
             metric_ = np.hstack([metrics[age].flatten() for age in ages])
 
             df = pd.DataFrame(
-                {'metric': metric_,
-                 'session_types': session_types_,
-                 'mice': mice_,
-                 'age': ages_,
-                 }
+                {
+                    "metric": metric_,
+                    "session_types": session_types_,
+                    "mice": mice_,
+                    "age": ages_,
+                }
             )
         else:
             df = None
 
         return behavioral_performance, metrics, df
 
-    def behavior_anova(self, performance_metric='CRs'):
-        df = self.plot_all_behavior(performance_metric=performance_metric,
-                                    window=None, strides=None)[2]
+    def behavior_anova(self, performance_metric="CRs"):
+        df = self.plot_all_behavior(
+            performance_metric=performance_metric, window=None, strides=None
+        )[2]
 
-        anova_df = pg.mixed_anova(df, dv='metric', within='session_types',
-                                  between='age', subject='mice')
+        anova_df = pg.mixed_anova(
+            df, dv="metric", within="session_types", between="age", subject="mice"
+        )
 
-        pairwise_df = df.pairwise_ttests(dv='metric', between='age',
-                                         within='session_types', subject='mice',
-                                         padjust='none')
+        pairwise_df = df.pairwise_ttests(
+            dv="metric",
+            between="age",
+            within="session_types",
+            subject="mice",
+            padjust="none",
+        )
         return anova_df, pairwise_df, df
 
     def plot_best_performance(
@@ -537,9 +558,9 @@ class RecentReversal:
         if show_plot:
             label_axes = True
             ylabels = {
-                'CRs': 'Correct rejection rate',
-                'hits': 'Hit rate',
-                'd_prime': "d'"
+                "CRs": "Correct rejection rate",
+                "hits": "Hit rate",
+                "d_prime": "d'",
             }
             if ax is None:
                 fig, ax = plt.subplots(figsize=(3, 4.75))
@@ -554,14 +575,16 @@ class RecentReversal:
                 zorder=0,
             )
 
-            [ax.scatter(
-                jitter_x(np.ones_like(best_performance[age])*(i+1), 0.1),
-                best_performance[age],
-                color=color,
-                edgecolor='k',
-                zorder=1,
-            )
-             for i, (age, color) in enumerate(zip(ages, age_colors))]
+            [
+                ax.scatter(
+                    jitter_x(np.ones_like(best_performance[age]) * (i + 1), 0.1),
+                    best_performance[age],
+                    color=color,
+                    edgecolor="k",
+                    zorder=1,
+                )
+                for i, (age, color) in enumerate(zip(ages, age_colors))
+            ]
             for patch, med, color in zip(
                 box["boxes"], box["medians"], ["cornflowerblue", "r"]
             ):
@@ -572,7 +595,7 @@ class RecentReversal:
                 ax.set_xticks([1, 2])
                 ax.set_xticklabels(["Young", "Aged"])
                 ax.set_ylabel(ylabels[performance_metric])
-                #ax = beautify_ax(ax)
+                # ax = beautify_ax(ax)
                 plt.tight_layout()
 
         return best_performance
@@ -585,10 +608,12 @@ class RecentReversal:
         sessions=None,
     ):
         if sessions is None:
-            sessions = self.meta['session_types']
+            sessions = self.meta["session_types"]
 
-        session_labels = [self.meta['session_labels'][self.meta['session_types'].index(session)]
-                          for session in sessions]
+        session_labels = [
+            self.meta["session_labels"][self.meta["session_types"].index(session)]
+            for session in sessions
+        ]
 
         fig, axs = plt.subplots(1, len(sessions), sharey=True)
         fig.subplots_adjust(wspace=0)
@@ -598,9 +623,7 @@ class RecentReversal:
             "hits": "Hit rate",
         }
         performance = dict()
-        for ax, session, title in zip(
-            axs, sessions, session_labels
-        ):
+        for ax, session, title in zip(axs, sessions, session_labels):
             performance[session] = self.plot_best_performance(
                 session_type=session,
                 ax=ax,
@@ -624,37 +647,41 @@ class RecentReversal:
         reward_rate = {age: [] for age in ages}
 
         for age in ages:
-            for mouse in self.meta['grouped_mice'][age]:
-                n_drinks = self.data[mouse][session_type].behavior.data['n_drinks']
-                n_trials = self.data[mouse][session_type].behavior.data['ntrials']
+            for mouse in self.meta["grouped_mice"][age]:
+                n_drinks = self.data[mouse][session_type].behavior.data["n_drinks"]
+                n_trials = self.data[mouse][session_type].behavior.data["ntrials"]
 
                 rr = (np.sum(n_drinks) / 2) / n_trials
                 reward_rate[age].append(rr)
 
-        self.scatter_box(reward_rate, ylabel='Reward rate')
+        self.scatter_box(reward_rate, ylabel="Reward rate")
 
         return reward_rate
 
-    def scatter_box(self, data, ylabel='', ax=None, fig=None):
+    def scatter_box(self, data, ylabel="", ax=None, fig=None):
         if ax is None:
             fig, ax = plt.subplots()
-        boxes = ax.boxplot([data[age] for age in ages],
-                           widths=0.75, showfliers=False, zorder=0, patch_artist=True)
-
-        [ax.scatter(
-            jitter_x(np.ones_like(data[age])*(i+1), 0.05),
-            data[age],
-            color=color,
-            edgecolor='k',
-            zorder=1,
-            s=50,
+        boxes = ax.boxplot(
+            [data[age] for age in ages],
+            widths=0.75,
+            showfliers=False,
+            zorder=0,
+            patch_artist=True,
         )
-            for i, (age, color) in enumerate(zip(ages,
-                                                 age_colors))]
 
-        for patch, med, color in zip(
-                boxes["boxes"], boxes["medians"], age_colors
-        ):
+        [
+            ax.scatter(
+                jitter_x(np.ones_like(data[age]) * (i + 1), 0.05),
+                data[age],
+                color=color,
+                edgecolor="k",
+                zorder=1,
+                s=50,
+            )
+            for i, (age, color) in enumerate(zip(ages, age_colors))
+        ]
+
+        for patch, med, color in zip(boxes["boxes"], boxes["medians"], age_colors):
             patch.set_facecolor(color)
             med.set(color="k")
         ax.set_xticks([])
@@ -684,33 +711,39 @@ class RecentReversal:
                 current_rewarded_ports = behavior_data["rewarded_ports"]
                 other_ports = ~(previous_reward_ports + current_rewarded_ports)
 
-                perseverative_errors[age].append(np.mean(licks[:, previous_reward_ports]))
+                perseverative_errors[age].append(
+                    np.mean(licks[:, previous_reward_ports])
+                )
                 unforgiveable_errors[age].append(np.mean(licks[:, other_ports]))
 
         if show_plot:
             fig, axs = plt.subplots(1, 2, sharey=True)
             fig.subplots_adjust(wspace=0)
-            ylabel = {True: 'Proportion of trials',
-                      False: 'Mean licks per trial'}
+            ylabel = {True: "Proportion of trials", False: "Mean licks per trial"}
             for ax, rate, title in zip(
                 axs,
                 [perseverative_errors, unforgiveable_errors],
                 ["Perseverative errors", "Unforgiveable errors"],
             ):
                 boxes = ax.boxplot(
-                    [rate[age] for age in ages], patch_artist=True, widths=0.75,
-                    showfliers=False, zorder=0,
+                    [rate[age] for age in ages],
+                    patch_artist=True,
+                    widths=0.75,
+                    showfliers=False,
+                    zorder=0,
                 )
 
-                [ax.scatter(
-                    jitter_x(np.ones_like(rate[age])*(i+1), 0.05),
-                    rate[age],
-                    color=color,
-                    edgecolor='k',
-                    zorder=1,
-                    s=50,
-                )
-                    for i, (age, color) in enumerate(zip(ages, age_colors))]
+                [
+                    ax.scatter(
+                        jitter_x(np.ones_like(rate[age]) * (i + 1), 0.05),
+                        rate[age],
+                        color=color,
+                        edgecolor="k",
+                        zorder=1,
+                        s=50,
+                    )
+                    for i, (age, color) in enumerate(zip(ages, age_colors))
+                ]
 
                 for patch, med, color in zip(
                     boxes["boxes"], boxes["medians"], ["cornflowerblue", "r"]
@@ -729,8 +762,14 @@ class RecentReversal:
 
         return perseverative_errors, unforgiveable_errors
 
-    def plot_perseverative_licking_over_session(self, session_type='Reversal', window_size=8,
-                                   trial_interval=3, show_plot=True, binarize_licks=True):
+    def plot_perseverative_licking_over_session(
+        self,
+        session_type="Reversal",
+        window_size=8,
+        trial_interval=3,
+        show_plot=True,
+        binarize_licks=True,
+    ):
         perseverative_errors = dict()
         unforgiveable_errors = dict()
         for age in ages:
@@ -758,35 +797,43 @@ class RecentReversal:
                 for licks_this_window in licks:
                     # Get perserverative errors.
                     perseverative_errors[age][i].append(
-                        np.sum(licks_this_window[:, previous_reward_ports]) / (n_previous*licks_this_window.shape[0])
+                        np.sum(licks_this_window[:, previous_reward_ports])
+                        / (n_previous * licks_this_window.shape[0])
                     )
 
                     # Get unforgiveable errors.
                     unforgiveable_errors[age][i].append(
-                        np.sum(licks_this_window[:, other_ports]) / (n_other*licks_this_window.shape[0])
+                        np.sum(licks_this_window[:, other_ports])
+                        / (n_other * licks_this_window.shape[0])
                     )
 
-        perseverative_errors = {age: stack_padding(perseverative_errors[age]) for age in ages}
-        unforgiveable_errors = {age: stack_padding(unforgiveable_errors[age]) for age in ages}
+        perseverative_errors = {
+            age: stack_padding(perseverative_errors[age]) for age in ages
+        }
+        unforgiveable_errors = {
+            age: stack_padding(unforgiveable_errors[age]) for age in ages
+        }
 
         if show_plot:
-            ylabel = 'Error rate' if binarize_licks else 'Average number of licks'
-            if session_type == 'Reversal':
+            ylabel = "Error rate" if binarize_licks else "Average number of licks"
+            if session_type == "Reversal":
                 fig, axs = plt.subplots(1, 2, sharey=True, sharex=True)
                 fig.subplots_adjust(wspace=0)
 
                 for ax, rate, title in zip(
-                        axs,
-                        [perseverative_errors, unforgiveable_errors],
-                        ["Perseverative errors", "Unforgiveable errors"],
+                    axs,
+                    [perseverative_errors, unforgiveable_errors],
+                    ["Perseverative errors", "Unforgiveable errors"],
                 ):
                     se = {age: sem(rate[age], axis=0) for age in ages}
                     m = {age: np.nanmean(rate[age], axis=0) for age in ages}
                     for c, age in zip(age_colors, ages):
                         ax.plot(rate[age].T, color=c, alpha=0.1)
-                        errorfill(range(m[age].shape[0]), m[age], se[age], color=c, ax=ax)
+                        errorfill(
+                            range(m[age].shape[0]), m[age], se[age], color=c, ax=ax
+                        )
                         ax.set_title(title)
-                    fig.supxlabel('Trial blocks')
+                    fig.supxlabel("Trial blocks")
                     fig.supylabel(ylabel)
             else:
                 fig, ax = plt.subplots()
@@ -795,16 +842,20 @@ class RecentReversal:
                 for c, age in zip(age_colors, ages):
                     ax.plot(unforgiveable_errors[age].T, color=c, alpha=0.1)
                     errorfill(range(m[age].shape[0]), m[age], se[age], color=c, ax=ax)
-                ax.set_xlabel('Trial blocks')
+                ax.set_xlabel("Trial blocks")
                 ax.set_ylabel(ylabel)
         return perseverative_errors, unforgiveable_errors
 
     def compare_trial_count(self, session_type):
-        trials = {age: [self.data[mouse][session_type].behavior.data['ntrials']
-                        for mouse in self.meta['grouped_mice'][age]]
-                  for age in ages}
+        trials = {
+            age: [
+                self.data[mouse][session_type].behavior.data["ntrials"]
+                for mouse in self.meta["grouped_mice"][age]
+            ]
+            for age in ages
+        }
 
-        self.scatter_box(trials, 'Trials')
+        self.scatter_box(trials, "Trials")
 
         return trials
 
@@ -846,9 +897,7 @@ class RecentReversal:
             c.flatten(),
         ):
             if i != j:
-                overlaps[i, j] = self.find_overlap_session_pair(
-                    mouse, session_pair
-                )
+                overlaps[i, j] = self.find_overlap_session_pair(mouse, session_pair)
 
         if show_plot:
             fig, ax = plt.subplots()
@@ -858,7 +907,7 @@ class RecentReversal:
 
     def find_overlap_session_pair(self, mouse, session_pair):
         overlap_map = self.get_cellreg_mappings(
-            mouse, session_pair, detected='first_day'
+            mouse, session_pair, detected="first_day"
         )[0]
 
         n_neurons_reactivated = np.sum(overlap_map.iloc[:, 1] != -9999)
@@ -869,8 +918,10 @@ class RecentReversal:
         return overlap
 
     def find_overlaps(self, session_pair):
-        overlaps = {mouse: self.find_overlap_session_pair(mouse, session_pair)
-                    for mouse in self.meta['mice']}
+        overlaps = {
+            mouse: self.find_overlap_session_pair(mouse, session_pair)
+            for mouse in self.meta["mice"]
+        }
 
         return overlaps
 
@@ -896,20 +947,21 @@ class RecentReversal:
             {age: np.array(mouse, session_pair)}
 
         """
-        overlaps = [self.find_overlaps(session_pair)
-                    for session_pair in [session_pair1, session_pair2]]
-        xlabels = [f'{session_pair[0]} x \n {session_pair[1]}'
-                   for session_pair in [session_pair1, session_pair2]]
-        fig, ax = plt.subplots(figsize=(3,6))
+        overlaps = [
+            self.find_overlaps(session_pair)
+            for session_pair in [session_pair1, session_pair2]
+        ]
+        xlabels = [
+            f"{session_pair[0]} x \n {session_pair[1]}"
+            for session_pair in [session_pair1, session_pair2]
+        ]
+        fig, ax = plt.subplots(figsize=(3, 6))
         overlaps_grouped = dict()
         for color, age in zip(age_colors, ages):
             overlaps_grouped[age] = []
-            for mouse in self.meta['grouped_mice'][age]:
-                overlaps_this_mouse = [overlap[mouse]
-                                       for overlap in overlaps]
-                ax.plot(xlabels,
-                        overlaps_this_mouse,
-                        color=color)
+            for mouse in self.meta["grouped_mice"][age]:
+                overlaps_this_mouse = [overlap[mouse] for overlap in overlaps]
+                ax.plot(xlabels, overlaps_this_mouse, color=color)
 
                 overlaps_grouped[age].append(overlaps_this_mouse)
 
@@ -918,16 +970,19 @@ class RecentReversal:
         for tick in ax.get_xticklabels():
             tick.set_rotation(45)
 
-        ax.set_ylabel('Overlap [proportion]')
+        ax.set_ylabel("Overlap [proportion]")
         fig.tight_layout()
 
         return overlaps, overlaps_grouped
 
     ############################ PLACE FIELD FUNCTIONS ############################
-    def get_placefields(self, mouse, session_type, nbins=125):
+    def get_placefields(self, mouse, session_type, nbins=125, velocity_threshold=7):
         session = self.data[mouse][session_type]
-        existing_pfs = session.spatial.data['placefields']
-        if existing_pfs.shape[1] == nbins:
+        existing_pfs = session.spatial.data["placefields"]
+        if (
+            existing_pfs.shape[1] == nbins
+            and session.spatial.meta["threshold"] == velocity_threshold
+        ):
             pf = existing_pfs
         else:
             PF = PlaceFields(
@@ -941,80 +996,83 @@ class RecentReversal:
                 linearized=True,
                 fps=session.behavior.meta["fps"],
                 shuffle_test=False,
-                velocity_threshold=session.spatial.meta['threshold'],
+                velocity_threshold=velocity_threshold,
             )
-            pf = PF.data['placefields']
+            pf = PF.data["placefields"]
 
         return pf
 
-    def get_split_trial_pfs(self, mouse, session_type, nbins=125,
-                              show_plot=False):
+    def PV_corr(self, mouse, session_pair, nbins=125, velocity_threshold=7):
+        pfs = [
+            self.get_placefields(mouse, session, nbins=nbins)
+            for session in session_pair
+        ]
+
+    def get_split_trial_pfs(self, mouse, session_type, nbins=125, show_plot=False):
         session = self.data[mouse][session_type]
-        existing_rasters = session.spatial.data['rasters']
+        existing_rasters = session.spatial.data["rasters"]
 
         if existing_rasters.shape[2] == nbins:
             rasters = existing_rasters
         else:
             rasters = session.spatial_activity_by_trial(nbins)[0]
 
-        split_rasters = {
-            'even': rasters[:, ::2, :],
-            'odd': rasters[:, 1::2, :]
-        }
+        split_rasters = {"even": rasters[:, ::2, :], "odd": rasters[:, 1::2, :]}
         split_pfs = {
             trial_type: np.nanmean(split_rasters[trial_type], axis=1)
-            for trial_type in ['even', 'odd']
+            for trial_type in ["even", "odd"]
         }
 
         if show_plot:
-            order = np.argsort(np.argmax(split_pfs['even'], axis=1))
-            fig, axs = plt.subplots(1,2, figsize=(8,6))
-            for ax, trial_type in zip(axs, ['even', 'odd']):
-                ax.imshow(split_pfs[trial_type][order], aspect='auto')
-                ax.set_title(f'{trial_type} trials')
-            fig.supylabel('Neuron #')
-            fig.supxlabel('Linearized position')
+            order = np.argsort(np.argmax(split_pfs["even"], axis=1))
+            fig, axs = plt.subplots(1, 2, figsize=(8, 6))
+            for ax, trial_type in zip(axs, ["even", "odd"]):
+                ax.imshow(split_pfs[trial_type][order], aspect="auto")
+                ax.set_title(f"{trial_type} trials")
+            fig.supylabel("Neuron #")
+            fig.supxlabel("Linearized position")
 
         return split_pfs
 
-    def session_pairwise_PV_corr_efficient(self, mouse,
-                                           nbins=125,
-                                           corr='spearman',
-                                           show_plot=False):
+    def session_pairwise_PV_corr_efficient(
+        self, mouse, nbins=125, corr="spearman", show_plot=False
+    ):
         pfs = {}
-        for session in self.meta['session_types']:
+        for session in self.meta["session_types"]:
             pfs[session] = self.get_placefields(mouse, session, nbins=nbins)
 
-        corr_fun = spearmanr if corr=='spearman' else pearsonr
+        corr_fun = spearmanr if corr == "spearman" else pearsonr
 
-        shape = (len(self.meta['session_types']),
-                 len(self.meta['session_types']))
+        shape = (len(self.meta["session_types"]), len(self.meta["session_types"]))
         corr_matrix = nan_array(shape)
-        for i, session_pair in enumerate(product(self.meta['session_types'],
-                                                 repeat=2)):
+        for i, session_pair in enumerate(product(self.meta["session_types"], repeat=2)):
             same_session = session_pair[0] == session_pair[1]
             row, col = np.unravel_index(i, shape)
 
             if same_session:
-                split_pfs = self.get_split_trial_pfs(mouse,
-                                                     session_pair[0],
-                                                     nbins=nbins)
-                even, odd = [split_pfs[trial_type].T
-                             for trial_type in ['even', 'odd']]
+                split_pfs = self.get_split_trial_pfs(
+                    mouse, session_pair[0], nbins=nbins
+                )
+                even, odd = [split_pfs[trial_type].T for trial_type in ["even", "odd"]]
 
                 rhos = []
                 for x, y in zip(even, odd):
-                    rhos.append(corr_fun(x,y, nan_policy='omit')[0])
+                    rhos.append(corr_fun(x, y, nan_policy="omit")[0])
 
             else:
-                trimmed_map = np.asarray(self.get_cellreg_mappings(mouse, session_pair,
-                                                                   detected='everyday')[0])
-                s1, s2 = [pfs[session][neurons].T
-                          for neurons, session in zip(trimmed_map.T, session_pair)]
+                trimmed_map = np.asarray(
+                    self.get_cellreg_mappings(mouse, session_pair, detected="everyday")[
+                        0
+                    ]
+                )
+                s1, s2 = [
+                    pfs[session][neurons].T
+                    for neurons, session in zip(trimmed_map.T, session_pair)
+                ]
 
                 rhos = []
-                for x,y in zip(s1, s2):
-                    rhos.append(corr_fun(x,y, nan_policy='omit')[0])
+                for x, y in zip(s1, s2):
+                    rhos.append(corr_fun(x, y, nan_policy="omit")[0])
 
             corr_matrix[row, col] = np.nanmean(rhos)
 
@@ -1026,14 +1084,16 @@ class RecentReversal:
 
     def PV_corr_all_mice(self, nbins=30):
         corr_matrices = dict()
-        for mouse in self.meta['mice']:
-            print(f'Analyzing {mouse}...')
-            corr_matrices[mouse] = self.session_pairwise_PV_corr_efficient(mouse, nbins=nbins)
+        for mouse in self.meta["mice"]:
+            print(f"Analyzing {mouse}...")
+            corr_matrices[mouse] = self.session_pairwise_PV_corr_efficient(
+                mouse, nbins=nbins
+            )
 
         return corr_matrices
 
     def plot_corr_matrix(self, corr_matrices, ages_to_plot=ages):
-        fig, axs = plt.subplots(1, len(ages_to_plot), figsize=(12,5))
+        fig, axs = plt.subplots(1, len(ages_to_plot), figsize=(12, 5))
         both_ages = True
         try:
             len(axs)
@@ -1043,18 +1103,20 @@ class RecentReversal:
 
         matrices = []
         for ax, age in zip(axs, ages_to_plot):
-            matrix = np.nanmean([corr_matrices[mouse]
-                                 for mouse in self.meta['grouped_mice'][age]], axis=0)
+            matrix = np.nanmean(
+                [corr_matrices[mouse] for mouse in self.meta["grouped_mice"][age]],
+                axis=0,
+            )
 
             matrices.append(matrix)
             im = ax.imshow(matrix)
-            ax.set_title(f'{age}')
-            ax.set_xlabel('Day')
-            ax.set_ylabel('Day')
-            ax.set_xticks(range(len(self.meta['session_types'])))
-            ax.set_yticks(range(len(self.meta['session_types'])))
-            ax.set_xticklabels(self.meta['session_labels'], rotation=90)
-            ax.set_yticklabels(self.meta['session_labels'])
+            ax.set_title(f"{age}")
+            ax.set_xlabel("Day")
+            ax.set_ylabel("Day")
+            ax.set_xticks(range(len(self.meta["session_types"])))
+            ax.set_yticks(range(len(self.meta["session_types"])))
+            ax.set_xticklabels(self.meta["session_labels"], rotation=90)
+            ax.set_yticklabels(self.meta["session_labels"])
         fig.tight_layout()
         min_clim = np.min(matrices)
         max_clim = np.max(matrices)
@@ -1067,54 +1129,53 @@ class RecentReversal:
         fig.subplots_adjust(right=0.8)
         cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
         cbar = fig.colorbar(im, cax=cbar_ax)
-        cbar.set_label('Mean PV correlation [Spearman rho]')
+        cbar.set_label("Mean PV correlation [Spearman rho]")
 
     def get_diagonals(self, corr_matrices):
         data = {}
-        for mouse in self.meta['mice']:
+        for mouse in self.meta["mice"]:
             data[mouse] = {
-                'coefs': [],
-                'day_lag': [],
+                "coefs": [],
+                "day_lag": [],
             }
-            for i in range(len(self.meta['session_types'])):
+            for i in range(len(self.meta["session_types"])):
                 rhos = np.diag(corr_matrices[mouse], k=i)
 
-                data[mouse]['coefs'].extend(rhos)
-                data[mouse]['day_lag'].extend(np.ones_like(rhos)*i)
+                data[mouse]["coefs"].extend(rhos)
+                data[mouse]["day_lag"].extend(np.ones_like(rhos) * i)
 
-            data[mouse]['coefs'] = np.asarray(data[mouse]['coefs'])
-            data[mouse]['day_lag'] = np.asarray(data[mouse]['day_lag'])
+            data[mouse]["coefs"] = np.asarray(data[mouse]["coefs"])
+            data[mouse]["day_lag"] = np.asarray(data[mouse]["day_lag"])
 
         return data
 
     def compare_PV_corrs(self, corr_matrices):
         data = self.get_diagonals(corr_matrices)
-        n_sessions = len(self.meta['session_types'])
+        n_sessions = len(self.meta["session_types"])
         PV_corrs = {}
         for day_lag in range(n_sessions):
             PV_corrs[day_lag] = dict()
             for age in ages:
                 PV_corrs[day_lag][age] = []
-                for mouse in self.meta['grouped_mice'][age]:
-                    coefs = data[mouse]['coefs'][data[mouse]['day_lag'] == day_lag]
+                for mouse in self.meta["grouped_mice"][age]:
+                    coefs = data[mouse]["coefs"][data[mouse]["day_lag"] == day_lag]
                     coefs = coefs[~np.isnan(coefs)]
                     PV_corrs[day_lag][age].extend(coefs)
 
         fig, axs = plt.subplots(1, n_sessions, sharey=True, figsize=(10.5, 5))
         for day_lag, ax in enumerate(axs):
             self.scatter_box(PV_corrs[day_lag], ax=ax, fig=fig)
-            ax.set_title(f'{day_lag} days apart')
-        axs[0].set_ylabel('PV correlation [Spearman rho]')
+            ax.set_title(f"{day_lag} days apart")
+        axs[0].set_ylabel("PV correlation [Spearman rho]")
         fig.tight_layout()
 
         return PV_corrs
 
-    def plot_session_PV_corr_comparisons(self, corr_matrices,
-                                         session_pairs=(
-                                                 ('Goals3', 'Goals4'),
-                                                 ('Goals4', 'Reversal')
-                                         )
-                                         ):
+    def plot_session_PV_corr_comparisons(
+        self,
+        corr_matrices,
+        session_pairs=(("Goals3", "Goals4"), ("Goals4", "Reversal")),
+    ):
         """
         For the specified sessions, plot the PV correlation coefficient between those sessions,
         separated by age.
@@ -1124,104 +1185,123 @@ class RecentReversal:
         """
         data = {session_pair: dict() for session_pair in session_pairs}
         for session_pair in session_pairs:
-            s1 = self.meta['session_types'].index(session_pair[0])
-            s2 = self.meta['session_types'].index(session_pair[1])
+            s1 = self.meta["session_types"].index(session_pair[0])
+            s2 = self.meta["session_types"].index(session_pair[1])
             data[session_pair] = dict()
             for age in ages:
                 data[session_pair][age] = []
-                for mouse in self.meta['grouped_mice'][age]:
-                    data[session_pair][age].append(corr_matrices[mouse][s1,s2])
+                for mouse in self.meta["grouped_mice"][age]:
+                    data[session_pair][age].append(corr_matrices[mouse][s1, s2])
 
         fig, axs = plt.subplots(1, len(session_pairs), sharey=True)
         for ax, age, color in zip(axs, ages, age_colors):
-            boxes = ax.boxplot([data[session_pair][age] for session_pair in session_pairs],
-                               widths=0.75, showfliers=False, zorder=0, patch_artist=True)
+            boxes = ax.boxplot(
+                [data[session_pair][age] for session_pair in session_pairs],
+                widths=0.75,
+                showfliers=False,
+                zorder=0,
+                patch_artist=True,
+            )
 
-            [ax.scatter(
-                jitter_x(np.ones_like(data[session_pair][age])*(i+1), 0.05),
-                         data[session_pair][age],
-                         color=color,
-                         edgecolor='k',
-                         zorder=1,
-                         s=50,
-                         )
+            [
+                ax.scatter(
+                    jitter_x(np.ones_like(data[session_pair][age]) * (i + 1), 0.05),
+                    data[session_pair][age],
+                    color=color,
+                    edgecolor="k",
+                    zorder=1,
+                    s=50,
+                )
                 for i, session_pair in enumerate(session_pairs)
             ]
 
             for patch, med in zip(boxes["boxes"], boxes["medians"]):
                 patch.set_facecolor(color)
                 med.set(color="k")
-            ax.set_xticklabels([f'{session_pair[0].replace("Goals", "Training")} vs. \n'
-                                f'{session_pair[1].replace("Goals", "Training")}'
-                                for session_pair in session_pairs], rotation=45)
+            ax.set_xticklabels(
+                [
+                    f'{session_pair[0].replace("Goals", "Training")} vs. \n'
+                    f'{session_pair[1].replace("Goals", "Training")}'
+                    for session_pair in session_pairs
+                ],
+                rotation=45,
+            )
             ax.set_title(age)
-        axs[0].set_ylabel('Spatial PV correlation coefficients')
+        axs[0].set_ylabel("Spatial PV correlation coefficients")
         fig.tight_layout()
 
         return data
 
     def compare_drift_rates(self, corr_matrices, show_plot=True):
         drift_rates = self.get_drift_rate(corr_matrices)
-        drift_rate_ages = {age: [drift_rates[mouse]
-                                 for mouse in self.meta['grouped_mice'][age]] for age in ages}
+        drift_rate_ages = {
+            age: [drift_rates[mouse] for mouse in self.meta["grouped_mice"][age]]
+            for age in ages
+        }
 
         if show_plot:
-            self.scatter_box(drift_rate_ages,
-                             ylabel='Drift rates '
-                                    '[more negative = more drift]')
+            self.scatter_box(
+                drift_rate_ages, ylabel="Drift rates " "[more negative = more drift]"
+            )
 
         return drift_rate_ages
 
     def get_drift_rate(self, corr_matrices):
         data = self.get_diagonals(corr_matrices)
-        drift_rates = {mouse: spearmanr(data[mouse]['day_lag'],
-                                        data[mouse]['coefs'],
-                                        nan_policy='omit')[0]
-                       for mouse in self.meta['mice']}
+        drift_rates = {
+            mouse: spearmanr(
+                data[mouse]["day_lag"], data[mouse]["coefs"], nan_policy="omit"
+            )[0]
+            for mouse in self.meta["mice"]
+        }
 
         return drift_rates
 
     def plot_one_drift_rate(self, mouse, corr_matrices):
         data = self.get_diagonals(corr_matrices)
         fig, ax = plt.subplots()
-        ax.scatter(data[mouse]['day_lag'], data[mouse]['coefs'])
-        ax.set_xticks(range(len(self.meta['session_types']['lineartrack'])))
-        ax.set_xlabel('Day lag')
-        ax.set_ylabel('PV correlation [rho]')
+        ax.scatter(data[mouse]["day_lag"], data[mouse]["coefs"])
+        ax.set_xticks(range(len(self.meta["session_types"]["lineartrack"])))
+        ax.set_xlabel("Day lag")
+        ax.set_ylabel("PV correlation [rho]")
 
     def corr_PV_corr_to_behavior(self, corr_matrices, performance_metric):
-        performance = self.plot_all_behavior(window=None, strides=None,
-                                             show_plot=False,
-                                             performance_metric=performance_metric)[2]
-        PV_corrs = {mouse: np.diag(corr_matrices[mouse], k=4)[0]
-                    for mouse in self.meta['mice']}
+        performance = self.plot_all_behavior(
+            window=None,
+            strides=None,
+            show_plot=False,
+            performance_metric=performance_metric,
+        )[2]
+        PV_corrs = {
+            mouse: np.diag(corr_matrices[mouse], k=4)[0] for mouse in self.meta["mice"]
+        }
         PV_corrs_grouped = {
-            age: [np.diag(corr_matrices[mouse], k=4)[0]
-                  for mouse in self.meta['grouped_mice'][age]]
+            age: [
+                np.diag(corr_matrices[mouse], k=4)[0]
+                for mouse in self.meta["grouped_mice"][age]
+            ]
             for age in ages
         }
-        PV_corrs = [PV_corrs[mouse] for mouse in self.meta['mice']]
+        PV_corrs = [PV_corrs[mouse] for mouse in self.meta["mice"]]
 
-        reversal_performances = performance[
-            performance['session_types']=='Reversal']
-        performances = reversal_performances['metric'].tolist()
+        reversal_performances = performance[performance["session_types"] == "Reversal"]
+        performances = reversal_performances["metric"].tolist()
         performances_grouped = {
-            age: [reversal_performances[reversal_performances['mice']==mouse]['metric'].values[0]
-                  for mouse in self.meta['grouped_mice'][age]]
+            age: [
+                reversal_performances[reversal_performances["mice"] == mouse][
+                    "metric"
+                ].values[0]
+                for mouse in self.meta["grouped_mice"][age]
+            ]
             for age in ages
         }
 
         fig, ax = plt.subplots()
-        ylabels = {
-            'hits': 'Hit rate',
-            'CRs': 'Correct rejection rate',
-            'd_prime': "d'"
-        }
+        ylabels = {"hits": "Hit rate", "CRs": "Correct rejection rate", "d_prime": "d'"}
         for age, color in zip(ages, age_colors):
-            ax.scatter(PV_corrs_grouped[age],
-                       performances_grouped[age], color=color)
+            ax.scatter(PV_corrs_grouped[age], performances_grouped[age], color=color)
             ax.set_ylabel(ylabels[performance_metric])
-            ax.set_xlabel('PV correlation [Spearman rho]')
+            ax.set_xlabel("PV correlation [Spearman rho]")
 
         r, pvalue = spearmanr(PV_corrs, performances)
 
@@ -1382,7 +1462,7 @@ class RecentReversal:
         # Gather neurons and build dictionaries for HoloMap.
         daily_rasters = []
         placefields = []
-        ax_titles = [title.replace('Goals', 'Training') for title in session_types]
+        ax_titles = [title.replace("Goals", "Training") for title in session_types]
         for i, session_type in enumerate(session_types):
             neurons_to_analyze = trimmed_map.iloc[trimmed_map.index.isin(global_idx), i]
 
@@ -1435,8 +1515,12 @@ class RecentReversal:
         return daily_rasters
 
     def plot_spatial_info(
-        self, session_type, ax=None, show_plot=True, aggregate_mode="median",
-            place_cells_only=False,
+        self,
+        session_type,
+        ax=None,
+        show_plot=True,
+        aggregate_mode="median",
+        place_cells_only=False,
     ):
         if ax is None:
             fig, ax = plt.subplots()
@@ -1451,7 +1535,9 @@ class RecentReversal:
                 SIs = self.data[mouse][session_type].spatial.data["spatial_info_z"]
 
                 if place_cells_only:
-                    SIs = SIs[self.data[mouse][session_type].spatial.data['place_cells']]
+                    SIs = SIs[
+                        self.data[mouse][session_type].spatial.data["place_cells"]
+                    ]
 
                 if aggregate_mode == "median":
                     spatial_info[age].append(np.median(SIs))
@@ -1475,11 +1561,11 @@ class RecentReversal:
 
             for i, (age, age_color) in enumerate(zip(ages, age_colors)):
                 ax.scatter(
-                    jitter_x(np.ones_like(spatial_info[age])*(i+1)),
+                    jitter_x(np.ones_like(spatial_info[age]) * (i + 1)),
                     spatial_info[age],
                     color=age_color,
                     zorder=1,
-                    edgecolor='k',
+                    edgecolor="k",
                 )
 
         return spatial_info
@@ -1493,8 +1579,10 @@ class RecentReversal:
             axs, self.meta["session_types"], self.meta["session_labels"]
         ):
             spatial_infos[session_type] = self.plot_spatial_info(
-                session_type, ax=ax, aggregate_mode=aggregate_mode,
-                place_cells_only=place_cells_only
+                session_type,
+                ax=ax,
+                aggregate_mode=aggregate_mode,
+                place_cells_only=place_cells_only,
             )
             ax.set_xticks([])
             ax.set_title(title)
@@ -1518,30 +1606,39 @@ class RecentReversal:
         sessions_long = []
         mice = []
         for age in ages:
-            for session_type in self.meta['session_types']:
+            for session_type in self.meta["session_types"]:
                 data = spatial_infos[session_type][age]
                 infos.extend(data)
                 ages_long.extend([age for i in range(len(data))])
                 sessions_long.extend([session_type for i in range(len(data))])
-                mice.extend(self.meta['grouped_mice'][age])
+                mice.extend(self.meta["grouped_mice"][age])
 
         df = pd.DataFrame(
-            {'spatial_info': infos,
-             'age': ages_long,
-             'session_types': sessions_long,
-             'mouse': mice,
-             }
+            {
+                "spatial_info": infos,
+                "age": ages_long,
+                "session_types": sessions_long,
+                "mouse": mice,
+            }
         )
 
         return spatial_infos, df
 
-    def spatial_info_anova(self, aggregate_mode='median', place_cells_only=False):
-        spatial_infos, df = self.plot_all_spatial_info(aggregate_mode=aggregate_mode,
-                                                       place_cells_only=place_cells_only)
+    def spatial_info_anova(self, aggregate_mode="median", place_cells_only=False):
+        spatial_infos, df = self.plot_all_spatial_info(
+            aggregate_mode=aggregate_mode, place_cells_only=place_cells_only
+        )
 
-        anova_df = pg.mixed_anova(df, dv='spatial_info', within='session_types', between='age', subject='mouse')
-        pairwise_df = df.pairwise_ttests(dv='spatial_info', between=['session_types', 'age'],
-                                         padjust='fdr_bh')
+        anova_df = pg.mixed_anova(
+            df,
+            dv="spatial_info",
+            within="session_types",
+            between="age",
+            subject="mouse",
+        )
+        pairwise_df = df.pairwise_ttests(
+            dv="spatial_info", between=["session_types", "age"], padjust="fdr_bh"
+        )
 
         return anova_df, pairwise_df, df
 
@@ -1584,8 +1681,7 @@ class RecentReversal:
         return reliabilities
 
     def plot_reliabilities_comparisons(
-        self, session_types=("Goals4", "Reversal"), field_threshold=0.5,
-            show_plot=True
+        self, session_types=("Goals4", "Reversal"), field_threshold=0.5, show_plot=True
     ):
         reliabilities = {}
         mean_reliabilities = {session_type: dict() for session_type in session_types}
@@ -1630,15 +1726,15 @@ class RecentReversal:
             fig.subplots_adjust(wspace=0)
 
             for session_type, ax in zip(session_types, axs):
-                ylabel = "Mean place field reliability" \
-                    if session_type == session_types[0] else None
-                self.scatter_box(mean_reliabilities[session_type],
-                                 ylabel=ylabel,
-                                 ax=ax)
+                ylabel = (
+                    "Mean place field reliability"
+                    if session_type == session_types[0]
+                    else None
+                )
+                self.scatter_box(mean_reliabilities[session_type], ylabel=ylabel, ax=ax)
                 ax.set_title(session_type)
 
         return reliabilities, mean_reliabilities
-
 
     def correlate_field_reliability_to_performance(
         self,
@@ -1675,51 +1771,68 @@ class RecentReversal:
 
         return pvalue
 
-    def snakeplot_placefields(self, mouse, session, order=None, neurons=None, ax=None,
-                              normalize=True, show_plot=True):
+    def snakeplot_placefields(
+        self,
+        mouse,
+        session,
+        order=None,
+        neurons=None,
+        ax=None,
+        normalize=True,
+        show_plot=True,
+    ):
         session = self.data[mouse][session].spatial.data
         if neurons is None:
-            neurons = np.arange(0, session['n_neurons'])
+            neurons = np.arange(0, session["n_neurons"])
         if order is None:
-            order = np.argsort(session['placefield_centers'][neurons])
+            order = np.argsort(session["placefield_centers"][neurons])
 
-        placefields = session['placefields_normalized'][neurons][order]
+        placefields = session["placefields_normalized"][neurons][order]
 
         if show_plot:
             if normalize:
                 placefields = placefields / np.max(placefields, axis=1, keepdims=True)
             if ax is None:
-                fig, ax = plt.subplots(figsize=(5,5.5))
+                fig, ax = plt.subplots(figsize=(5, 5.5))
             ax.imshow(placefields)
-            ax.axis('tight')
-            ax.set_ylabel('Neuron #')
-            ax.set_xlabel('Location')
+            ax.axis("tight")
+            ax.set_ylabel("Neuron #")
+            ax.set_xlabel("Location")
         else:
             ax = None
 
         return ax, placefields, order
 
-
     def snakeplot_matched_placefields(self, mouse, session_types, sort_by_session=None):
-        trimmed_map = self.get_cellreg_mappings(mouse, session_types, detected='everyday', neurons_from_session1=None)[0]
+        trimmed_map = self.get_cellreg_mappings(
+            mouse, session_types, detected="everyday", neurons_from_session1=None
+        )[0]
         trimmed_map = np.asarray(trimmed_map)
-        age = 'aged' if mouse in self.meta['grouped_mice']['aged'] else 'young'
+        age = "aged" if mouse in self.meta["grouped_mice"]["aged"] else "young"
 
-        session_labels = [self.meta['session_labels'][self.meta['session_types'].index(session)]
-                          for session in session_types]
+        session_labels = [
+            self.meta["session_labels"][self.meta["session_types"].index(session)]
+            for session in session_types
+        ]
         fig, axs = plt.subplots(1, len(session_types))
-        ax, placefields, order = self.snakeplot_placefields(mouse, session_types[sort_by_session],
-                                                            neurons=trimmed_map[:,sort_by_session],
-                                                            show_plot=False)
+        ax, placefields, order = self.snakeplot_placefields(
+            mouse,
+            session_types[sort_by_session],
+            neurons=trimmed_map[:, sort_by_session],
+            show_plot=False,
+        )
 
-        for i, (ax, label, session_type) in enumerate(zip(axs, session_labels, session_types)):
-            self.snakeplot_placefields(mouse, session_type, neurons=trimmed_map[:,i], order=order, ax=ax)
+        for i, (ax, label, session_type) in enumerate(
+            zip(axs, session_labels, session_types)
+        ):
+            self.snakeplot_placefields(
+                mouse, session_type, neurons=trimmed_map[:, i], order=order, ax=ax
+            )
             ax.set_title(label)
-        fig.suptitle(f'{mouse}, {age}')
+        fig.suptitle(f"{mouse}, {age}")
         fig.tight_layout()
 
-
-############################ DECODER FUNCTIONS ############################
+    ############################ DECODER FUNCTIONS ############################
     def decode_place(
         self,
         mouse,
@@ -1727,7 +1840,7 @@ class RecentReversal:
         classifier=BernoulliNB(),
         n_spatial_bins=36,
         show_plot=True,
-        predictors='cells',
+        predictors="cells",
     ):
         """
         Use a naive Bayes decoder to classify spatial position.
@@ -1756,17 +1869,20 @@ class RecentReversal:
         """
         # Get sessions and neural activity.
         sessions = [self.data[mouse][session] for session in training_and_test_sessions]
-        if predictors == 'cells':
+        if predictors == "cells":
             neural_data = self.rearrange_neurons(
                 mouse, training_and_test_sessions, data_type="S_binary"
             )
-        elif predictors == 'ensembles':
+        elif predictors == "ensembles":
             neural_data = []
-            registered_ensembles = self.match_ensembles(mouse,
-                                                        training_and_test_sessions)
-            poor_matches = registered_ensembles['poor_matches']
+            registered_ensembles = self.match_ensembles(
+                mouse, training_and_test_sessions
+            )
+            poor_matches = registered_ensembles["poor_matches"]
             for session_activations in registered_ensembles["matched_activations"]:
-                neural_data.append(zscore(np.squeeze(session_activations[~poor_matches]), axis=0))
+                neural_data.append(
+                    zscore(np.squeeze(session_activations[~poor_matches]), axis=0)
+                )
         else:
             raise ValueError
         fps = 15
@@ -1777,21 +1893,23 @@ class RecentReversal:
         ]
 
         # Separate neural data into training and test.
-        X = {'train': neural_data[0][:, running[0]].T}
-        X['test'] = neural_data[1].T
+        X = {"train": neural_data[0][:, running[0]].T}
+        X["test"] = neural_data[1].T
 
         # Separate spatially binned location into training and test.
-        y = {'train': format_spatial_location_for_decoder(
-            sessions[0].behavior.data['df']['lin_position'].values[running[0]],
+        y = {
+            "train": format_spatial_location_for_decoder(
+                sessions[0].behavior.data["df"]["lin_position"].values[running[0]],
+                n_spatial_bins=n_spatial_bins,
+                time_bin_size=1 / fps,
+                fps=fps,
+                classifier=classifier,
+            )
+        }
+        y["test"] = format_spatial_location_for_decoder(
+            sessions[1].behavior.data["df"]["lin_position"].values,
             n_spatial_bins=n_spatial_bins,
-            time_bin_size=1/fps,
-            fps=fps,
-            classifier=classifier,
-        )}
-        y['test'] = format_spatial_location_for_decoder(
-            sessions[1].behavior.data['df']['lin_position'].values,
-            n_spatial_bins=n_spatial_bins,
-            time_bin_size=1/fps,
+            time_bin_size=1 / fps,
             fps=fps,
             classifier=classifier,
         )
@@ -1821,63 +1939,70 @@ class RecentReversal:
         mouse,
         classifier=BernoulliNB(),
         n_spatial_bins=36,
-        error_time_bin_size=300*15,
+        error_time_bin_size=300 * 15,
         axs=None,
-        color='cornflowerblue',
-        predictors='cells',
+        color="cornflowerblue",
+        predictors="cells",
     ):
 
         decoding_errors = dict()
-        for key, session_pair in zip(['Training', 'Reversal'],
-                                     [('Goals3', 'Goals4'), ('Goals4', 'Reversal')]):
+        for key, session_pair in zip(
+            ["Training", "Reversal"], [("Goals3", "Goals4"), ("Goals4", "Reversal")]
+        ):
 
             decoding_errors[key] = self.find_decoding_error(
-            mouse,
-            session_pair,
-            classifier=classifier,
-            n_spatial_bins=n_spatial_bins,
-            error_time_bin_size=error_time_bin_size,
-            show_plot=False,
-            predictors=predictors,
-        )[0]
-        time_bins = range(len(decoding_errors['Training']))
+                mouse,
+                session_pair,
+                classifier=classifier,
+                n_spatial_bins=n_spatial_bins,
+                error_time_bin_size=error_time_bin_size,
+                show_plot=False,
+                predictors=predictors,
+            )[0]
+        time_bins = range(len(decoding_errors["Training"]))
 
         if axs is None:
-            fig, axs = plt.subplots(1,2,sharey=True, sharex=True)
+            fig, axs = plt.subplots(1, 2, sharey=True, sharex=True)
         for errors, ax in zip(
-                [decoding_errors['Training'], decoding_errors['Reversal']],
-                axs,
+            [decoding_errors["Training"], decoding_errors["Reversal"]],
+            axs,
         ):
             means = [np.nanmean(error) for error in errors]
-            #sems = [np.nanstd(error) / np.sqrt(error.shape[0]) for error in errors]
+            # sems = [np.nanstd(error) / np.sqrt(error.shape[0]) for error in errors]
             ax.plot(time_bins, means, color=color, alpha=0.2)
 
         return decoding_errors
 
     def spatial_decoding_anova_binned(
-            self,
-            classifier=BernoulliNB(),
-            n_spatial_bins=36,
-            error_time_bin_size=300*15,
-            predictors='cells',
+        self,
+        classifier=BernoulliNB(),
+        n_spatial_bins=36,
+        error_time_bin_size=300 * 15,
+        predictors="cells",
     ):
-        fig, axs = plt.subplots(2,2,sharex=True, sharey=True)
+        fig, axs = plt.subplots(2, 2, sharex=True, sharey=True)
         fig.subplots_adjust(wspace=0)
-        sessions = ['Training', 'Reversal']
+        sessions = ["Training", "Reversal"]
         decoding_errors = dict()
-        errors_, sessions_, mice_, ages_, time_bins_, = [], [], [], [], []
+        errors_, sessions_, mice_, ages_, time_bins_, = (
+            [],
+            [],
+            [],
+            [],
+            [],
+        )
         for age, cohort_axs, color in zip(ages, axs, age_colors):
             decoding_errors[age] = {key: [] for key in sessions}
-            for mouse in self.meta['grouped_mice'][age]:
-                errors = \
-                    self.plot_reversal_decoding_error(mouse,
-                                                      classifier=classifier,
-                                                      n_spatial_bins=n_spatial_bins,
-                                                      error_time_bin_size=error_time_bin_size,
-                                                      axs=cohort_axs,
-                                                      color=color,
-                                                      predictors=predictors,
-                                                      )
+            for mouse in self.meta["grouped_mice"][age]:
+                errors = self.plot_reversal_decoding_error(
+                    mouse,
+                    classifier=classifier,
+                    n_spatial_bins=n_spatial_bins,
+                    error_time_bin_size=error_time_bin_size,
+                    axs=cohort_axs,
+                    color=color,
+                    predictors=predictors,
+                )
                 for session in sessions:
                     mouse_means = [np.nanmean(error) for error in errors[session]]
                     n_bins = len(mouse_means)
@@ -1889,31 +2014,31 @@ class RecentReversal:
                     ages_.extend([age for i in range(n_bins)])
                     time_bins_.extend(np.arange(n_bins))
 
-            for session, session_ax in zip(['Training', 'Reversal'], cohort_axs):
+            for session, session_ax in zip(["Training", "Reversal"], cohort_axs):
                 errors_arr = np.vstack(decoding_errors[age][session])
                 m = np.nanmean(errors_arr, axis=0)
                 se = sem(errors_arr, axis=0)
-                session_ax.errorbar(range(len(m)),
-                                    m,
-                                    yerr=se,
-                                    color=color, capsize=1)
+                session_ax.errorbar(range(len(m)), m, yerr=se, color=color, capsize=1)
 
-        fig.supylabel('Mean decoding error (spatial bins)')
-        fig.supxlabel('Time bins')
+        fig.supylabel("Mean decoding error (spatial bins)")
+        fig.supxlabel("Time bins")
         df = pd.DataFrame(
-            {'mice': mice_,
-             'age': ages_,
-             'session_pairs': sessions_,
-             'time_bins': time_bins_,
-             'decoding_errors': errors_,
-             }
+            {
+                "mice": mice_,
+                "age": ages_,
+                "session_pairs": sessions_,
+                "time_bins": time_bins_,
+                "decoding_errors": errors_,
+            }
         )
 
         anova_dfs = {
-            age: pg.rm_anova(df.loc[df['age']==age],
-                             dv='decoding_errors',
-                             within=['time_bins', 'session_pairs'],
-                             subject='mice')
+            age: pg.rm_anova(
+                df.loc[df["age"] == age],
+                dv="decoding_errors",
+                within=["time_bins", "session_pairs"],
+                subject="mice",
+            )
             for age in ages
         }
 
@@ -1927,7 +2052,7 @@ class RecentReversal:
         n_spatial_bins=36,
         show_plot=True,
         error_time_bin_size=300,
-        predictors='cells',
+        predictors="cells",
     ):
         """
         Find decoding error between predicted and real spatially
@@ -1937,7 +2062,13 @@ class RecentReversal:
         ---
         See decode_place().
         """
-        y_predicted, predictor_data, outcome_data, classifier, running = self.decode_place(
+        (
+            y_predicted,
+            predictor_data,
+            outcome_data,
+            classifier,
+            running,
+        ) = self.decode_place(
             mouse,
             training_and_test_sessions,
             classifier=classifier,
@@ -1964,109 +2095,139 @@ class RecentReversal:
 
         return binned_d, d
 
-    def all_session_pairs_decoding_error(self, mouse, classifier=BernoulliNB(),
-                                         n_spatial_bins=36):
-        shape = (5,5)
+    def all_session_pairs_decoding_error(
+        self, mouse, classifier=BernoulliNB(), n_spatial_bins=36
+    ):
+        shape = (5, 5)
         decoding_error_matrix = nan_array(shape)
-        for i, session_pair in enumerate(product(self.meta['session_types'], repeat=2)):
+        for i, session_pair in enumerate(product(self.meta["session_types"], repeat=2)):
             if session_pair[0] != session_pair[1]:
-                decoding_error = self.find_decoding_error(mouse, session_pair,
-                                                          classifier=classifier,
-                                                          n_spatial_bins=n_spatial_bins,
-                                                          show_plot=False)[1]
+                decoding_error = self.find_decoding_error(
+                    mouse,
+                    session_pair,
+                    classifier=classifier,
+                    n_spatial_bins=n_spatial_bins,
+                    show_plot=False,
+                )[1]
                 row, col = np.unravel_index(i, shape)
                 decoding_error_matrix[row, col] = np.nanmean(decoding_error)
 
         return decoding_error_matrix
 
-
-    def spatial_decoding_error_matrix(self, classifier=BernoulliNB(),
-                                      n_spatial_bins=36, overwrite=False,
-                                      saved_data=r'Z:\Will\RemoteReversal\Data\cross_session_spatial_decoding_error.pkl',
-                                      show_plot=True):
+    def spatial_decoding_error_matrix(
+        self,
+        classifier=BernoulliNB(),
+        n_spatial_bins=36,
+        overwrite=False,
+        saved_data=r"Z:\Will\RemoteReversal\Data\cross_session_spatial_decoding_error.pkl",
+        show_plot=True,
+    ):
         if overwrite:
             decoding_error_matrix = dict()
             for age in ages:
-                mice_this_age = self.meta['grouped_mice'][age]
+                mice_this_age = self.meta["grouped_mice"][age]
                 decoding_error_matrix[age] = nan_array((len(mice_this_age), 5, 5))
 
-                for i, mouse in enumerate(self.meta['grouped_mice'][age]):
-                    decoding_error_matrix[age][i] = self.all_session_pairs_decoding_error(mouse,
-                                                                                          classifier=classifier,
-                                                                                          n_spatial_bins=n_spatial_bins)
+                for i, mouse in enumerate(self.meta["grouped_mice"][age]):
+                    decoding_error_matrix[age][
+                        i
+                    ] = self.all_session_pairs_decoding_error(
+                        mouse, classifier=classifier, n_spatial_bins=n_spatial_bins
+                    )
 
-            with open(saved_data, 'wb') as file:
+            with open(saved_data, "wb") as file:
                 pkl.dump(decoding_error_matrix, file)
         else:
-            with open(saved_data, 'rb') as file:
+            with open(saved_data, "rb") as file:
                 decoding_error_matrix = pkl.load(file)
 
         errors = dict()
-        for age in ['young', 'aged']:
+        for age in ["young", "aged"]:
             errors[age] = []
-            for lag in np.arange(1,5):
-                errors[age].append(np.diagonal(decoding_error_matrix[age],
-                                               offset=lag, axis1=1, axis2=2).flatten())
+            for lag in np.arange(1, 5):
+                errors[age].append(
+                    np.diagonal(
+                        decoding_error_matrix[age], offset=lag, axis1=1, axis2=2
+                    ).flatten()
+                )
 
         if show_plot:
             fig, ax = plt.subplots()
             for age, age_color in zip(ages, age_colors):
-                ax.errorbar(np.arange(1,5),
-                            [np.nanmean(x) for x in errors[age]],
-                            yerr=[sem(x) for x in errors[age]],
-                            color=age_color,
-                            capsize=2,
-                            linewidth=3)
+                ax.errorbar(
+                    np.arange(1, 5),
+                    [np.nanmean(x) for x in errors[age]],
+                    yerr=[sem(x) for x in errors[age]],
+                    color=age_color,
+                    capsize=2,
+                    linewidth=3,
+                )
                 for i, data_points in enumerate(errors[age]):
-                    ax.scatter(jitter_x(np.ones_like(data_points)*(i+1.15), 0.03), data_points,
-                               color=age_color, edgecolor='k', alpha=0.5)
+                    ax.scatter(
+                        jitter_x(np.ones_like(data_points) * (i + 1.15), 0.03),
+                        data_points,
+                        color=age_color,
+                        edgecolor="k",
+                        alpha=0.5,
+                    )
 
-            ax.set_xlabel('Days apart')
-            ax.set_ylabel('Mean decoding error \n across session pairs [spatial bins]')
-            ax.set_xticks(np.arange(1,5))
+            ax.set_xlabel("Days apart")
+            ax.set_ylabel("Mean decoding error \n across session pairs [spatial bins]")
+            ax.set_xticks(np.arange(1, 5))
 
         return decoding_error_matrix, errors
 
     def compare_decoding_accuracy(self, training_test_session):
-        decoding_error_matrix, errors = self.spatial_decoding_error_matrix(show_plot=False)
+        decoding_error_matrix, errors = self.spatial_decoding_error_matrix(
+            show_plot=False
+        )
 
-        row = self.meta['session_types'].index(training_test_session[0])
-        col = self.meta['session_types'].index(training_test_session[1])
+        row = self.meta["session_types"].index(training_test_session[0])
+        col = self.meta["session_types"].index(training_test_session[1])
 
         session_pair_errors = {}
         for age in ages:
-            session_pair_errors[age] = decoding_error_matrix[age][:,row,col]
+            session_pair_errors[age] = decoding_error_matrix[age][:, row, col]
 
         fig, ax = plt.subplots(figsize=(3.3, 4.8))
-        boxes = ax.boxplot([session_pair_errors[age] for age in ages],
-                           labels=ages,
-                           widths=0.75,
-                           patch_artist=True,
-                           zorder=0)
+        boxes = ax.boxplot(
+            [session_pair_errors[age] for age in ages],
+            labels=ages,
+            widths=0.75,
+            patch_artist=True,
+            zorder=0,
+        )
         for i, (age, color) in enumerate(zip(ages, age_colors)):
-            ax.scatter(jitter_x(np.ones_like(session_pair_errors[age])*(i+1)),
-                       session_pair_errors[age], edgecolor='k', color=color, zorder=1)
+            ax.scatter(
+                jitter_x(np.ones_like(session_pair_errors[age]) * (i + 1)),
+                session_pair_errors[age],
+                edgecolor="k",
+                color=color,
+                zorder=1,
+            )
         color_boxes(boxes, age_colors)
-        ax.set_ylabel('Mean decoding error [spatial bins]')
-        ax.set_title(f'Trained on {training_test_session[0]} '
-                     f'\n Tested on {training_test_session[1]}')
+        ax.set_ylabel("Mean decoding error [spatial bins]")
+        ax.set_title(
+            f"Trained on {training_test_session[0]} "
+            f"\n Tested on {training_test_session[1]}"
+        )
 
         return session_pair_errors
 
-
-    def spatial_decoding_anova(self,
-                               classifier=BernoulliNB(),
-                               n_spatial_bins=36,
-                               overwrite=False,
-                               saved_data=r'Z:\Will\RemoteReversal\Data\cross_session_spatial_decoding_error.pkl',
-                               show_plot=True):
-        decoding_error_matrix, errors_sorted = \
-            self.spatial_decoding_error_matrix(
-                classifier=classifier,
-                n_spatial_bins=n_spatial_bins,
-                overwrite=overwrite,
-                saved_data=saved_data,
-                show_plot=show_plot,
+    def spatial_decoding_anova(
+        self,
+        classifier=BernoulliNB(),
+        n_spatial_bins=36,
+        overwrite=False,
+        saved_data=r"Z:\Will\RemoteReversal\Data\cross_session_spatial_decoding_error.pkl",
+        show_plot=True,
+    ):
+        decoding_error_matrix, errors_sorted = self.spatial_decoding_error_matrix(
+            classifier=classifier,
+            n_spatial_bins=n_spatial_bins,
+            overwrite=overwrite,
+            saved_data=saved_data,
+            show_plot=show_plot,
         )
 
         lags, errors_long = dict(), dict()
@@ -2074,23 +2235,21 @@ class RecentReversal:
             lags[age] = []
             errors_long[age] = []
             for lag, errors in enumerate(errors_sorted[age]):
-                lags[age].extend(np.ones_like(errors)*(lag+1))
+                lags[age].extend(np.ones_like(errors) * (lag + 1))
                 errors_long[age].extend(errors)
 
-        ages_long = np.hstack([[age for i in range(len(errors_long[age]))] for age in ages])
+        ages_long = np.hstack(
+            [[age for i in range(len(errors_long[age]))] for age in ages]
+        )
         errors_long = np.hstack([errors_long[age] for age in ages])
         lags = np.hstack([lags[age] for age in ages])
 
-        df = pd.DataFrame(
-            {'errors': errors_long,
-             'lags': lags,
-             'ages': ages_long
-             }
-        )
+        df = pd.DataFrame({"errors": errors_long, "lags": lags, "ages": ages_long})
 
-        anova_df = pg.anova(df, dv='errors', between=['lags', 'ages'])
-        pairwise_df = df.pairwise_ttests(dv='errors', between=['lags', 'ages'],
-                                         padjust='fdr_bh')
+        anova_df = pg.anova(df, dv="errors", between=["lags", "ages"])
+        pairwise_df = df.pairwise_ttests(
+            dv="errors", between=["lags", "ages"], padjust="fdr_bh"
+        )
 
         return anova_df, pairwise_df, df
 
@@ -2246,96 +2405,106 @@ class RecentReversal:
 
     def find_ensemble_port_locations(self, mouse, session_type):
         session = self.data[mouse][session_type]
-        n_assemblies = session.assemblies['significance'].nassemblies
-        ensemble_field_COMs = [session.get_ensemble_field_COM(i)
-                               for i in range(n_assemblies)]
-        port_locations = np.asarray(session.behavior.data['lin_ports'])
+        n_assemblies = session.assemblies["significance"].nassemblies
+        ensemble_field_COMs = [
+            session.get_ensemble_field_COM(i) for i in range(n_assemblies)
+        ]
+        port_locations = np.asarray(session.behavior.data["lin_ports"])
 
         d = []
         for ensemble in ensemble_field_COMs:
-            d.append(get_circular_error(ensemble, port_locations, 2*np.pi))
+            d.append(get_circular_error(ensemble, port_locations, 2 * np.pi))
         d = np.vstack(d)
 
         closest_ports = np.argmin(d, axis=1)
 
         return d, closest_ports
 
-    def ensemble_density_increase(self, mouse,
-                                  session_pair=('Goals4', 'Reversal')):
-        #First, find the ports that ensembles fired closest to.
+    def ensemble_density_increase(self, mouse, session_pair=("Goals4", "Reversal")):
+        # First, find the ports that ensembles fired closest to.
         d = dict()
         closest_ports = dict()
         for session in session_pair:
-            d[session], closest_ports[session] = \
-                self.find_ensemble_port_locations(mouse, session)
+            d[session], closest_ports[session] = self.find_ensemble_port_locations(
+                mouse, session
+            )
 
         # Get the port numbers of the future rewarded ports during
         # Reversal.
-        future_rewards = np.where(self.data[mouse][session_pair[1]].behavior.data['rewarded_ports'])[0]
+        future_rewards = np.where(
+            self.data[mouse][session_pair[1]].behavior.data["rewarded_ports"]
+        )[0]
 
         # Find proportion of ensembles that fire at those ports during both
         # sessions.
-        p_firing_at_future_reward = np.sum(np.in1d(closest_ports[session_pair[0]],
-                                                   future_rewards)) \
-                                    / len(closest_ports[session_pair[0]])
+        p_firing_at_future_reward = np.sum(
+            np.in1d(closest_ports[session_pair[0]], future_rewards)
+        ) / len(closest_ports[session_pair[0]])
 
         # Find proportion of ensembles that fire at those ports during Reversal.
-        p_firing_at_current_reward = np.sum(np.in1d(closest_ports[session_pair[1]],
-                                                    future_rewards)) \
-                                    / len(closest_ports[session_pair[1]])
+        p_firing_at_current_reward = np.sum(
+            np.in1d(closest_ports[session_pair[1]], future_rewards)
+        ) / len(closest_ports[session_pair[1]])
 
         return p_firing_at_future_reward, p_firing_at_current_reward
 
-    def ensemble_density_increase_all_mice(self, session_pair=('Goals4','Reversal')):
+    def ensemble_density_increase_all_mice(self, session_pair=("Goals4", "Reversal")):
         ens_density = dict()
-        labels = [session.replace('Goals', 'Training')
-                  for session in session_pair]
+        labels = [session.replace("Goals", "Training") for session in session_pair]
         for age in ages:
-            ens_density[age] = nan_array((len(self.meta['grouped_mice'][age]), 2))
+            ens_density[age] = nan_array((len(self.meta["grouped_mice"][age]), 2))
 
-            for i, mouse in enumerate(self.meta['grouped_mice'][age]):
+            for i, mouse in enumerate(self.meta["grouped_mice"][age]):
                 pre, post = self.ensemble_density_increase(mouse, session_pair)
                 ens_density[age][i] = np.hstack((pre, post))
 
-        fig, axs = plt.subplots(1,2, sharey=True, figsize=(6.5, 7))
+        fig, axs = plt.subplots(1, 2, sharey=True, figsize=(6.5, 7))
         for ax, age, c in zip(axs, ages, age_colors):
             ax.plot(labels, ens_density[age].T, color=c)
             ax.set_xticklabels(labels, rotation=45)
-        axs[0].set_ylabel('Proportion of ensembles active near Reversal goals')
+        axs[0].set_ylabel("Proportion of ensembles active near Reversal goals")
 
-
-    def plot_proportion_fading_ensembles_near_important_ports(self, show_plot=True,
-                                                              alpha=0.01, decompose_relevant_ports=False):
+    def plot_proportion_fading_ensembles_near_important_ports(
+        self, show_plot=True, alpha=0.01, decompose_relevant_ports=False
+    ):
         p_near = dict()
-        port_types = ['rewarded', 'previously_rewarded', 'other', 'relevant']
+        port_types = ["rewarded", "previously_rewarded", "other", "relevant"]
 
         for age in ages:
             p_near[age] = {key: [] for key in port_types}
-            for mouse in self.meta['grouped_mice'][age]:
+            for mouse in self.meta["grouped_mice"][age]:
                 # Find the closest ports for each ensemble.
-                closest_ports = (self.find_ensemble_port_locations(mouse, 'Reversal')[1])
+                closest_ports = self.find_ensemble_port_locations(mouse, "Reversal")[1]
 
-                trends = self.find_activity_trends(mouse, 'Reversal',
-                                                   data_type='ensembles',
-                                                   alpha=alpha)[0]
+                trends = self.find_activity_trends(
+                    mouse, "Reversal", data_type="ensembles", alpha=alpha
+                )[0]
 
                 port_locations = {
-                    'rewarded': self.data[mouse]['Reversal'].behavior.data['rewarded_ports'],
-                    'previously_rewarded': self.data[mouse]['Goals4'].behavior.data['rewarded_ports'],
+                    "rewarded": self.data[mouse]["Reversal"].behavior.data[
+                        "rewarded_ports"
+                    ],
+                    "previously_rewarded": self.data[mouse]["Goals4"].behavior.data[
+                        "rewarded_ports"
+                    ],
                 }
-                port_locations['other'] = ~(port_locations['previously_rewarded']
-                                            + port_locations['rewarded'])
-                port_locations['relevant'] = ~port_locations['other']
+                port_locations["other"] = ~(
+                    port_locations["previously_rewarded"] + port_locations["rewarded"]
+                )
+                port_locations["relevant"] = ~port_locations["other"]
 
-                port_locations = {key: np.where(value)[0] for key, value in port_locations.items()}
+                port_locations = {
+                    key: np.where(value)[0] for key, value in port_locations.items()
+                }
 
                 try:
                     for port_type in port_types:
                         p_near[age][port_type].append(
                             np.sum(
                                 i in port_locations[port_type]
-                                 for i in closest_ports[trends['decreasing']]
-                                 ) / len(trends['decreasing'])
+                                for i in closest_ports[trends["decreasing"]]
+                            )
+                            / len(trends["decreasing"])
                         )
 
                 except ZeroDivisionError:
@@ -2343,41 +2512,52 @@ class RecentReversal:
                         p_near[age][port_type].append(0)
 
         if show_plot:
-            ports_to_plot = ['rewarded', 'previously_rewarded', 'other'] \
-                if decompose_relevant_ports else ['relevant', 'other']
-            fig, axs = plt.subplots(1, len(ports_to_plot), sharey=True, figsize=(7.6,6.75))
+            ports_to_plot = (
+                ["rewarded", "previously_rewarded", "other"]
+                if decompose_relevant_ports
+                else ["relevant", "other"]
+            )
+            fig, axs = plt.subplots(
+                1, len(ports_to_plot), sharey=True, figsize=(7.6, 6.75)
+            )
             fig.subplots_adjust(wspace=0)
 
             if decompose_relevant_ports:
-                titles = ['near rewarded ports',
-                          'near previously \nrewarded ports',
-                          'near other ports']
+                titles = [
+                    "near rewarded ports",
+                    "near previously \nrewarded ports",
+                    "near other ports",
+                ]
             else:
-                titles = ['near relevant ports',
-                          'near other ports']
+                titles = ["near relevant ports", "near other ports"]
 
-            for ax, port, title in zip(axs,
-                             ports_to_plot,
-                             titles):
-                box = ax.boxplot([p_near[age][port] for age in ages],
-                                 labels=ages,
-                                 widths=0.75,
-                                 patch_artist=True,
-                                 zorder=0,
-                                 showfliers=False)
+            for ax, port, title in zip(axs, ports_to_plot, titles):
+                box = ax.boxplot(
+                    [p_near[age][port] for age in ages],
+                    labels=ages,
+                    widths=0.75,
+                    patch_artist=True,
+                    zorder=0,
+                    showfliers=False,
+                )
                 for patch, med, color in zip(box["boxes"], box["medians"], age_colors):
                     patch.set_facecolor(color)
                     med.set(color="k")
 
                 for i, (age, color) in enumerate(zip(ages, age_colors)):
-                    ax.scatter(jitter_x(np.ones_like(p_near[age][port])*(i+1), 0.1),
-                               p_near[age][port],
-                               color=color, zorder=1, edgecolor='k', s=70)
+                    ax.scatter(
+                        jitter_x(np.ones_like(p_near[age][port]) * (i + 1), 0.1),
+                        p_near[age][port],
+                        color=color,
+                        zorder=1,
+                        edgecolor="k",
+                        s=70,
+                    )
 
                 ax.set_title(title)
 
-            fig.suptitle('Fading ensembles')
-            axs[0].set_ylabel('Proportion')
+            fig.suptitle("Fading ensembles")
+            axs[0].set_ylabel("Proportion")
 
         return p_near
 
@@ -2391,12 +2571,14 @@ class RecentReversal:
             near_never_rewarded[age] = []
             near_previously_rewarded[age] = []
 
-            for mouse in self.meta['grouped_mice'][age]:
+            for mouse in self.meta["grouped_mice"][age]:
                 session = self.data[mouse][session_type]
-                d, closest_ports = self.find_ensemble_port_locations(mouse, session_type)
+                d, closest_ports = self.find_ensemble_port_locations(
+                    mouse, session_type
+                )
                 n_ensembles = closest_ports.shape[0]
 
-                if session_type == 'Reversal':
+                if session_type == "Reversal":
                     previous_reward_ports = self.data[mouse]["Goals4"].behavior.data[
                         "rewarded_ports"
                     ]
@@ -2409,14 +2591,35 @@ class RecentReversal:
                 never_rewarded_ports = np.where(never_rewarded_ports)[0]
                 previously_rewarded_ports = np.where(previous_reward_ports)[0]
 
-                near_currently_rewarded[age].append(np.sum([ensemble_port in current_rewarded_ports
-                                                    for ensemble_port in closest_ports])/n_ensembles)
+                near_currently_rewarded[age].append(
+                    np.sum(
+                        [
+                            ensemble_port in current_rewarded_ports
+                            for ensemble_port in closest_ports
+                        ]
+                    )
+                    / n_ensembles
+                )
 
-                near_never_rewarded[age].append(np.sum([ensemble_port in never_rewarded_ports
-                                                        for ensemble_port in closest_ports])/n_ensembles)
+                near_never_rewarded[age].append(
+                    np.sum(
+                        [
+                            ensemble_port in never_rewarded_ports
+                            for ensemble_port in closest_ports
+                        ]
+                    )
+                    / n_ensembles
+                )
 
-                near_previously_rewarded[age].append(np.sum([ensemble_port in previously_rewarded_ports
-                                                     for ensemble_port in closest_ports])/n_ensembles)
+                near_previously_rewarded[age].append(
+                    np.sum(
+                        [
+                            ensemble_port in previously_rewarded_ports
+                            for ensemble_port in closest_ports
+                        ]
+                    )
+                    / n_ensembles
+                )
 
         if show_plot:
             fig, axs = plt.subplots(1, 2, sharey=True)
@@ -2424,21 +2627,22 @@ class RecentReversal:
             for ax, age in zip(axs, ages):
                 bottom = np.zeros_like(near_currently_rewarded[age])
 
-                mice = self.meta['grouped_mice'][age]
+                mice = self.meta["grouped_mice"][age]
                 for p, label, c in zip(
-                        [near_currently_rewarded,
-                         near_never_rewarded,
-                         near_previously_rewarded],
-                    ['Currently rewarded',
-                     'Never rewarded',
-                     'Previously rewarded'],
-                    ['g', 'r', 'y']):
+                    [
+                        near_currently_rewarded,
+                        near_never_rewarded,
+                        near_previously_rewarded,
+                    ],
+                    ["Currently rewarded", "Never rewarded", "Previously rewarded"],
+                    ["g", "r", "y"],
+                ):
                     ax.bar(mice, p[age], bottom=bottom, label=label, color=c)
                     bottom += p[age]
 
                 ax.set_xticklabels(mice, rotation=45)
 
-            axs[0].set_ylabel('Proportion')
+            axs[0].set_ylabel("Proportion")
             axs[1].legend()
 
     def fit_ensemble_lick_decoder(
@@ -2446,13 +2650,13 @@ class RecentReversal:
         mouse: str,
         session_types: tuple,
         classifier=RandomForestClassifier,
-        licks_to_include='all',
+        licks_to_include="all",
         lag=0,
         fps=15,
         **classifier_kwargs,
     ):
         registered_ensembles = self.match_ensembles(mouse, session_types)
-        poor_matches = registered_ensembles['poor_matches']
+        poor_matches = registered_ensembles["poor_matches"]
 
         # Gather predictor neural data.
         X = dict()
@@ -2465,28 +2669,32 @@ class RecentReversal:
             licks = np.asarray(
                 self.data[mouse][session_type].behavior.data["df"]["lick_port"]
             )
-            activations = zscore(np.squeeze(session_activations[~poor_matches]), axis=0).T
+            activations = zscore(
+                np.squeeze(session_activations[~poor_matches]), axis=0
+            ).T
             lick_bool = licks > -1
             lick_inds = np.where(lick_bool)[0]
-            activation_inds = lick_inds + np.round(lag*fps).astype(int)
+            activation_inds = lick_inds + np.round(lag * fps).astype(int)
 
             # if licks_to_include=='first':
             #     lick_inds = np.where(np.diff(licks, prepend=0)>0)[0]
             #     activation_inds = lick_inds + np.round(lag*fps).astype(int)
 
-            if licks_to_include=='first':
+            if licks_to_include == "first":
                 licks_only = licks[lick_bool]
                 switched_ports = np.diff(licks_only, prepend=0)
                 lick_ts = np.where(lick_bool)[0]
 
-                lick_inds = lick_ts[np.where(switched_ports!=0)[0]]
-                activation_inds = lick_inds + np.round(lag*fps).astype(int)
+                lick_inds = lick_ts[np.where(switched_ports != 0)[0]]
+                activation_inds = lick_inds + np.round(lag * fps).astype(int)
 
                 # Handles edge cases where indices exceed the recording duration.
-                activation_inds[activation_inds > activations.shape[0]] = activations.shape[0]-1
+                activation_inds[activation_inds > activations.shape[0]] = (
+                    activations.shape[0] - 1
+                )
                 activation_inds[activation_inds < 0] = 0
 
-            if licks_to_include=='all' or licks_to_include=='first':
+            if licks_to_include == "all" or licks_to_include == "first":
                 licks = licks[lick_inds]
                 activations = activations[activation_inds]
             else:
@@ -2500,62 +2708,75 @@ class RecentReversal:
 
         return X, y, classifier
 
-    def registered_ensemble_lick_decoder(self,
-                                         mouse,
-                                         session_types,
-                                         classifier=RandomForestClassifier,
-                                         licks_to_include='all',
-                                         n_splits=6,
-                                         lag=0,
-                                         show_plot=True,
-                                         ax=None,
-                                         **classifier_kwargs):
-        X, y, classifier = self.fit_ensemble_lick_decoder(mouse,
-                                                          session_types,
-                                                          classifier=classifier,
-                                                          lag=lag,
-                                                          licks_to_include=licks_to_include,
-                                                          **classifier_kwargs)
+    def registered_ensemble_lick_decoder(
+        self,
+        mouse,
+        session_types,
+        classifier=RandomForestClassifier,
+        licks_to_include="all",
+        n_splits=6,
+        lag=0,
+        show_plot=True,
+        ax=None,
+        **classifier_kwargs,
+    ):
+        X, y, classifier = self.fit_ensemble_lick_decoder(
+            mouse,
+            session_types,
+            classifier=classifier,
+            lag=lag,
+            licks_to_include=licks_to_include,
+            **classifier_kwargs,
+        )
 
-        X_split = np.array_split(X['test'], n_splits)
-        y_split = np.array_split(y['test'], n_splits)
-        scores = [classifier.score(X_chunk, y_chunk)
-                  for X_chunk, y_chunk in zip(X_split, y_split)]
+        X_split = np.array_split(X["test"], n_splits)
+        y_split = np.array_split(y["test"], n_splits)
+        scores = [
+            classifier.score(X_chunk, y_chunk)
+            for X_chunk, y_chunk in zip(X_split, y_split)
+        ]
 
         if show_plot:
             if ax is None:
                 fig, ax = plt.subplots()
 
-            ax.plot(np.linspace(0, 1, n_splits), scores, 'k', alpha=0.2)
+            ax.plot(np.linspace(0, 1, n_splits), scores, "k", alpha=0.2)
 
         return scores
 
-    def registered_ensemble_lick_decoder_accuracy_by_port(self,
-                                                          mouse,
-                                                          session_types,
-                                                          classifier=GaussianNB,
-                                                          licks_to_include='first',
-                                                          n_splits=6,
-                                                          lag=0,
-                                                          show_plot=True,
-                                                          axs=None,
-                                                          **classifier_kwargs):
-        X, y, classifier = self.fit_ensemble_lick_decoder(mouse, session_types,
-                                                          classifier=classifier,
-                                                          lag=lag,
-                                                          licks_to_include=licks_to_include,
-                                                          **classifier_kwargs)
+    def registered_ensemble_lick_decoder_accuracy_by_port(
+        self,
+        mouse,
+        session_types,
+        classifier=GaussianNB,
+        licks_to_include="first",
+        n_splits=6,
+        lag=0,
+        show_plot=True,
+        axs=None,
+        **classifier_kwargs,
+    ):
+        X, y, classifier = self.fit_ensemble_lick_decoder(
+            mouse,
+            session_types,
+            classifier=classifier,
+            lag=lag,
+            licks_to_include=licks_to_include,
+            **classifier_kwargs,
+        )
 
         session = self.data[mouse][session_types[1]]
-        reward_locations = np.where(session.behavior.data['rewarded_ports'])[0]
-        if session_types[1] == 'Reversal':
-            previous_session = self.data[mouse]['Goals4']
-            previously_rewarded = np.where(previous_session.behavior.data['rewarded_ports'])[0]
+        reward_locations = np.where(session.behavior.data["rewarded_ports"])[0]
+        if session_types[1] == "Reversal":
+            previous_session = self.data[mouse]["Goals4"]
+            previously_rewarded = np.where(
+                previous_session.behavior.data["rewarded_ports"]
+            )[0]
         else:
             previously_rewarded = []
 
-        X_split = np.array_split(X['test'], n_splits)
-        y_split = np.array_split(y['test'], n_splits)
+        X_split = np.array_split(X["test"], n_splits)
+        y_split = np.array_split(y["test"], n_splits)
         port_predictions = [[] for i in range(8)]
         port_accuracies = nan_array((8, n_splits))
         for t, (X_chunk, y_chunk) in enumerate(zip(X_split, y_split)):
@@ -2565,35 +2786,41 @@ class RecentReversal:
                 port_prediction = predictions[y_chunk == port]
                 port_predictions[port].append(port_prediction)
 
-                port_accuracies[port, t] = np.sum(port_prediction==port)/len(port_prediction)
+                port_accuracies[port, t] = np.sum(port_prediction == port) / len(
+                    port_prediction
+                )
 
         if show_plot:
             if axs is None:
-                fig, axs = plt.subplots(4,2,sharey=True, sharex=True, figsize=(6.5, 10))
+                fig, axs = plt.subplots(
+                    4, 2, sharey=True, sharex=True, figsize=(6.5, 10)
+                )
 
-            for port, (port_accuracy, ax) in enumerate(zip(port_accuracies,
-                                                             axs.flatten())):
+            for port, (port_accuracy, ax) in enumerate(
+                zip(port_accuracies, axs.flatten())
+            ):
                 if port in reward_locations:
-                    title_color = 'g'
+                    title_color = "g"
                 elif port in previously_rewarded:
-                    title_color = 'y'
+                    title_color = "y"
                 else:
-                    title_color = 'k'
+                    title_color = "k"
                 ax.plot(port_accuracy, alpha=0.5)
-                ax.set_title(f'Port #{port}', color=title_color)
+                ax.set_title(f"Port #{port}", color=title_color)
 
             fig.tight_layout()
 
         return port_accuracies
 
-    def ensemble_lick_anova(self,
-                            classifier=RandomForestClassifier,
-                            licks_to_include='all',
-                            n_splits=6,
-                            session_types=(('Goals3', 'Goals4'),
-                                           ('Goals4', 'Reversal')),
-                            lag=0,
-                            **classifier_kwargs):
+    def ensemble_lick_anova(
+        self,
+        classifier=RandomForestClassifier,
+        licks_to_include="all",
+        n_splits=6,
+        session_types=(("Goals3", "Goals4"), ("Goals4", "Reversal")),
+        lag=0,
+        **classifier_kwargs,
+    ):
         """
         Do Bayesian decoding on which reward port is being licked. Then do
         2-way repeated measures ANOVA on young and aged mice.
@@ -2606,24 +2833,27 @@ class RecentReversal:
         :return:
         """
         scores = dict()
-        fig, axs = plt.subplots(2, len(session_types),
-                                sharey=True, sharex=True, figsize=(12,8.5))
+        fig, axs = plt.subplots(
+            2, len(session_types), sharey=True, sharex=True, figsize=(12, 8.5)
+        )
         time_bins = np.arange(n_splits)
 
         mice_, decoded_session, ages_, time_bins_ = [], [], [], []
         for age, cohort_ax in zip(ages, axs):
             scores[age] = []
-            for mouse in self.meta['grouped_mice'][age]:
+            for mouse in self.meta["grouped_mice"][age]:
                 for ax, session_pair in zip(cohort_ax, session_types):
-                    scores_ = self.registered_ensemble_lick_decoder(mouse,
-                                                                    session_pair,
-                                                                    classifier=classifier,
-                                                                    licks_to_include=licks_to_include,
-                                                                    n_splits=n_splits,
-                                                                    show_plot=True,
-                                                                    lag=lag,
-                                                                    ax=ax,
-                                                                    **classifier_kwargs)
+                    scores_ = self.registered_ensemble_lick_decoder(
+                        mouse,
+                        session_pair,
+                        classifier=classifier,
+                        licks_to_include=licks_to_include,
+                        n_splits=n_splits,
+                        show_plot=True,
+                        lag=lag,
+                        ax=ax,
+                        **classifier_kwargs,
+                    )
 
                     scores[age].extend(scores_)
                     decoded_session.extend([session_pair[1] for i in range(n_splits)])
@@ -2632,45 +2862,60 @@ class RecentReversal:
                     time_bins_.extend(time_bins)
 
         df = pd.DataFrame(
-                {'mice': mice_,
-                 'age': ages_,
-                 'decoded_session': decoded_session,
-                 'time_bins': time_bins_,
-                 'scores': np.hstack([scores[age] for age in ages])
-                 }
-            )
-        means = df.groupby(['age', 'decoded_session', 'time_bins']).mean()
-        sem = df.groupby(['age', 'decoded_session', 'time_bins']).sem()
+            {
+                "mice": mice_,
+                "age": ages_,
+                "decoded_session": decoded_session,
+                "time_bins": time_bins_,
+                "scores": np.hstack([scores[age] for age in ages]),
+            }
+        )
+        means = df.groupby(["age", "decoded_session", "time_bins"]).mean()
+        sem = df.groupby(["age", "decoded_session", "time_bins"]).sem()
 
         for age, row_ax, color in zip(ages, axs, age_colors):
             for session_pair, ax in zip(session_types, row_ax):
-                ax.errorbar(np.linspace(0, 1, n_splits),
-                            means.loc[age].loc[session_pair[1]].to_numpy(),
-                            yerr=np.squeeze(sem.loc[age].loc[session_pair[1]].to_numpy()),
-                            capsize=2, color=color)
-                ax.set_title(f"{age}, trained on {session_pair[0].replace('Goals', 'Training')}"
-                             f"\n tested on {session_pair[1].replace('Goals', 'Training')}")
-                ax.axhline(y=1/8, color='darkred')
-        fig.supxlabel('Time in session (normalized)')
-        fig.supylabel('Lick decoding accuracy')
+                ax.errorbar(
+                    np.linspace(0, 1, n_splits),
+                    means.loc[age].loc[session_pair[1]].to_numpy(),
+                    yerr=np.squeeze(sem.loc[age].loc[session_pair[1]].to_numpy()),
+                    capsize=2,
+                    color=color,
+                )
+                ax.set_title(
+                    f"{age}, trained on {session_pair[0].replace('Goals', 'Training')}"
+                    f"\n tested on {session_pair[1].replace('Goals', 'Training')}"
+                )
+                ax.axhline(y=1 / 8, color="darkred")
+        fig.supxlabel("Time in session (normalized)")
+        fig.supylabel("Lick decoding accuracy")
         fig.tight_layout()
 
         anova_dfs = {
-            age: pg.rm_anova(df.loc[df['age']==age],
-                             dv='scores',
-                             within=['decoded_session', 'time_bins'],
-                             subject='mice')
+            age: pg.rm_anova(
+                df.loc[df["age"] == age],
+                dv="scores",
+                within=["decoded_session", "time_bins"],
+                subject="mice",
+            )
             for age in ages
         }
 
         pairwise_dfs = {
-            age: {session: pg.pairwise_ttests(dv='scores',
-                                    within='time_bins',
-                                    subject='mice',
-                                    data=df[np.logical_and(df['age']==age,
-                                                           df['decoded_session']==session)],
-                                    padjust='fdr_bh')
-                  for session in np.unique(df['decoded_session'].values)}
+            age: {
+                session: pg.pairwise_ttests(
+                    dv="scores",
+                    within="time_bins",
+                    subject="mice",
+                    data=df[
+                        np.logical_and(
+                            df["age"] == age, df["decoded_session"] == session
+                        )
+                    ],
+                    padjust="fdr_bh",
+                )
+                for session in np.unique(df["decoded_session"].values)
+            }
             for age in ages
         }
         return anova_dfs, pairwise_dfs, df
@@ -2804,8 +3049,13 @@ class RecentReversal:
         return lapsed_assemblies, spiking
 
     def scrollplot_port_vicinity_activity(
-        self, mouse, session_type, inds=None, data_type='ensembles',
-            time_window=(0.5, 0.5), dist_thresh=3
+        self,
+        mouse,
+        session_type,
+        inds=None,
+        data_type="ensembles",
+        time_window=(0.5, 0.5),
+        dist_thresh=3,
     ):
         # Abbreviate references.
         session = self.data[mouse][session_type]
@@ -2818,9 +3068,9 @@ class RecentReversal:
         )
         rewarded = np.where(session.behavior.data["rewarded_ports"])[0]
 
-        if data_type == 'ensembles':
-            neural_data = session.assemblies['activations']
-        elif data_type in ['C', 'S', 'S_binary']:
+        if data_type == "ensembles":
+            neural_data = session.assemblies["activations"]
+        elif data_type in ["C", "S", "S_binary"]:
             neural_data = session.imaging[data_type]
         else:
             raise ValueError
@@ -2915,19 +3165,19 @@ class RecentReversal:
 
             all_activity.append(np.asarray(port_activations))
 
-        titles = [f'Ensemble #{i}' for i in inds]
-        if data_type in ['C', 'S', 'S_binary']:
-            titles = [title.replace('Ensemble', 'Neuron') for title in titles]
+        titles = [f"Ensemble #{i}" for i in inds]
+        if data_type in ["C", "S", "S_binary"]:
+            titles = [title.replace("Ensemble", "Neuron") for title in titles]
         ScrollObj = ScrollPlot(
             plot_port_activations,
             current_position=0,
             nrows=4,
             ncols=2,
             subplot_kw={
-                'projection': 'rectilinear',
-                'sharey': True,
-                'sharex': True,
-                        },
+                "projection": "rectilinear",
+                "sharey": True,
+                "sharex": True,
+            },
             figsize=(7, 10.5),
             port_activations=all_activity,
             t_xaxis=t_xaxis,
@@ -2939,17 +3189,35 @@ class RecentReversal:
 
         return all_activity
 
-    def scrollplot_registered_neurons_port_vicinity(self, mouse, reference_session, plot_session,
-                                                    neurons_from_reference=None, detected='everyday'):
+    def scrollplot_registered_neurons_port_vicinity(
+        self,
+        mouse,
+        reference_session,
+        plot_session,
+        neurons_from_reference=None,
+        detected="everyday",
+    ):
         trimmed_map = self.get_cellreg_mappings(
-            mouse, (reference_session, plot_session), detected=detected, neurons_from_session1=neurons_from_reference
+            mouse,
+            (reference_session, plot_session),
+            detected=detected,
+            neurons_from_session1=neurons_from_reference,
         )[0]
 
-        self.scrollplot_port_vicinity_activity(mouse, plot_session, inds=trimmed_map.iloc[:,1].to_numpy(), data_type='S')
+        self.scrollplot_port_vicinity_activity(
+            mouse, plot_session, inds=trimmed_map.iloc[:, 1].to_numpy(), data_type="S"
+        )
 
     def find_activity_trends(
-        self, mouse, session_type, x="trial", z_threshold=None, x_bin_size=6,
-            data_type='ensembles', subset=None, alpha=0.01,
+        self,
+        mouse,
+        session_type,
+        x="trial",
+        z_threshold=None,
+        x_bin_size=6,
+        data_type="ensembles",
+        subset=None,
+        alpha=0.01,
     ):
         """
         Find assembly "trends", whether they are increasing/decreasing in occurrence rate over the course
@@ -2980,11 +3248,11 @@ class RecentReversal:
         """
         session = self.data[mouse][session_type]
 
-        if data_type == 'ensembles':
-            data = zscore(session.assemblies["activations"], nan_policy='omit', axis=1)
-        elif data_type in ['S', 'C']:
-            data = zscore(session.imaging[data_type], nan_policy='omit', axis=1)
-        elif data_type == 'S_binary':
+        if data_type == "ensembles":
+            data = zscore(session.assemblies["activations"], nan_policy="omit", axis=1)
+        elif data_type in ["S", "C"]:
+            data = zscore(session.imaging[data_type], nan_policy="omit", axis=1)
+        elif data_type == "S_binary":
             data = session.imaging[data_type]
         else:
             raise ValueError
@@ -3006,8 +3274,12 @@ class RecentReversal:
             binned_activations = []
             for unit in activations:
                 binned_activations.append(
-                    bin_transients(unit[np.newaxis], x_bin_size, fps=15,
-                                   non_binary=True if z_threshold is None else False)[0]
+                    bin_transients(
+                        unit[np.newaxis],
+                        x_bin_size,
+                        fps=15,
+                        non_binary=True if z_threshold is None else False,
+                    )[0]
                 )
 
             binned_activations = np.vstack(binned_activations)
@@ -3017,9 +3289,7 @@ class RecentReversal:
             trial_bins = np.arange(0, session.behavior.data["ntrials"], x_bin_size)
             df = session.behavior.data["df"]
 
-            binned_activations = nan_array(
-                (activations.shape[0], len(trial_bins)-1)
-            )
+            binned_activations = nan_array((activations.shape[0], len(trial_bins) - 1))
             for i, (lower, upper) in enumerate(zip(trial_bins, trial_bins[1:])):
                 in_trial = (df["trials"] >= lower) & (df["trials"] < upper)
                 binned_activations[:, i] = np.nanmean(activations[:, in_trial], axis=1)
@@ -3046,19 +3316,27 @@ class RecentReversal:
 
         return trends, binned_activations, slopes
 
-    def compare_trend_slopes(self, mouse, session_pair=('Goals4', 'Reversal'), **kwargs):
+    def compare_trend_slopes(
+        self, mouse, session_pair=("Goals4", "Reversal"), **kwargs
+    ):
         trends = dict()
         slopes = dict()
 
         registered_ensembles = self.match_ensembles(mouse, session_pair)
         for session_type in session_pair:
-            trends[session_type], _, slopes[session_type] = self.find_activity_trends(mouse, session_type, **kwargs)
+            trends[session_type], _, slopes[session_type] = self.find_activity_trends(
+                mouse, session_type, **kwargs
+            )
 
-        fading_ensembles = np.asarray(trends[session_pair[0]]['decreasing'])
+        fading_ensembles = np.asarray(trends[session_pair[0]]["decreasing"])
         if fading_ensembles.size == 0:
             return [], []
-        reference_ensembles = fading_ensembles[~registered_ensembles['poor_matches'][fading_ensembles]]
-        fading_ensembles_yesterday = registered_ensembles['matches'][reference_ensembles]
+        reference_ensembles = fading_ensembles[
+            ~registered_ensembles["poor_matches"][fading_ensembles]
+        ]
+        fading_ensembles_yesterday = registered_ensembles["matches"][
+            reference_ensembles
+        ]
         x = slopes[session_pair[0]][fading_ensembles]
         y = slopes[session_pair[1]][fading_ensembles_yesterday]
 
@@ -3069,23 +3347,29 @@ class RecentReversal:
         training4_slopes = []
         fig, ax = plt.subplots()
         for age, color in zip(ages, age_colors):
-            for mouse in self.meta['grouped_mice'][age]:
+            for mouse in self.meta["grouped_mice"][age]:
                 x, y = self.compare_trend_slopes(mouse, **kwargs)
                 ax.scatter(x, y, edgecolor=color)
 
-                ax.set_xlabel('Ensemble activation slope on Reversal')
-                ax.set_ylabel('Ensemble activation slope on Training4')
+                ax.set_xlabel("Ensemble activation slope on Reversal")
+                ax.set_ylabel("Ensemble activation slope on Training4")
 
                 reversal_slopes.extend(x)
                 training4_slopes.extend(y)
 
-        ax.axis('equal')
+        ax.axis("equal")
 
         return reversal_slopes, training4_slopes
 
-
-    def find_proportion_changing_cells(self, mouse, session_type, ensemble_trends=None,
-                                       ensemble_trend='decreasing', cell_trend='decreasing', **kwargs):
+    def find_proportion_changing_cells(
+        self,
+        mouse,
+        session_type,
+        ensemble_trends=None,
+        ensemble_trend="decreasing",
+        cell_trend="decreasing",
+        **kwargs,
+    ):
         """
         Calculate the proportion of cells that follow a particular trend (no trend, decreasing, or increasing) that are members in
         ensembles that follow another trend (no trend, decreasing, or increasing).
@@ -3093,61 +3377,100 @@ class RecentReversal:
         """
         # Give the option to pre-compute this.
         if ensemble_trends is None:
-            ensemble_trends = self.find_activity_trends(mouse, session_type, **kwargs)[0]
+            ensemble_trends = self.find_activity_trends(mouse, session_type, **kwargs)[
+                0
+            ]
 
-        patterns = self.data[mouse][session_type].assemblies['patterns']
+        patterns = self.data[mouse][session_type].assemblies["patterns"]
         prop_changing_cells = []
         for fading_ensemble in ensemble_trends[ensemble_trend]:
             ensemble_members = find_members(patterns[fading_ensemble])[1]
-            cell_trends = self.find_activity_trends(mouse, session_type, **kwargs, data_type='S', subset=ensemble_members)[0]
+            cell_trends = self.find_activity_trends(
+                mouse, session_type, **kwargs, data_type="S", subset=ensemble_members
+            )[0]
 
-            prop_changing_cells.append(len(cell_trends[cell_trend]) / len(ensemble_members))
+            prop_changing_cells.append(
+                len(cell_trends[cell_trend]) / len(ensemble_members)
+            )
 
         return prop_changing_cells
 
-    def plot_proportion_fading_cells_in_ensembles(self,
-                                                  session_type='Reversal',
-                                                  x='trial',
-                                                  x_bin_size=6,
-                                                  z_threshold=None,):
+    def plot_proportion_fading_cells_in_ensembles(
+        self,
+        session_type="Reversal",
+        x="trial",
+        x_bin_size=6,
+        z_threshold=None,
+    ):
 
         prop_fading_cells = dict()
         for age in ages:
-            prop_fading_cells[age] = {'trendless ensembles': [],
-                                      'fading ensembles': []}
-            for mouse in self.meta['grouped_mice'][age]:
-                ensemble_trends = self.find_activity_trends(mouse, session_type,
-                                                            x=x, x_bin_size=x_bin_size,
-                                                            z_threshold=z_threshold)[0]
+            prop_fading_cells[age] = {"trendless ensembles": [], "fading ensembles": []}
+            for mouse in self.meta["grouped_mice"][age]:
+                ensemble_trends = self.find_activity_trends(
+                    mouse,
+                    session_type,
+                    x=x,
+                    x_bin_size=x_bin_size,
+                    z_threshold=z_threshold,
+                )[0]
 
-                for key, trend in zip(prop_fading_cells[age].keys(), ['no trend', 'decreasing']):
-                    prop_fading_cells[age][key].append(self.find_proportion_changing_cells(mouse, session_type,
-                                                                                           ensemble_trends=ensemble_trends,
-                                                                                           x=x, x_bin_size=x_bin_size,
-                                                                                           z_threshold=z_threshold,
-                                                                                           ensemble_trend=trend))
-        n_mice = len(self.meta['mice'])
+                for key, trend in zip(
+                    prop_fading_cells[age].keys(), ["no trend", "decreasing"]
+                ):
+                    prop_fading_cells[age][key].append(
+                        self.find_proportion_changing_cells(
+                            mouse,
+                            session_type,
+                            ensemble_trends=ensemble_trends,
+                            x=x,
+                            x_bin_size=x_bin_size,
+                            z_threshold=z_threshold,
+                            ensemble_trend=trend,
+                        )
+                    )
+        n_mice = len(self.meta["mice"])
         colors = distinct_colors(n_mice)
         i = 0
         mean0 = lambda x: np.nanmean(x) if x else 0
-        fig, axs = plt.subplots(1,2,sharey=True)
+        fig, axs = plt.subplots(1, 2, sharey=True)
         for age, ax in zip(ages, axs):
-            for trendless, fading in zip(prop_fading_cells[age]['trendless ensembles'], prop_fading_cells[age]['fading ensembles']):
-                x = np.hstack((np.ones_like(trendless), np.ones_like(fading)*2))
-                ax.scatter(jitter_x(x, 0.05), np.hstack((trendless, fading)), alpha=0.2, color=colors[i])
-                ax.plot(jitter_x([1,2]), np.hstack((mean0(trendless), mean0(fading))), 'o-', color=colors[i])
+            for trendless, fading in zip(
+                prop_fading_cells[age]["trendless ensembles"],
+                prop_fading_cells[age]["fading ensembles"],
+            ):
+                x = np.hstack((np.ones_like(trendless), np.ones_like(fading) * 2))
+                ax.scatter(
+                    jitter_x(x, 0.05),
+                    np.hstack((trendless, fading)),
+                    alpha=0.2,
+                    color=colors[i],
+                )
+                ax.plot(
+                    jitter_x([1, 2]),
+                    np.hstack((mean0(trendless), mean0(fading))),
+                    "o-",
+                    color=colors[i],
+                )
                 ax.set_xticks([1, 2])
-                ax.set_xticklabels(['Trendless \nensembles', 'Fading \nensembles'], rotation=45)
+                ax.set_xticklabels(
+                    ["Trendless \nensembles", "Fading \nensembles"], rotation=45
+                )
                 i += 1
 
-        axs[0].set_ylabel('Proportion fading cells')
+        axs[0].set_ylabel("Proportion fading cells")
         fig.tight_layout()
 
         return prop_fading_cells
 
     def plot_assembly_trends(
-        self, x="trial", x_bin_size=6, z_threshold=None, data_type='ensembles',
-            show_plot=True, alpha=0.01,
+        self,
+        x="trial",
+        x_bin_size=6,
+        z_threshold=None,
+        data_type="ensembles",
+        show_plot=True,
+        alpha=0.01,
     ):
         session_types = self.meta["session_types"]
         session_labels = self.meta["session_labels"]
@@ -3223,13 +3546,17 @@ class RecentReversal:
         z_threshold=None,
         sessions=("Goals4", "Reversal"),
         trend="decreasing",
-        data_type='ensembles',
+        data_type="ensembles",
         alpha=0.01,
         show_plot=True,
     ):
         ensemble_trends, ensemble_counts = self.plot_assembly_trends(
-            x=x, x_bin_size=x_bin_size, z_threshold=z_threshold, data_type=data_type,
-            show_plot=False, alpha=alpha,
+            x=x,
+            x_bin_size=x_bin_size,
+            z_threshold=z_threshold,
+            data_type=data_type,
+            show_plot=False,
+            alpha=alpha,
         )
         p_changing = ensemble_counts.sel(trend=trend) / ensemble_counts.sum(dim="trend")
         p_changing_split_by_age = dict()
@@ -3249,8 +3576,11 @@ class RecentReversal:
             fig.subplots_adjust(wspace=0)
             for ax, age, color in zip(axs, ages, age_colors):
                 boxes = ax.boxplot(
-                    p_changing_split_by_age[age], patch_artist=True, widths=0.75,
-                    zorder=0, showfliers=False,
+                    p_changing_split_by_age[age],
+                    patch_artist=True,
+                    widths=0.75,
+                    zorder=0,
+                    showfliers=False,
                 )
                 for patch, med in zip(boxes["boxes"], boxes["medians"]):
                     patch.set_facecolor(color)
@@ -3258,11 +3588,15 @@ class RecentReversal:
 
                 data_points = np.vstack(p_changing_split_by_age[age]).T
                 for mouse_data in data_points:
-                    ax.plot(jitter_x([1, 2], 0.05), mouse_data,
-                            'o-', color='k',
-                            markerfacecolor=color,
-                            zorder=1,
-                            markersize=10)
+                    ax.plot(
+                        jitter_x([1, 2], 0.05),
+                        mouse_data,
+                        "o-",
+                        color="k",
+                        markerfacecolor=color,
+                        zorder=1,
+                        markersize=10,
+                    )
 
                 if age == "aged":
                     ax.tick_params(labelleft=False)
@@ -3286,14 +3620,18 @@ class RecentReversal:
         z_threshold=None,
         trend="decreasing",
         performance_metric="CRs",
-        data_type='ensembles',
+        data_type="ensembles",
         alpha=0.01,
         ax=None,
         ages_to_plot=None,
     ):
         ensemble_trends, ensemble_counts = self.plot_assembly_trends(
-            x=x, x_bin_size=x_bin_size, z_threshold=z_threshold, data_type=data_type,
-            show_plot=False, alpha=alpha,
+            x=x,
+            x_bin_size=x_bin_size,
+            z_threshold=z_threshold,
+            data_type=data_type,
+            show_plot=False,
+            alpha=alpha,
         )
         p_changing = ensemble_counts.sel(trend=trend) / ensemble_counts.sum(dim="trend")
 
@@ -3326,7 +3664,8 @@ class RecentReversal:
             prop_fading = np.asarray(p_changing_split_by_age[age], dtype=float)
             perf = performance[age]
             ax.scatter(
-                prop_fading, perf,
+                prop_fading,
+                perf,
                 facecolors=c,
                 edgecolors="k",
                 s=50,
@@ -3339,15 +3678,15 @@ class RecentReversal:
         ax.set_ylabel(ylabels[performance_metric])
 
         if ages_to_plot is None:
-            ax.legend(ages_to_plot, loc='lower right')
+            ax.legend(ages_to_plot, loc="lower right")
 
         p_changing = np.hstack([p_changing_split_by_age[age] for age in ages])
         perf = np.hstack([performance[age] for age in ages])
 
         r, pvalue = spearmanr(p_changing, perf)
-        msg = f'r = {np.round(r, 3)}, p = {np.round(pvalue, 3)}'
+        msg = f"r = {np.round(r, 3)}, p = {np.round(pvalue, 3)}"
         if pvalue < 0.05:
-            msg += '*'
+            msg += "*"
         print(msg)
 
         return p_changing_split_by_age, performance
@@ -3365,8 +3704,12 @@ class RecentReversal:
         alpha=0.01,
     ):
         assembly_trends = self.find_activity_trends(
-            mouse, session_type, x=x, x_bin_size=x_bin_size,
-            z_threshold=trend_z_threshold, alpha=alpha,
+            mouse,
+            session_type,
+            x=x,
+            x_bin_size=x_bin_size,
+            z_threshold=trend_z_threshold,
+            alpha=alpha,
         )[0]
 
         session = self.data[mouse][session_type]
@@ -3452,7 +3795,9 @@ class RecentReversal:
         best_similarities = nan_array(
             assembly_matches.shape
         )  # (assemblies,) - best similarity for each assembly
-        z_similarities = np.stack([zscore(similarity) for similarity in similarities], axis=0) # (assemblies, assemblies) - z-scored similarities
+        z_similarities = np.stack(
+            [zscore(similarity) for similarity in similarities], axis=0
+        )  # (assemblies, assemblies) - z-scored similarities
 
         matched_patterns = np.zeros(
             (2, *patterns_iterable[0].shape)
@@ -3494,7 +3839,10 @@ class RecentReversal:
             "matched_patterns": matched_patterns,
             "matched_activations": matched_activations,
             "z_similarities": z_similarities,
-            "poor_matches": np.sum([np.any(z > 2.58, axis=1) for z in z_similarities], axis=0) == 0,
+            "poor_matches": np.sum(
+                [np.any(z > 2.58, axis=1) for z in z_similarities], axis=0
+            )
+            == 0,
         }
 
         return registered_ensembles
@@ -3556,7 +3904,7 @@ class RecentReversal:
         )
 
         if subset == "all":
-            subset = range(registered_patterns['matched_patterns'].shape[1])
+            subset = range(registered_patterns["matched_patterns"].shape[1])
 
         for (
             s1_activation,
@@ -3971,9 +4319,7 @@ class RecentReversal:
             )
 
         if running_only:
-            velocity_threshold = self.data[mouse][session_type].meta[
-                "threshold"
-            ]
+            velocity_threshold = self.data[mouse][session_type].meta["threshold"]
         else:
             velocity_threshold = 0
 
@@ -4412,8 +4758,7 @@ class RecentReversal:
 
         return ensemble_field_rhos
 
-    def correlate_ensemble_fields_across_ages(self, session_pair,
-                                              ax=None):
+    def correlate_ensemble_fields_across_ages(self, session_pair, ax=None):
         """
         For a pair of sessions, correlate each registered ensemble per mouse.
         Take the median across ensembles for each mouse and group them into
@@ -4617,6 +4962,7 @@ class RecentReversal:
     #
     #     return median_r, criterion
 
+
 if __name__ == "__main__":
     RR = RecentReversal(
         [
@@ -4629,7 +4975,7 @@ if __name__ == "__main__":
             "Naiad",
             "Oberon",
             "Puck",
-            #"Rhea",
+            # "Rhea",
             "Sao",
             "Titania",
             "Umbriel",
