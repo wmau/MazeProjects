@@ -611,7 +611,7 @@ class CalciumSession:
             order=None,
             ax=assembly_ax,
         )
-        activation_ax.set_title(f'Ensemble # {assembly_number}')
+        activation_ax.set_title(f'Ensemble # {assembly_number}', fontsize=22)
 
         if get_members:
             n_members = len(members)
@@ -638,7 +638,7 @@ class CalciumSession:
         else:
             markerlines, stemlines = pattern_ax.stem(
                 range(len(pattern)),
-                np.sort(pattern)[::-1],
+                np.sort(pattern),
                 "b",
                 orientation="horizontal",
                 basefmt=" ",
