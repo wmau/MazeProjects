@@ -57,7 +57,7 @@ from pylab import cm
 import xarray as xr
 import pymannkendall as mk
 from sklearn.metrics.pairwise import cosine_similarity
-from itertools import product
+from itertools import product, cycle, islice
 from CaImaging.PlaceFields import spatial_bin, PlaceFields
 from tqdm import tqdm
 import matplotlib.patches as mpatches
@@ -249,6 +249,47 @@ class RecentReversal:
             global_idx = trimmed_map[in_list].index
 
         return trimmed_map, global_idx, session_list
+
+    def set_age_legend(self, fig):
+        patches = [
+            mpatches.Patch(facecolor=c, label=label, edgecolor="k")
+            for c, label in zip(age_colors, ages)
+        ]
+        fig.legend(handles=patches, loc="lower right")
+
+    def plot_neuron_count(self, sessions_to_plot=None):
+        # Get sessions and labels.
+        if sessions_to_plot is None:
+            sessions_to_plot = self.meta['session_types']
+        session_labels = [
+            self.meta["session_labels"][self.meta["session_types"].index(session)]
+            for session in sessions_to_plot
+        ]
+
+        # Get number of neurons.
+        n_neurons = pd.DataFrame(index=self.meta['mice'])
+        for session in sessions_to_plot:
+            n_neurons[session] = [self.data[mouse][session].imaging['n_neurons']
+                                  for mouse in self.meta['mice']]
+
+        n_neurons['aged'] = [self.meta['aged'][mouse] for mouse in n_neurons.index]
+
+        fig, axs = plt.subplots(1, len(sessions_to_plot),
+                                sharey=True)
+        fig.subplots_adjust(wspace=0)
+        for ax, session, session_label in zip(axs, sessions_to_plot, session_labels):
+            data = dict()
+            for age in ages:
+                aged = age == 'aged'
+                data[age] = n_neurons[session].loc[n_neurons['aged'] == aged]
+
+            self.scatter_box(data, ax=ax)
+            ax.set_title(session_label)
+        axs[0].set_ylabel('Number of neurons')
+        self.set_age_legend(fig)
+
+        n_neurons = n_neurons.sort_values(by='aged')
+        return n_neurons
 
     ############################ BEHAVIOR FUNCTIONS ############################
 
@@ -600,6 +641,19 @@ class RecentReversal:
 
         return best_performance
 
+    def best_perf_to_df(self, best_performance, label='CRs'):
+        df = pd.DataFrame(np.hstack(
+            (best_performance[age]
+             for age in ages)),
+            index=np.hstack([self.meta['grouped_mice'][age]
+                             for age in ages]),
+        columns=[label])
+
+        df['aged'] = [self.meta['aged'][mouse] for mouse in df.index]
+
+        return df
+
+
     def plot_best_performance_all_sessions(
         self,
         window=None,
@@ -642,6 +696,19 @@ class RecentReversal:
         fig.legend(handles=patches, loc="lower right")
 
         return performance
+
+    def performance_to_csv(self, performance):
+        df = pd.DataFrame()
+        for session in performance.keys():
+            df[session] = pd.DataFrame(np.hstack(
+                (performance[session][age]
+                 for age in ages)),
+                index=np.hstack([self.meta['grouped_mice'][age]
+                                 for age in ages]))
+
+        df['aged'] = [self.meta['aged'][mouse] for mouse in df.index]
+
+        return df
 
     def compare_rewards(self, session_type):
         reward_rate = {age: [] for age in ages}
@@ -981,7 +1048,7 @@ class RecentReversal:
         existing_pfs = session.spatial.data["placefields"]
         if (
             existing_pfs.shape[1] == nbins
-            and session.spatial.meta["threshold"] == velocity_threshold
+            and session.spatial.meta["velocity_threshold"] == velocity_threshold
         ):
             pf = existing_pfs
         else:
@@ -1002,37 +1069,194 @@ class RecentReversal:
 
         return pf
 
-    def PV_corr(self, mouse, session_pair, nbins=125, velocity_threshold=7):
-        pfs = [
-            self.get_placefields(mouse, session, nbins=nbins)
+    def PV_corr_pair(self, mouse, session_pair, nbins=125,
+                velocity_threshold=7, corr='spearman'):
+        # Get placefields, make new ones if the specified parameters
+        # don't match existing ones.
+        pfs = {session:
+            self.get_placefields(mouse, session, nbins=nbins,
+                                 velocity_threshold=velocity_threshold)
             for session in session_pair
-        ]
-
-    def get_split_trial_pfs(self, mouse, session_type, nbins=125, show_plot=False):
-        session = self.data[mouse][session_type]
-        existing_rasters = session.spatial.data["rasters"]
-
-        if existing_rasters.shape[2] == nbins:
-            rasters = existing_rasters
-        else:
-            rasters = session.spatial_activity_by_trial(nbins)[0]
-
-        split_rasters = {"even": rasters[:, ::2, :], "odd": rasters[:, 1::2, :]}
-        split_pfs = {
-            trial_type: np.nanmean(split_rasters[trial_type], axis=1)
-            for trial_type in ["even", "odd"]
         }
 
-        if show_plot:
-            order = np.argsort(np.argmax(split_pfs["even"], axis=1))
-            fig, axs = plt.subplots(1, 2, figsize=(8, 6))
-            for ax, trial_type in zip(axs, ["even", "odd"]):
-                ax.imshow(split_pfs[trial_type][order], aspect="auto")
-                ax.set_title(f"{trial_type} trials")
-            fig.supylabel("Neuron #")
-            fig.supxlabel("Linearized position")
+        # Get correlation function.
+        corr_fun = spearmanr if corr == "spearman" else pearsonr
 
-        return split_pfs
+        # Register neurons and place fields.
+        trimmed_map = np.asarray(
+            self.get_cellreg_mappings(mouse, session_pair, detected="everyday")[
+                0
+            ]
+        )
+        s1, s2 = [
+            pfs[session][neurons].T
+            for neurons, session in zip(trimmed_map.T, session_pair)
+        ]
+
+        # Get correlations.
+        rhos = []
+        for x, y in zip(s1, s2):
+            rhos.append(corr_fun(x, y, nan_policy="omit")[0])
+
+        return rhos, pfs
+
+    def compare_PV_corrs_by_bin(self, mouse, session_pair1, session_pair2,
+                                nbins=125, velocity_threshold=7,
+                                corr='spearman', colors=['darkgray', 'steelblue'],
+                                show_plot=True):
+        if nbins != 125:
+            warnings.warn('Plotting reward site only works for nbins==125', UserWarning)
+
+        session_pairs = [session_pair1, session_pair2]
+        behavior_data = [self.data[mouse][session_pair[1]].behavior.data
+                         for session_pair in session_pairs]
+
+        port_bins = [
+            find_reward_spatial_bins(
+                data['df']['lin_position'],
+                np.asarray(data['lin_ports']),
+                spatial_bin_size_radians=0.05,
+            )[0]
+            for data in behavior_data
+        ]
+
+        rhos = [self.PV_corr_pair(mouse, session_pair, nbins=nbins,
+                                  velocity_threshold=velocity_threshold,
+                                  corr=corr)[0]
+                for session_pair in session_pairs]
+
+        if show_plot:
+            fig, ax = plt.subplots()
+            for rho, color, reward_locations, behavior\
+                    in zip(rhos, colors, port_bins, behavior_data):
+                ax.plot(rho, color=color)
+
+                [ax.axvline(x=reward_location, color=color)
+                 for reward_location in reward_locations[behavior['rewarded_ports']]]
+
+                ax.set_xlabel('Spatial location')
+                ax.set_ylabel('Correlation coefficient')
+
+        return rhos, port_bins
+
+    def compare_reward_PV_corrs(self, mouse, spatial_bin_window=5,
+                                nbins=125, velocity_threshold=0,
+                                corr='spearman',
+                                colors=['darkgray', 'steelblue']):
+        session_pairs = [('Goals3', 'Goals4'), ('Goals4', 'Reversal')]
+        goals = {session: self.data[mouse][session].behavior.data['rewarded_ports']
+                 for session in ['Goals4', 'Reversal']}
+
+        binned_rhos, port_bins = \
+            self.compare_PV_corrs_by_bin(mouse,
+                                         session_pairs[0],
+                                         session_pairs[1],
+                                         nbins=nbins,
+                                         velocity_threshold=velocity_threshold,
+                                         corr=corr, show_plot=False)
+
+        # Need to handle circularity of slices here.
+        rhos = dict()
+        never_rewarded = ~(goals['Goals4'] + goals["Reversal"])
+        for rhos_pair, ports, session_pair\
+                in zip(binned_rhos, port_bins, session_pairs):
+            rhos[session_pair] = dict()
+            current_goals = goals[session_pair[1]]
+
+            rhos_at_rewards = [list(islice(cycle(rhos_pair), reward-spatial_bin_window,
+                                           reward+spatial_bin_window)) for reward in ports[current_goals]]
+
+            rhos_at_nonrewards = [list(islice(cycle(rhos_pair), reward-spatial_bin_window,
+                                              reward+spatial_bin_window)) for reward in ports[never_rewarded]]
+
+            rhos[session_pair]['currently_rewarded'] = np.nanmean([np.nanmean(r) for r in rhos_at_rewards])
+            rhos[session_pair]['never_rewarded'] = np.nanmean([np.nanmean(r) for r in rhos_at_nonrewards])
+
+            if session_pair[1] == 'Reversal':
+                rhos_at_previous = [list(islice(cycle(rhos_pair), reward-spatial_bin_window,
+                                                reward+spatial_bin_window)) for reward in ports[goals['Goals4']]]
+                rhos[session_pair]['previously_rewarded'] = np.nanmean([np.nanmean(r) for r in rhos_at_previous])
+
+        return rhos
+
+    def plot_reward_PV_corrs_v1(self, mice):
+        session_pairs = [('Goals3', 'Goals4'), ('Goals4', 'Reversal')]
+        rhos = {mouse: self.compare_reward_PV_corrs(mouse) for mouse in mice}
+        xlabels = [f'{session_pair[0].replace("Goals", "Training")} x {session_pair[1].replace("Goals", "Training")}'
+                   for session_pair in session_pairs]
+
+        fig, axs = plt.subplots(1,2,sharey=True)
+        fig.subplots_adjust(wspace=0)
+
+        for session_pair, xlabel, ax in zip(session_pairs, xlabels, axs):
+            reward_types = rhos[mice[0]][session_pair].keys()
+            xticks = [str(reward_str).replace('_', ' \n') for reward_str in reward_types]
+
+            data = []
+            for reward_type in reward_types:
+                data.append([rhos[mouse][session_pair][reward_type] for mouse in mice])
+
+            ax.boxplot(data)
+            ax.set_xticklabels(xticks, rotation=45)
+            ax.set_xlabel(xlabel)
+
+        axs[0].set_ylabel('PV correlation coefficient')
+        fig.tight_layout()
+
+        return rhos
+
+    def plot_reward_PV_corrs_v2(self, mice):
+        session_pairs = [('Goals3', 'Goals4'), ('Goals4', 'Reversal')]
+        rhos = {mouse: self.compare_reward_PV_corrs(mouse) for mouse in mice}
+        xticks = [f'{session_pair[0].replace("Goals", "Training")} x \n{session_pair[1].replace("Goals", "Training")}'
+                   for session_pair in session_pairs]
+
+        fig, axs = plt.subplots(1,3,sharey=True)
+        fig.subplots_adjust(wspace=0)
+
+        for ax, reward_type in zip(axs[:-1], ['currently_rewarded', 'never_rewarded']):
+            data = []
+            for session_pair in session_pairs:
+                data.append([rhos[mouse][session_pair][reward_type] for mouse in mice])
+
+            ax.boxplot(data)
+            ax.set_xticklabels(xticks, rotation=45)
+            ax.set_xlabel(reward_type.replace('_', ' \n'))
+
+        axs[-1].boxplot([rhos[mouse][session_pairs[1]]['previously_rewarded'] for mouse in mice])
+        axs[-1].set_xticklabels([xticks[-1]], rotation=45)
+        axs[-1].set_xlabel('previously \nrewarded')
+        axs[0].set_ylabel('PV correlation coefficient')
+
+        fig.tight_layout()
+
+        return rhos
+
+    def get_split_trial_pfs(self, mouse, session_type, nbins=125, show_plot=False):
+            session = self.data[mouse][session_type]
+            existing_rasters = session.spatial.data["rasters"]
+
+            if existing_rasters.shape[2] == nbins:
+                rasters = existing_rasters
+            else:
+                rasters = session.spatial_activity_by_trial(nbins)[0]
+
+            split_rasters = {"even": rasters[:, ::2, :], "odd": rasters[:, 1::2, :]}
+            split_pfs = {
+                trial_type: np.nanmean(split_rasters[trial_type], axis=1)
+                for trial_type in ["even", "odd"]
+            }
+
+            if show_plot:
+                order = np.argsort(np.argmax(split_pfs["even"], axis=1))
+                fig, axs = plt.subplots(1, 2, figsize=(8, 6))
+                for ax, trial_type in zip(axs, ["even", "odd"]):
+                    ax.imshow(split_pfs[trial_type][order], aspect="auto")
+                    ax.set_title(f"{trial_type} trials")
+                fig.supylabel("Neuron #")
+                fig.supxlabel("Linearized position")
+
+            return split_pfs
 
     def session_pairwise_PV_corr_efficient(
         self, mouse, nbins=125, corr="spearman", show_plot=False
@@ -1230,7 +1454,11 @@ class RecentReversal:
         axs[0].set_ylabel("Spatial PV correlation coefficients")
         fig.tight_layout()
 
-        return data
+        df = pd.concat([pd.concat({k: pd.Series(v) for k,v in data[pair].items()}
+                                  ) for pair in session_pairs]
+                       , axis=1, keys=session_pairs)
+
+        return data, df
 
     def compare_drift_rates(self, corr_matrices, show_plot=True):
         drift_rates = self.get_drift_rate(corr_matrices)
@@ -1780,8 +2008,13 @@ class RecentReversal:
         ax=None,
         normalize=True,
         show_plot=True,
+        show_reward_sites=True,
     ):
+        spatial_bin_size_radians = self.data[mouse][session].spatial.meta['bin_size']
+        behavior_data = self.data[mouse][session].behavior
+
         session = self.data[mouse][session].spatial.data
+        port_locations = np.asarray(behavior_data.data['lin_ports'])[behavior_data.data['rewarded_ports']]
         if neurons is None:
             neurons = np.arange(0, session["n_neurons"])
         if order is None:
@@ -1789,12 +2022,23 @@ class RecentReversal:
 
         placefields = session["placefields_normalized"][neurons][order]
 
+        # Get reward locations
+        reward_location_bins, bins = find_reward_spatial_bins(
+            session['x'],
+            port_locations,
+            spatial_bin_size_radians=spatial_bin_size_radians,
+        )
+
         if show_plot:
             if normalize:
                 placefields = placefields / np.max(placefields, axis=1, keepdims=True)
             if ax is None:
                 fig, ax = plt.subplots(figsize=(5, 5.5))
             ax.imshow(placefields)
+
+            if show_reward_sites:
+                [ax.axvline(x=reward_location_bin, color='g') for reward_location_bin in reward_location_bins]
+
             ax.axis("tight")
             ax.set_ylabel("Neuron #")
             ax.set_xlabel("Location")
@@ -2254,7 +2498,8 @@ class RecentReversal:
         return anova_df, pairwise_df, df
 
     ############################ ENSEMBLE FUNCTIONS ############################
-    def count_ensembles(self, grouped=True, normalize=True):
+    def count_ensembles(self, grouped=True, normalize=True,
+                        sessions_to_plot=None):
         """
         Plot number of ensembles for each session. Can also normalize by total number of neurons.
 
@@ -2274,42 +2519,48 @@ class RecentReversal:
             else "# of ensembles normalized by cell count"
         )
 
+        if sessions_to_plot is None:
+            sessions_to_plot = self.meta['session_types']
+        session_labels = [
+            self.meta["session_labels"][self.meta["session_types"].index(session)]
+            for session in sessions_to_plot
+        ]
+
+        df = pd.DataFrame(index=self.meta['mice'])
+        for session_type in sessions_to_plot:
+            n_ensembles_sessions = []
+            for mouse in self.meta['mice']:
+                session = self.data[mouse][session_type]
+                n_ensembles_mouse = session.assemblies['significance'].nassemblies
+                if normalize:
+                    n_ensembles_mouse /= session.imaging['n_neurons']
+
+                n_ensembles_sessions.append(n_ensembles_mouse)
+
+            df[session_type] = n_ensembles_sessions
+
+        df['aged'] = [self.meta['aged'][mouse] for mouse in df.index]
+        df = df.sort_values('aged')
+
         if grouped:
             # Make a dictionary that's [session_type][age] = list of ensemble counts.
             n_ensembles = dict()
 
-            for session_type in self.meta["session_types"]:
+            for session_type in sessions_to_plot:
                 n_ensembles[session_type] = dict()
 
                 for age in ages:
-                    n_ensembles[session_type][age] = []
-
-                    for mouse in self.meta["grouped_mice"][age]:
-                        session = self.data[mouse][session_type]
-                        n = session.assemblies["significance"].nassemblies
-
-                        if normalize:
-                            n /= session.imaging["n_neurons"]
-
-                        n_ensembles[session_type][age].append(n)
+                    aged = age == 'aged'
+                    n_ensembles[session_type][age] = df[session_type].loc[df['aged'] == aged]
 
             # Plot.
             fig, axs = plt.subplots(1, len(self.meta["session_types"]))
             fig.subplots_adjust(wspace=0)
 
             for i, (ax, session_type, title) in enumerate(
-                zip(axs, self.meta["session_types"], self.meta["session_labels"])
+                zip(axs, sessions_to_plot, session_labels)
             ):
-                box = ax.boxplot(
-                    [n_ensembles[session_type][age] for age in ages],
-                    labels=ages,
-                    patch_artist=True,
-                    widths=0.75,
-                )
-                for patch, med, color in zip(box["boxes"], box["medians"], age_colors):
-                    patch.set_facecolor(color)
-                    med.set(color="k")
-                ax.set_xticks([])
+                self.scatter_box(n_ensembles[session_type], ax=ax)
                 ax.set_title(title)
 
                 if i > 0:
@@ -2317,11 +2568,7 @@ class RecentReversal:
                 else:
                     ax.set_ylabel(ylabel)
 
-            patches = [
-                mpatches.Patch(facecolor=c, label=label, edgecolor="k")
-                for c, label in zip(age_colors, ["Young", "Aged"])
-            ]
-            fig.legend(handles=patches, loc="lower right")
+            self.set_age_legend(fig)
 
         else:
             n_ensembles = nan_array(
@@ -2347,7 +2594,7 @@ class RecentReversal:
             plt.setp(ax.xaxis.get_majorticklabels(), rotation=45)
             fig.subplots_adjust(bottom=0.2)
 
-        return n_ensembles
+        return n_ensembles, df
 
     def count_unique_ensemble_members(self, session_type, filter_method="sd", thresh=2):
         proportion_unique_members = {age: [] for age in ages}
@@ -3560,7 +3807,7 @@ class RecentReversal:
         )
         p_changing = ensemble_counts.sel(trend=trend) / ensemble_counts.sum(dim="trend")
         p_changing_split_by_age = dict()
-        for age in ["young", "aged"]:
+        for age in ages:
             p_changing_split_by_age[age] = [
                 p_changing.sel(session=session, mouse=self.meta["grouped_mice"][age])
                 for session in sessions
@@ -3612,6 +3859,18 @@ class RecentReversal:
                 )
 
         return p_changing_split_by_age
+
+    def make_fading_ensemble_df(self, p_changing_split_by_age):
+        p = p_changing_split_by_age
+        df = pd.concat(
+            [pd.DataFrame(np.asarray(p[age]).T,
+                          index=self.meta['grouped_mice'][age],
+                          columns=[str(x.session.values) for x in p[age]])
+             for age in ages])
+
+        df['aged'] = [self.meta['aged'][mouse] for mouse in df.index]
+
+        return df
 
     def correlate_prop_changing_ensembles_to_behavior(
         self,
@@ -3690,6 +3949,19 @@ class RecentReversal:
         print(msg)
 
         return p_changing_split_by_age, performance
+
+    def make_corr_df(self, p_changing_split_by_age, performance):
+        p = p_changing_split_by_age
+        df = pd.concat(
+            [pd.DataFrame(np.asarray(p[age]).T,
+                          index=self.meta['grouped_mice'][age],
+                          columns=['proportion fading ensembles'])
+             for age in ages])
+
+        df['performance'] = np.hstack([performance[age] for age in ages])
+        df['aged'] = [self.meta['aged'][mouse] for mouse in df.index]
+
+        return df
 
     def plot_assembly_by_trend(
         self,
