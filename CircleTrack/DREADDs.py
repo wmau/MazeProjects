@@ -24,54 +24,26 @@ session_types = {
         "CircleTrackRecall",
     ],
     "RemoteReversal": ["Goals1", "Goals2", "Goals3", "Goals4", "Reversal"],
-    "PSAMReversal": ["Goals1", "Goals2", "Goals3", "Goals4", "Reversal"],
+    "DREADDs_Reversal": ["Training1", "Training2", "Training3", "Training4", "Reversal"],
 }
 
 # Exclude PSAM4, PSAM5, and PSAM15 because they never learned
 # (poor Goals4 performance).
-PSEM_mice = ['PSAM_2',
-             'PSAM_3',
-             'PSAM_5',
-             'PSAM_6',
-             'PSAM_7',
-             'PSAM_8',
-             'PSAM_10',
-             'PSAM_13',
-             'PSAM_17',
-             'PSAM_19',
-             'PSAM_20',
-             'PSAM_24',
-             'PSAM_25',
-             'PSAM_26',
-             'PSAM_27']
-
-aged_mice = [
-    "Gemini",
-    "Oberon",
-    "Puck",
-    "Umbriel",
-    "Virgo",
-    "Ymir",
-    "Atlas",
-    "PSAM_1",
-    "PSAM_2",
-    "PSAM_3",
-]
-
-ages = ["young", "aged"]
-PSAM_groups = ["vehicle", "PSEM"]
+DREADDs_mice = ['DREADDs_2',
+                'DREADDs_4',
+                'DREADDs_5',
+                'DREADDs_7']
+DREADDs_groups = ["mCherry", "hM4di"]
 age_colors = ["cornflowerblue", "r"]
-PSAM_colors = ['silver', 'coral']
+DREADDs_colors = ['silver', 'coral']
 
-class PSAM:
+class DREADDs:
     def __init__(self, mice):
-        self.data = MultiAnimal(mice, project_name='PSAMReversal',
+        self.data = MultiAnimal(mice, project_name='DREADDs_Reversal',
                                 SessionFunction=BehaviorSession)
 
-
-
         self.meta = {
-            "session_types": session_types['PSAMReversal'],
+            "session_types": session_types['DREADDs_Reversal'],
             "mice": mice,
         }
 
@@ -80,8 +52,8 @@ class PSAM:
             for session_type in self.meta["session_types"]
         ]
         self.meta["grouped_mice"] = {
-            "PSEM": [mouse for mouse in self.meta["mice"] if mouse in PSEM_mice],
-            "vehicle": [mouse for mouse in self.meta["mice"] if mouse not in PSEM_mice],
+            "hM4di": [mouse for mouse in self.meta["mice"] if mouse in DREADDs_mice],
+            "mCherry": [mouse for mouse in self.meta["mice"] if mouse not in DREADDs_mice],
         }
 
     def plot_all_behavior(
@@ -145,11 +117,11 @@ class PSAM:
         # Get dimensions of new arrays.
         dims = {
             inj: (len(self.meta["grouped_mice"][inj]), sum(longest_sessions))
-            for inj in PSAM_groups
+            for inj in DREADDs_groups
         }
-        metrics = {key: nan_array(dims[key]) for key in PSAM_groups}
+        metrics = {key: nan_array(dims[key]) for key in DREADDs_groups}
 
-        for inj in PSAM_groups:
+        for inj in DREADDs_groups:
             for row, mouse in enumerate(self.meta["grouped_mice"][inj]):
                 for border, session in zip(borders, self.meta["session_types"]):
                     metric_this_session = behavioral_performance.sel(
@@ -170,7 +142,7 @@ class PSAM:
                 fig = ax.figure
 
             if window is not None:
-                for inj, c in zip(PSAM_groups, PSAM_colors):
+                for inj, c in zip(DREADDs_groups, DREADDs_colors):
                     ax.plot(metrics[inj].T, color=c, alpha=0.3)
                     errorfill(
                         range(metrics[inj].shape[1]),
@@ -188,7 +160,7 @@ class PSAM:
                 ax.set_xlabel("Trial blocks")
                 _ = beautify_ax(ax)
             else:
-                for inj, c in zip(PSAM_groups, PSAM_colors):
+                for inj, c in zip(DREADDs_groups, DREADDs_colors):
                     ax.plot(metrics[inj].T, color=c, alpha=0.3)
                     ax.errorbar(
                         self.meta['session_labels'],
@@ -205,12 +177,12 @@ class PSAM:
         if window is None:
             mice_ = np.hstack([np.repeat(self.meta['grouped_mice'][inj],
                                          len(self.meta['session_types']))
-                               for inj in PSAM_groups])
-            groups_ = np.hstack([np.repeat(inj, metrics[inj].size) for inj in PSAM_groups])
+                               for inj in DREADDs_groups])
+            groups_ = np.hstack([np.repeat(inj, metrics[inj].size) for inj in DREADDs_groups])
             session_types_ = np.hstack([np.tile(self.meta['session_types'],
                                                 len(self.meta['grouped_mice'][inj]))
-                                        for inj in PSAM_groups])
-            metric_ = np.hstack([metrics[inj].flatten() for inj in PSAM_groups])
+                                        for inj in DREADDs_groups])
+            metric_ = np.hstack([metrics[inj].flatten() for inj in DREADDs_groups])
 
             df = pd.DataFrame(
                 {'metric': metric_,
@@ -251,7 +223,7 @@ class PSAM:
         )[0]
 
         best_performance = dict()
-        for inj in PSAM_groups:
+        for inj in DREADDs_groups:
             best_performance[inj] = []
             for mouse in self.meta["grouped_mice"][inj]:
                 best_performance[inj].append(
@@ -274,8 +246,8 @@ class PSAM:
             else:
                 label_axes = False
             box = ax.boxplot(
-                [best_performance[inj] for inj in PSAM_groups],
-                labels=PSAM_groups,
+                [best_performance[inj] for inj in DREADDs_groups],
+                labels=DREADDs_groups,
                 patch_artist=True,
                 widths=0.75,
                 showfliers=False,
@@ -289,16 +261,16 @@ class PSAM:
                 edgecolor='k',
                 zorder=1,
             )
-                for i, (inj, color) in enumerate(zip(PSAM_groups, PSAM_colors))]
+                for i, (inj, color) in enumerate(zip(DREADDs_groups, DREADDs_colors))]
             for patch, med, color in zip(
-                    box["boxes"], box["medians"], PSAM_colors
+                    box["boxes"], box["medians"], DREADDs_colors
             ):
                 patch.set_facecolor(color)
                 med.set(color="k")
 
             if label_axes:
                 ax.set_xticks([1, 2])
-                ax.set_xticklabels(PSAM_groups)
+                ax.set_xticklabels(DREADDs_groups)
                 ax.set_ylabel(ylabels[performance_metric])
                 #ax = beautify_ax(ax)
                 plt.tight_layout()
@@ -341,7 +313,7 @@ class PSAM:
 
         patches = [
             mpatches.Patch(facecolor=c, label=label, edgecolor="k")
-            for c, label in zip(PSAM_colors, PSAM_groups)
+            for c, label in zip(DREADDs_colors, DREADDs_groups)
         ]
         fig.legend(handles=patches, loc="lower right")
 
@@ -394,12 +366,12 @@ class PSAM:
         return df
 
     def plot_perseverative_licking(self, show_plot=True, binarize=True):
-        goals4 = "Goals4"
+        goals4 = "Training4"
         reversal = "Reversal"
 
         perseverative_errors = dict()
         unforgiveable_errors = dict()
-        for inj in PSAM_groups:
+        for inj in DREADDs_groups:
             perseverative_errors[inj] = []
             unforgiveable_errors[inj] = []
 
@@ -431,7 +403,7 @@ class PSAM:
                     ["Perseverative errors", "Unforgiveable errors"],
             ):
                 boxes = ax.boxplot(
-                    [rate[inj] for inj in PSAM_groups], patch_artist=True, widths=0.75,
+                    [rate[inj] for inj in DREADDs_groups], patch_artist=True, widths=0.75,
                     showfliers=False, zorder=0,
                 )
 
@@ -443,11 +415,11 @@ class PSAM:
                     zorder=1,
                     s=50,
                 )
-                    for i, (inj, color) in enumerate(zip(PSAM_groups,
-                                                         PSAM_colors))]
+                    for i, (inj, color) in enumerate(zip(DREADDs_groups,
+                                                         DREADDs_colors))]
 
                 for patch, med, color in zip(
-                        boxes["boxes"], boxes["medians"], PSAM_colors
+                        boxes["boxes"], boxes["medians"], DREADDs_colors
                 ):
                     patch.set_facecolor(color)
                     med.set(color="k")
@@ -457,7 +429,7 @@ class PSAM:
             axs[0].set_ylabel(ylabel[binarize])
             patches = [
                 mpatches.Patch(facecolor=c, label=label, edgecolor="k")
-                for c, label in zip(PSAM_colors, PSAM_groups)
+                for c, label in zip(DREADDs_colors, DREADDs_groups)
             ]
             fig.legend(handles=patches, loc="lower right")
 
@@ -466,7 +438,7 @@ class PSAM:
     def scatter_box(self, data, ylabel='', ax=None):
         if ax is None:
             fig, ax = plt.subplots()
-        boxes = ax.boxplot([data[inj] for inj in PSAM_groups],
+        boxes = ax.boxplot([data[inj] for inj in DREADDs_groups],
                            widths=0.75, showfliers=False, zorder=0, patch_artist=True)
 
         [ax.scatter(
@@ -477,11 +449,11 @@ class PSAM:
             zorder=1,
             s=50,
         )
-            for i, (inj, color) in enumerate(zip(PSAM_groups,
-                                                 PSAM_colors))]
+            for i, (inj, color) in enumerate(zip(DREADDs_groups,
+                                                 DREADDs_colors))]
 
         for patch, med, color in zip(
-                boxes["boxes"], boxes["medians"], PSAM_colors
+                boxes["boxes"], boxes["medians"], DREADDs_colors
         ):
             patch.set_facecolor(color)
             med.set(color="k")
@@ -491,7 +463,7 @@ class PSAM:
     def compare_trial_count(self, session_type):
         trials = {inj: [self.data[mouse][session_type].data['ntrials']
                         for mouse in self.meta['grouped_mice'][inj]]
-                  for inj in PSAM_groups}
+                  for inj in DREADDs_groups}
 
         self.scatter_box(trials, 'Trials')
 
