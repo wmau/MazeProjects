@@ -41,7 +41,7 @@ session_types = {
 # (poor Goals4 performance).
 grouped_mice = {
     "DREADDs": ["DREADDs_2", "DREADDs_4", "DREADDs_5", "DREADDs_7"],
-    "PSEM": [
+    "PSAM": [
         "PSAM_2",
         "PSAM_3",
         "PSAM_5",
@@ -60,10 +60,10 @@ grouped_mice = {
     ],
 }
 
-groups = {"DREADDs": ["mCherry", "hM4di"],
+groups = {"DREADDs": ["fluorophore", "hM4di"],
           "PSAM": ["vehicle", "PSEM"]}
 age_colors = ["cornflowerblue", "r"]
-colors = {"PSAM": ["silver", "darkorchid"],
+colors = {"PSAM": ["silver", "mediumpurple"],
           "DREADDs": ["silver", "coral"]}
 
 
