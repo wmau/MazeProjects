@@ -258,6 +258,12 @@ class RecentReversal:
         fig.legend(handles=patches, loc="lower right")
 
     def plot_neuron_count(self, sessions_to_plot=None):
+        """
+        Plot the number of neurons in each session.
+
+        :param sessions_to_plot:
+        :return:
+        """
         # Get sessions and labels.
         if sessions_to_plot is None:
             sessions_to_plot = self.meta['session_types']
@@ -398,6 +404,10 @@ class RecentReversal:
         show_plot=True,
         trial_limit=None,
     ):
+        """
+        Plot behavior metrics for all mice, separated by aged versus young.
+
+        """
         # Preallocate array.
         behavioral_performance_arr = np.zeros(
             (3, len(self.meta["mice"]), len(self.meta["session_types"])),
@@ -541,6 +551,23 @@ class RecentReversal:
         return behavioral_performance, metrics, df
 
     def behavior_anova(self, performance_metric="CRs"):
+        """
+        Plot behavioral metrics for all mice, separated into aged versus young.
+        window=None, meaning data is not smoothed across trials and is aggregated across the whole session.
+        Also returns ANOVA results.
+
+        :parameter
+        ---
+        performance_metric: "d_prime", "CRs", or "hits"
+
+        :returns
+        ---
+        anova_df: DataFrame
+            Results from a mixed ANOVA.
+
+        pairwise_df: DataFrame
+            Results from pairwise t-tests.
+        """
         df = self.plot_all_behavior(
             performance_metric=performance_metric, window=None, strides=None
         )[2]
@@ -558,15 +585,29 @@ class RecentReversal:
         )
         return anova_df, pairwise_df, df
 
-    def plot_best_performance(
+    def plot_performance_session_type(
         self,
         session_type,
         ax=None,
-        window=8,
+        window=None,
+        strides=None,
         performance_metric="d_prime",
         show_plot=True,
         downsample_trials=False,
     ):
+        """
+        Plot the performance of all mice, separated by age, on that session.
+
+        :parameters
+        ---
+        session_type: str
+
+        :returns
+        ---
+        peak_performance: dict
+            Behavioral performance split into young versus aged.
+
+        """
         if downsample_trials:
             trial_limit = min(
                 [
@@ -580,15 +621,16 @@ class RecentReversal:
         behavioral_performance = self.plot_all_behavior(
             show_plot=False,
             window=window,
+            strides=strides,
             performance_metric=performance_metric,
             trial_limit=trial_limit,
         )[0]
 
-        best_performance = dict()
+        peak_performance = dict()
         for age in ages:
-            best_performance[age] = []
+            peak_performance[age] = []
             for mouse in self.meta["grouped_mice"][age]:
-                best_performance[age].append(
+                peak_performance[age].append(
                     np.nanmax(
                         behavioral_performance.sel(
                             mouse=mouse, metric=performance_metric, session=session_type
@@ -607,30 +649,8 @@ class RecentReversal:
                 fig, ax = plt.subplots(figsize=(3, 4.75))
             else:
                 label_axes = False
-            box = ax.boxplot(
-                [best_performance[age] for age in ages],
-                labels=ages,
-                patch_artist=True,
-                widths=0.75,
-                showfliers=False,
-                zorder=0,
-            )
 
-            [
-                ax.scatter(
-                    jitter_x(np.ones_like(best_performance[age]) * (i + 1), 0.1),
-                    best_performance[age],
-                    color=color,
-                    edgecolor="k",
-                    zorder=1,
-                )
-                for i, (age, color) in enumerate(zip(ages, age_colors))
-            ]
-            for patch, med, color in zip(
-                box["boxes"], box["medians"], ["cornflowerblue", "r"]
-            ):
-                patch.set_facecolor(color)
-                med.set(color="k")
+            self.scatter_box(peak_performance, ax=ax)
 
             if label_axes:
                 ax.set_xticks([1, 2])
@@ -639,11 +659,19 @@ class RecentReversal:
                 # ax = beautify_ax(ax)
                 plt.tight_layout()
 
-        return best_performance
+        return peak_performance
 
-    def best_perf_to_df(self, best_performance, label='CRs'):
+    def peak_perf_to_df(self, peak_performance, label='CRs'):
+        """
+        Convert peak_performance from plot_best_performance() into
+        a df.
+
+        :param peak_performance:
+        :param label:
+        :return:
+        """
         df = pd.DataFrame(np.hstack(
-            (best_performance[age]
+            (peak_performance[age]
              for age in ages)),
             index=np.hstack([self.meta['grouped_mice'][age]
                              for age in ages]),
@@ -654,13 +682,30 @@ class RecentReversal:
         return df
 
 
-    def plot_best_performance_all_sessions(
+    def plot_peak_performance_all_sessions(
         self,
         window=None,
+        strides=None,
         performance_metric="CRs",
         downsample_trials=False,
         sessions=None,
     ):
+        """
+        Plot the peak performance for each session, either when smoothing across trial windows, or when
+        window=None, simply the behavioral performance across the whole session.
+
+        :parameters
+        ---
+        window: int or None
+            Trial window size to compute behavioral metrics across.
+
+        strides: int or None
+            Overlap between trial windows.
+
+        sessions: list of str
+            Sessions to plot.
+
+        """
         if sessions is None:
             sessions = self.meta["session_types"]
 
@@ -678,10 +723,11 @@ class RecentReversal:
         }
         performance = dict()
         for ax, session, title in zip(axs, sessions, session_labels):
-            performance[session] = self.plot_best_performance(
+            performance[session] = self.plot_performance_session_type(
                 session_type=session,
                 ax=ax,
                 window=window,
+                strides=strides,
                 performance_metric=performance_metric,
                 downsample_trials=downsample_trials,
             )
@@ -697,7 +743,13 @@ class RecentReversal:
 
         return performance
 
-    def performance_to_csv(self, performance):
+    def performance_to_df(self, performance):
+        """
+        Convert output of plot_peak_performance_all_sessions() to df.
+
+        :param performance:
+        :return:
+        """
         df = pd.DataFrame()
         for session in performance.keys():
             df[session] = pd.DataFrame(np.hstack(
@@ -710,22 +762,16 @@ class RecentReversal:
 
         return df
 
-    def compare_rewards(self, session_type):
-        reward_rate = {age: [] for age in ages}
+    def scatter_box(self, data, ylabel="", ax=None):
+        """
+        Make boxplot split into aged versus young. Scatter plot individual data points on top.
 
-        for age in ages:
-            for mouse in self.meta["grouped_mice"][age]:
-                n_drinks = self.data[mouse][session_type].behavior.data["n_drinks"]
-                n_trials = self.data[mouse][session_type].behavior.data["ntrials"]
+        :parameters
+        ---
+        data: dict
+            Data in array-likes, split into "young" and "old".
 
-                rr = (np.sum(n_drinks) / 2) / n_trials
-                reward_rate[age].append(rr)
-
-        self.scatter_box(reward_rate, ylabel="Reward rate")
-
-        return reward_rate
-
-    def scatter_box(self, data, ylabel="", ax=None, fig=None):
+        """
         if ax is None:
             fig, ax = plt.subplots()
         boxes = ax.boxplot(
@@ -755,6 +801,10 @@ class RecentReversal:
         ax.set_ylabel(ylabel)
 
     def plot_perseverative_licking(self, show_plot=True, binarize=True):
+        """
+        Plot perseverative versus unforgiveable errors (errors on never-rewarded sites)
+
+        """
         goals4 = "Goals4"
         reversal = "Reversal"
 
@@ -792,40 +842,12 @@ class RecentReversal:
                 [perseverative_errors, unforgiveable_errors],
                 ["Perseverative errors", "Unforgiveable errors"],
             ):
-                boxes = ax.boxplot(
-                    [rate[age] for age in ages],
-                    patch_artist=True,
-                    widths=0.75,
-                    showfliers=False,
-                    zorder=0,
-                )
-
-                [
-                    ax.scatter(
-                        jitter_x(np.ones_like(rate[age]) * (i + 1), 0.05),
-                        rate[age],
-                        color=color,
-                        edgecolor="k",
-                        zorder=1,
-                        s=50,
-                    )
-                    for i, (age, color) in enumerate(zip(ages, age_colors))
-                ]
-
-                for patch, med, color in zip(
-                    boxes["boxes"], boxes["medians"], ["cornflowerblue", "r"]
-                ):
-                    patch.set_facecolor(color)
-                    med.set(color="k")
+                self.scatter_box(rate, ax=ax)
                 ax.set_title(title)
                 ax.set_xticks([])
 
             axs[0].set_ylabel(ylabel[binarize])
-            patches = [
-                mpatches.Patch(facecolor=c, label=label, edgecolor="k")
-                for c, label in zip(["cornflowerblue", "r"], ["Young", "Aged"])
-            ]
-            fig.legend(handles=patches, loc="lower right")
+            self.set_age_legend(fig)
 
         return perseverative_errors, unforgiveable_errors
 
@@ -837,6 +859,11 @@ class RecentReversal:
         show_plot=True,
         binarize_licks=True,
     ):
+        """
+        Plot perseverative and unforgiveable errors averaged across trial windows
+
+
+        """
         perseverative_errors = dict()
         unforgiveable_errors = dict()
         for age in ages:
@@ -914,6 +941,10 @@ class RecentReversal:
         return perseverative_errors, unforgiveable_errors
 
     def compare_trial_count(self, session_type):
+        """
+        Plot number of trials in young versus aged in this session.
+
+        """
         trials = {
             age: [
                 self.data[mouse][session_type].behavior.data["ntrials"]
@@ -930,14 +961,14 @@ class RecentReversal:
 
     def find_all_overlaps(self, show_plot=True):
         """
-        Wrapper function for find_percent_overlap, run this per mouse.
+        Find average overlap with all sessions referenced to every other session, plotted as a line plot.
 
         """
         n_sessions = len(self.meta["session_types"])
         overlaps = nan_array((len(self.meta["mice"]), n_sessions, n_sessions))
 
         for i, mouse in enumerate(self.meta["mice"]):
-            overlaps[i] = self.find_percent_overlap(mouse, show_plot=False)
+            overlaps[i] = self.get_all_overlaps_mouse(mouse, show_plot=False)
 
         if show_plot:
             fig, ax = plt.subplots()
@@ -955,6 +986,10 @@ class RecentReversal:
         return overlaps
 
     def get_all_overlaps_mouse(self, mouse, show_plot=True):
+        """
+        Get overlaps for all session pairs for one mouse and plot as a matrix.
+
+        """
         n_sessions = len(self.meta["session_types"])
         r, c = np.indices((n_sessions, n_sessions))
         overlaps = np.ones((n_sessions, n_sessions))
@@ -973,6 +1008,10 @@ class RecentReversal:
         return overlaps
 
     def find_overlap_session_pair(self, mouse, session_pair):
+        """
+        Find overlap in one mouse for a session pair.
+
+        """
         overlap_map = self.get_cellreg_mappings(
             mouse, session_pair, detected="first_day"
         )[0]
@@ -985,6 +1024,10 @@ class RecentReversal:
         return overlap
 
     def find_overlaps(self, session_pair):
+        """
+        Find all overlaps for a session pair.
+
+        """
         overlaps = {
             mouse: self.find_overlap_session_pair(mouse, session_pair)
             for mouse in self.meta["mice"]
@@ -1044,6 +1087,11 @@ class RecentReversal:
 
     ############################ PLACE FIELD FUNCTIONS ############################
     def get_placefields(self, mouse, session_type, nbins=125, velocity_threshold=7):
+        """
+        Get place fields from one mouse for a session. If the specified parameters do not match the ones
+        from PlaceFields(), recompute them.
+
+        """
         session = self.data[mouse][session_type]
         existing_pfs = session.spatial.data["placefields"]
         if (
@@ -1071,6 +1119,10 @@ class RecentReversal:
 
     def PV_corr_pair(self, mouse, session_pair, nbins=125,
                 velocity_threshold=7, corr='spearman'):
+        """
+        Compute the PV correlation from a mouse for a session pair.
+
+        """
         # Get placefields, make new ones if the specified parameters
         # don't match existing ones.
         pfs = {session:
@@ -1104,6 +1156,11 @@ class RecentReversal:
                                 nbins=125, velocity_threshold=7,
                                 corr='spearman', colors=['darkgray', 'steelblue'],
                                 show_plot=True):
+        """
+        Plot PV correlation values from one mouse from two session pairs. This allows comparison of
+        PV correlations e.g. between Training3 x Training4 and Training4 x Reversal.
+
+        """
         if nbins != 125:
             warnings.warn('Plotting reward site only works for nbins==125', UserWarning)
 
@@ -1143,6 +1200,18 @@ class RecentReversal:
                                 nbins=125, velocity_threshold=0,
                                 corr='spearman',
                                 colors=['darkgray', 'steelblue']):
+        """
+        Compare mean PV correlations of the bins around reward sites for two session pairs.
+
+        :parameters
+        ---
+        mouse: str
+            Mouse name.
+
+        spatial_bin_window: int
+            Number of spatial bins to take the mean across, flanking the reward site.
+
+        """
         session_pairs = [('Goals3', 'Goals4'), ('Goals4', 'Reversal')]
         goals = {session: self.data[mouse][session].behavior.data['rewarded_ports']
                  for session in ['Goals4', 'Reversal']}
@@ -1180,6 +1249,13 @@ class RecentReversal:
         return rhos
 
     def plot_reward_PV_corrs_v1(self, mice):
+        """
+        Plot PV correlations around reward locations for each mouse, split into session pairs for each subplot,
+        then into currently/never rewarded within each subplot.
+
+        :param mice:
+        :return:
+        """
         session_pairs = [('Goals3', 'Goals4'), ('Goals4', 'Reversal')]
         rhos = {mouse: self.compare_reward_PV_corrs(mouse) for mouse in mice}
         xlabels = [f'{session_pair[0].replace("Goals", "Training")} x {session_pair[1].replace("Goals", "Training")}'
@@ -1206,6 +1282,13 @@ class RecentReversal:
         return rhos
 
     def plot_reward_PV_corrs_v2(self, mice):
+        """
+        Plot PV correlations around reward locations for each mouse, split into currently/never/previously
+        rewarded for each subplot, then into session pair  within each subplot.
+
+        :param mice:
+        :return:
+        """
         session_pairs = [('Goals3', 'Goals4'), ('Goals4', 'Reversal')]
         rhos = {mouse: self.compare_reward_PV_corrs(mouse) for mouse in mice}
         xticks = [f'{session_pair[0].replace("Goals", "Training")} x \n{session_pair[1].replace("Goals", "Training")}'
@@ -1233,34 +1316,54 @@ class RecentReversal:
         return rhos
 
     def get_split_trial_pfs(self, mouse, session_type, nbins=125, show_plot=False):
-            session = self.data[mouse][session_type]
-            existing_rasters = session.spatial.data["rasters"]
+        """
+        Make place fields separately for even and odd trials.
 
-            if existing_rasters.shape[2] == nbins:
-                rasters = existing_rasters
-            else:
-                rasters = session.spatial_activity_by_trial(nbins)[0]
+        :return
+        ---
+        split_pfs: dict
+            Place fields separated into even versus odd trials.
 
-            split_rasters = {"even": rasters[:, ::2, :], "odd": rasters[:, 1::2, :]}
-            split_pfs = {
-                trial_type: np.nanmean(split_rasters[trial_type], axis=1)
-                for trial_type in ["even", "odd"]
-            }
+        """
+        session = self.data[mouse][session_type]
+        existing_rasters = session.spatial.data["rasters"]
 
-            if show_plot:
-                order = np.argsort(np.argmax(split_pfs["even"], axis=1))
-                fig, axs = plt.subplots(1, 2, figsize=(8, 6))
-                for ax, trial_type in zip(axs, ["even", "odd"]):
-                    ax.imshow(split_pfs[trial_type][order], aspect="auto")
-                    ax.set_title(f"{trial_type} trials")
-                fig.supylabel("Neuron #")
-                fig.supxlabel("Linearized position")
+        if existing_rasters.shape[2] == nbins:
+            rasters = existing_rasters
+        else:
+            rasters = session.spatial_activity_by_trial(nbins)[0]
+
+        split_rasters = {"even": rasters[:, ::2, :], "odd": rasters[:, 1::2, :]}
+        split_pfs = {
+            trial_type: np.nanmean(split_rasters[trial_type], axis=1)
+            for trial_type in ["even", "odd"]
+        }
+
+        if show_plot:
+            order = np.argsort(np.argmax(split_pfs["even"], axis=1))
+            fig, axs = plt.subplots(1, 2, figsize=(8, 6))
+            for ax, trial_type in zip(axs, ["even", "odd"]):
+                ax.imshow(split_pfs[trial_type][order], aspect="auto")
+                ax.set_title(f"{trial_type} trials")
+            fig.supylabel("Neuron #")
+            fig.supxlabel("Linearized position")
 
             return split_pfs
 
     def session_pairwise_PV_corr_efficient(
         self, mouse, nbins=125, corr="spearman", show_plot=False
     ):
+        """
+        Efficiently compute PV correlations for each session pair for a single mouse.
+        THe efficiency comes from loading the place fields all at once for one mouse as opposed to
+        loading the data for each mouse for each session pair each time.
+
+        :param mouse:
+        :param nbins:
+        :param corr:
+        :param show_plot:
+        :return:
+        """
         pfs = {}
         for session in self.meta["session_types"]:
             pfs[session] = self.get_placefields(mouse, session, nbins=nbins)
@@ -1307,6 +1410,15 @@ class RecentReversal:
         return corr_matrix
 
     def PV_corr_all_mice(self, nbins=30):
+        """
+        Plot the average PV correlations for each session pair for every mouse.
+        Takes a long time.
+
+        :return
+        ---
+        corr_matrices: dict
+            PV correlation matrix for each mouse.
+        """
         corr_matrices = dict()
         for mouse in self.meta["mice"]:
             print(f"Analyzing {mouse}...")
@@ -1317,6 +1429,10 @@ class RecentReversal:
         return corr_matrices
 
     def plot_corr_matrix(self, corr_matrices, ages_to_plot=ages):
+        """
+        Plot correlation matrices, averaged across all mice.
+
+        """
         fig, axs = plt.subplots(1, len(ages_to_plot), figsize=(12, 5))
         both_ages = True
         try:
@@ -1356,6 +1472,11 @@ class RecentReversal:
         cbar.set_label("Mean PV correlation [Spearman rho]")
 
     def get_diagonals(self, corr_matrices):
+        """
+        Get diagonals for each mouse's PV correlation matrix. This is useful for looking at correlation
+        coefficients for each day lag.
+
+        """
         data = {}
         for mouse in self.meta["mice"]:
             data[mouse] = {
@@ -1374,6 +1495,10 @@ class RecentReversal:
         return data
 
     def compare_PV_corrs(self, corr_matrices):
+        """
+        For each day lag, plot PV correlations of young versus aged mice.
+
+        """
         data = self.get_diagonals(corr_matrices)
         n_sessions = len(self.meta["session_types"])
         PV_corrs = {}
@@ -1388,10 +1513,11 @@ class RecentReversal:
 
         fig, axs = plt.subplots(1, n_sessions, sharey=True, figsize=(10.5, 5))
         for day_lag, ax in enumerate(axs):
-            self.scatter_box(PV_corrs[day_lag], ax=ax, fig=fig)
+            self.scatter_box(PV_corrs[day_lag], ax=ax)
             ax.set_title(f"{day_lag} days apart")
         axs[0].set_ylabel("PV correlation [Spearman rho]")
         fig.tight_layout()
+        self.set_age_legend(fig)
 
         return PV_corrs
 
@@ -1404,8 +1530,7 @@ class RecentReversal:
         For the specified sessions, plot the PV correlation coefficient between those sessions,
         separated by age.
 
-        :param session_types:
-        :return:
+        
         """
         data = {session_pair: dict() for session_pair in session_pairs}
         for session_pair in session_pairs:
@@ -1460,7 +1585,33 @@ class RecentReversal:
 
         return data, df
 
+    def get_drift_rate(self, corr_matrices):
+        """
+        Compute the drift rate for each mouse by doing a spearman correlation of PV correlation
+        coefficient against day lag.
+
+        :return
+        ---
+        drift_rates: dict
+            Drift rate for each mouse.
+        """
+        data = self.get_diagonals(corr_matrices)
+        drift_rates = {
+            mouse: spearmanr(
+                data[mouse]["day_lag"], data[mouse]["coefs"], nan_policy="omit"
+            )[0]
+            for mouse in self.meta["mice"]
+        }
+
+        return drift_rates
+
     def compare_drift_rates(self, corr_matrices, show_plot=True):
+        """
+
+        :param corr_matrices:
+        :param show_plot:
+        :return:
+        """
         drift_rates = self.get_drift_rate(corr_matrices)
         drift_rate_ages = {
             age: [drift_rates[mouse] for mouse in self.meta["grouped_mice"][age]]
@@ -1474,16 +1625,7 @@ class RecentReversal:
 
         return drift_rate_ages
 
-    def get_drift_rate(self, corr_matrices):
-        data = self.get_diagonals(corr_matrices)
-        drift_rates = {
-            mouse: spearmanr(
-                data[mouse]["day_lag"], data[mouse]["coefs"], nan_policy="omit"
-            )[0]
-            for mouse in self.meta["mice"]
-        }
 
-        return drift_rates
 
     def plot_one_drift_rate(self, mouse, corr_matrices):
         data = self.get_diagonals(corr_matrices)
@@ -1976,7 +2118,7 @@ class RecentReversal:
             show_plot=False,
         )
 
-        performance = self.plot_best_performance(
+        performance = self.plot_performance_session_type(
             "Reversal",
             window=None,
             performance_metric=performance_metric,
@@ -3900,7 +4042,7 @@ class RecentReversal:
                 session="Reversal", mouse=self.meta["grouped_mice"][age]
             )
 
-        performance = self.plot_best_performance(
+        performance = self.plot_performance_session_type(
             "Reversal",
             window=None,
             performance_metric=performance_metric,

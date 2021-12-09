@@ -12,6 +12,21 @@ mouse_csv = r"Z:\Will\mouse_info.csv"
 class Database:
     def __init__(self, directory=r"D:", db_name="database.sqlite",
                  from_scratch=False):
+        """
+        Save a SQL database containing metadata for every mouse recorded, including mouse ID/name, datetime, and file paths
+        to important data.
+
+        :parameters
+        ---
+        directory: str
+            Directory to save to.
+
+        db_name: str
+            File name of the SQL database.
+
+        from_scratch: bool
+            Whether to recompile the database from scratch or not.
+        """
         self.directory = directory
         self.db_path = os.path.join(self.directory, db_name)
 
