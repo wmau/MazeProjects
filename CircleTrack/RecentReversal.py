@@ -1530,7 +1530,7 @@ class RecentReversal:
         For the specified sessions, plot the PV correlation coefficient between those sessions,
         separated by age.
 
-        
+
         """
         data = {session_pair: dict() for session_pair in session_pairs}
         for session_pair in session_pairs:
@@ -1607,6 +1607,7 @@ class RecentReversal:
 
     def compare_drift_rates(self, corr_matrices, show_plot=True):
         """
+        Plot the drift rates of aged versus young mice.
 
         :param corr_matrices:
         :param show_plot:
@@ -1625,17 +1626,30 @@ class RecentReversal:
 
         return drift_rate_ages
 
-
-
     def plot_one_drift_rate(self, mouse, corr_matrices):
+        """
+        Plot the PV correlations against day lag for one mouse.
+
+        """
         data = self.get_diagonals(corr_matrices)
         fig, ax = plt.subplots()
         ax.scatter(data[mouse]["day_lag"], data[mouse]["coefs"])
-        ax.set_xticks(range(len(self.meta["session_types"]["lineartrack"])))
+        ax.set_xticks(range(len(self.meta["session_types"])))
         ax.set_xlabel("Day lag")
         ax.set_ylabel("PV correlation [rho]")
 
     def corr_PV_corr_to_behavior(self, corr_matrices, performance_metric):
+        """
+        Correlate the PV correlation of Training4 x Reversal against the performance metric during Reversal.
+
+        :returns
+        ---
+        r: float
+            Spearman correlation coefficient.
+
+        p: float
+            P-value of the correlation.
+        """
         performance = self.plot_all_behavior(
             window=None,
             strides=None,
@@ -1678,6 +1692,10 @@ class RecentReversal:
         return r, pvalue
 
     def map_placefields(self, mouse, session_types, neurons_from_session1=None):
+        """
+        Register place fields across sessions.
+
+        """
         # Get neurons and cell registration mappings.
         trimmed_map, global_idx = self.get_cellreg_mappings(
             mouse, session_types, neurons_from_session1=neurons_from_session1
@@ -1702,6 +1720,10 @@ class RecentReversal:
     def correlate_fields(
         self, mouse, session_types, neurons_from_session1=None, show_histogram=True
     ):
+        """
+        Correlate place fields for one mouse across sessions.
+
+        """
         fields_mapped = self.map_placefields(
             mouse, session_types, neurons_from_session1=neurons_from_session1
         )
@@ -1721,9 +1743,13 @@ class RecentReversal:
     def plot_aged_pf_correlation(
         self, session_types=("Goals3", "Goals4"), show_plot=True, place_cells=True
     ):
+        """
+        Make violin plots for place field correlations for each mouse. Note that this is NOT a PV correlation.
+        Instead of correlating N-length vectors for each spatial bin, correlate the fields for each cell.
 
+        """
         r_values = dict()
-        for age in ["young", "aged"]:
+        for age in ages:
             r_values[age] = []
             for mouse in self.meta["grouped_mice"][age]:
                 if place_cells:
@@ -1749,7 +1775,7 @@ class RecentReversal:
             fig, axs = plt.subplots(1, 2, sharey=True)
             fig.subplots_adjust(wspace=0)
 
-            for ax, age in zip(axs, ["young", "aged"]):
+            for ax, age in zip(axs, ages):
                 ax.violinplot(r_values[age], showmedians=True, showextrema=False)
                 ax.set_title(age)
                 ax.set_xticks(np.arange(1, len(self.meta["grouped_mice"][age]) + 1))
@@ -1766,6 +1792,10 @@ class RecentReversal:
         session_pair2=("Goals4", "Reversal"),
         place_cells=False,
     ):
+        """
+        Make boxplots for place field correlations across one session pair and compare it with another session pair.
+
+        """
         r_values = dict()
         for session_pair in [session_pair1, session_pair2]:
             r_values[session_pair] = self.plot_aged_pf_correlation(
@@ -1892,8 +1922,23 @@ class RecentReversal:
         aggregate_mode="median",
         place_cells_only=False,
     ):
+        """
+        Plot spatial info for each mouse during one session, aggregated across cells.
+
+        :parameters
+        ---
+        session_type: str
+            Session type.
+
+        aggregate_mode: str
+            "median", "mean", or "all".
+
+        """
         if ax is None:
             fig, ax = plt.subplots()
+            ylabel = 'Spatial info [z]'
+        else:
+            ylabel = ''
 
         if aggregate_mode not in ["median", "mean", "all"]:
             raise ValueError("Invalid aggregate_mode")
@@ -1917,30 +1962,25 @@ class RecentReversal:
                     spatial_info[age].extend(SIs)
 
         if show_plot:
-            box = ax.boxplot(
-                [spatial_info[age] for age in ages],
-                patch_artist=True,
-                widths=0.75,
-                zorder=0,
-                showfliers=False,
-            )
-
-            for patch, med, color in zip(box["boxes"], box["medians"], age_colors):
-                patch.set_facecolor(color)
-                med.set(color="k")
-
-            for i, (age, age_color) in enumerate(zip(ages, age_colors)):
-                ax.scatter(
-                    jitter_x(np.ones_like(spatial_info[age]) * (i + 1)),
-                    spatial_info[age],
-                    color=age_color,
-                    zorder=1,
-                    edgecolor="k",
-                )
+            self.scatter_box(spatial_info, ax=ax)
+            ax.set_ylabel(ylabel)
 
         return spatial_info
 
     def plot_all_spatial_info(self, aggregate_mode="median", place_cells_only=False):
+        """
+        Plot aggregated spatial information for each mouse and each session.
+
+        :returns
+        ---
+        spatial_info: dict
+            Aggregated spatial information for each session, split into young and aged.
+
+        df: DataFrame
+            Aggregated spatial information in the form of a dataframe, but also with
+            animal identifiers.
+
+        """
         fig, axs = plt.subplots(1, len(self.meta["session_types"]), sharey=True)
         fig.subplots_adjust(wspace=0)
 
@@ -1995,6 +2035,20 @@ class RecentReversal:
         return spatial_infos, df
 
     def spatial_info_anova(self, aggregate_mode="median", place_cells_only=False):
+        """
+        Do ANOVA on the spatial information.
+
+        :returns
+        ---
+        anova_df: DataFrame
+            Results of the ANOVA.
+
+        pairwise_df: DataFrame
+            Results of the post-hoc pairwise t-tests.
+
+        df: DataFrame
+            Spatial information.
+        """
         spatial_infos, df = self.plot_all_spatial_info(
             aggregate_mode=aggregate_mode, place_cells_only=place_cells_only
         )
@@ -2013,6 +2067,20 @@ class RecentReversal:
         return anova_df, pairwise_df, df
 
     def plot_reliabilities(self, session_type, field_threshold=0.15, show_plot=True):
+        """
+        Plot the reliability for each mouse, split by young and aged. Reliability is defined as the fraction
+        of trials where there was a calcium transient inside the field. The field is every spatial bin where
+        there is average activity that exceeds the field_threshold * the peak average activity.
+
+        :parameters
+        ---
+        session_type: str
+            Session type.
+
+        field_threshold: float
+            Percentage of the peak activity that defines the extent of the field.
+
+        """
         reliabilities = {}
         for age in ages:
             reliabilities[age] = []
@@ -2053,6 +2121,20 @@ class RecentReversal:
     def plot_reliabilities_comparisons(
         self, session_types=("Goals4", "Reversal"), field_threshold=0.5, show_plot=True
     ):
+        """
+        Plot the distribution of reliabilities for each cell in each mouse, separated by age, for the two sessions.
+        Also plot the mean field reliability separated by age for the two sessions.
+
+        :returns
+        ---
+        reliabilities: dict
+            Place field reliabilities, first split by session, then by age. Each entry is a list containing
+            all the reliabilities for each cell.
+
+        mean_reliabilities: dict
+            Same as above, but just the mean across cells for each mouse.
+
+        """
         reliabilities = {}
         mean_reliabilities = {session_type: dict() for session_type in session_types}
         for session_type in session_types:
@@ -2112,6 +2194,17 @@ class RecentReversal:
         session_types=("Goals4", "Reversal"),
         field_threshold=0.15,
     ):
+        """
+        It's in the name. Spearman correlation.
+
+        :returns
+        ---
+        r: float
+            Correlation coefficient.
+
+        pvalue: float
+            P-value of correlation.
+        """
         reliabilities, mean_reliabilities = self.plot_reliabilities_comparisons(
             session_types=session_types,
             field_threshold=field_threshold,
@@ -2134,12 +2227,12 @@ class RecentReversal:
         ax.set_ylabel(ylabel[performance_metric])
         ax.set_xlabel("Place field reliability")
 
-        pvalue = spearmanr(
+        r, pvalue = spearmanr(
             np.hstack([mean_reliabilities["Reversal"][age] for age in ages]),
             np.hstack([performance[age] for age in ages]),
-        ).pvalue
+        )
 
-        return pvalue
+        return r, pvalue
 
     def snakeplot_placefields(
         self,
@@ -2152,6 +2245,21 @@ class RecentReversal:
         show_plot=True,
         show_reward_sites=True,
     ):
+        """
+        Make snake plot of place fields for all neurons in one mouse for a session. Also plots the reward location
+        in green.
+
+        :returns
+        ---
+        ax: AxesSubplot handle
+
+        placefields: array
+            Normalized and sorted placefields.
+
+        order: array
+            Indices of the neurons, sorted by the order in which they appear on the track.
+
+        """
         spatial_bin_size_radians = self.data[mouse][session].spatial.meta['bin_size']
         behavior_data = self.data[mouse][session].behavior
 
@@ -2190,6 +2298,10 @@ class RecentReversal:
         return ax, placefields, order
 
     def snakeplot_matched_placefields(self, mouse, session_types, sort_by_session=None):
+        """
+        Snake plot place fields that have been matched across sessions.
+
+        """
         trimmed_map = self.get_cellreg_mappings(
             mouse, session_types, detected="everyday", neurons_from_session1=None
         )[0]
@@ -2330,6 +2442,16 @@ class RecentReversal:
         color="cornflowerblue",
         predictors="cells",
     ):
+        """
+        Plot the spatial decoding error for a mouse. Train on Goals3 and test on Goals4.
+        Additionally, train on Goals4 and test on Reversal.
+
+        :returns
+        ---
+        decoding_errors: dict
+            "Training" and "Reversal" correspond to the two session pairs listed above, respectively.
+            Each entry is a list of errors (in spatial bins) across time bins.
+        """
 
         decoding_errors = dict()
         for key, session_pair in zip(
@@ -2366,6 +2488,21 @@ class RecentReversal:
         error_time_bin_size=300 * 15,
         predictors="cells",
     ):
+        """
+        Do ANOVA on spatial decoding error across ages.
+
+        :returns
+        ---
+        decoding_errors: dict
+            Average decoding error, binned by time for each mouse, then separated by ages, and then by session.
+
+        df: DataFrame
+            Same as decoding_errors, but as a DataFrame and with animal identifiers.
+
+        anova_dfs: DataFrame
+            Results from ANOVAs, calculated separately for each age.
+
+        """
         fig, axs = plt.subplots(2, 2, sharex=True, sharey=True)
         fig.subplots_adjust(wspace=0)
         sessions = ["Training", "Reversal"]
@@ -2484,6 +2621,10 @@ class RecentReversal:
     def all_session_pairs_decoding_error(
         self, mouse, classifier=BernoulliNB(), n_spatial_bins=36
     ):
+        """
+        For each session pair, compute the mean decoding error and plot it in a matrix.
+        
+        """
         shape = (5, 5)
         decoding_error_matrix = nan_array(shape)
         for i, session_pair in enumerate(product(self.meta["session_types"], repeat=2)):
