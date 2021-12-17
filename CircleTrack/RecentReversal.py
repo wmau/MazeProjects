@@ -5537,29 +5537,9 @@ class RecentReversal:
             spatial_bin_size_radians = spatial_bin_size_radians[0]
 
         # Convert port locations to bin #.
-        bins = [
-            spatial_bin(
-                position,
-                np.zeros_like(position),
-                bin_size_cm=spatial_bin_size_radians,
-                show_plot=False,
-                one_dim=True,
-            )[-1]
-            for position in lin_positions
-        ]
-        port_locations_bins = [
-            np.where(
-                spatial_bin(
-                    port,
-                    np.zeros_like(port),
-                    bin_size_cm=spatial_bin_size_radians,
-                    show_plot=False,
-                    one_dim=True,
-                    bins=bins_,
-                )[0]
-            )[0]
-            for port, bins_ in zip(port_locations, bins)
-        ]
+        port_locations_bins = [find_reward_spatial_bins(lin_position, port_location,
+                                                       spatial_bin_size_radians)[0]
+                               for lin_position, port_location in zip(lin_positions, port_locations)]
 
         # Sort the fields.
         order = np.argsort(np.argmax(ensemble_fields[sort_by], axis=1))
