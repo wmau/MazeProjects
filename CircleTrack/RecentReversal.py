@@ -5511,6 +5511,7 @@ class RecentReversal:
             reference_session=reference_session,
         )[0]
 
+        # If no subset was specified, take all the ensembles.
         if subset is None:
             subset = range(len(ensemble_fields[0]))
 
@@ -5546,11 +5547,12 @@ class RecentReversal:
 
         # Plot.
         if show_plot:
+            session_labels = [session.replace('Goals', 'Training') for session in session_types]
             if axs is None:
                 fig, axs = plt.subplots(1, len(session_types), figsize=(10, 7))
 
             for ax, fields, ports, session in zip(
-                axs, ensemble_fields, port_locations_bins, session_types
+                axs, ensemble_fields, port_locations_bins, session_labels
             ):
                 ax.imshow(fields[order][subset])
                 ax.axis("tight")
@@ -5560,8 +5562,15 @@ class RecentReversal:
 
                 for port in ports:
                     ax.axvline(port, c="r", alpha=0.5)
+            fig.suptitle(mouse)
 
         return ensemble_fields
+
+    def snakeplot_matched_fading_ensembles(self):
+        for mouse in self.meta['mice']:
+            ensemble_trends = self.find_activity_trends(mouse, 'Reversal')[0]
+            self.snakeplot_matched_ensembles(mouse, ('Goals4', 'Reversal'), sort_by=1,
+                                             reference_session=1, subset=ensemble_trends['decreasing'])
 
     def boxplot_assembly_SI(self, session_type):
         SI = {
