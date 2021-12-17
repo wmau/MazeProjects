@@ -4382,7 +4382,7 @@ class RecentReversal:
 
         session_types: tuple OR str
             Two session names (e.g. (Goals1, Goals2)) OR one session name twice ('Reversal','Reversal') in which case
-            split_session must be True.
+            split_session must be True. Order matters.
 
         absolute_value: boolean
             Whether to take the absolute value of the pattern similarity matrix. Otherwise, try negating the pattern
@@ -4447,7 +4447,7 @@ class RecentReversal:
         # the non-negated pattern.
         similarities[1] = -similarities[0]
 
-        # Now, for each assembly, find its best match (inds.e., argmax the cosine similarity).
+        # Now, for each assembly, find its best match (i.e., argmax the cosine similarity).
         n_assemblies_first_session = rearranged_patterns[0].shape[1]
         assembly_matches = np.zeros(
             n_assemblies_first_session, dtype=int
@@ -5306,7 +5306,45 @@ class RecentReversal:
         spatial_bin_size_radians=0.05,
         running_only=False,
         std_thresh=2,
+        reference_session=0,
     ):
+        """
+        Maps two sessions' ensembles.
+
+        :parameters
+        ---
+        mouse: str
+            Mouse name.
+
+        session_pair: tuple
+            Pair of sessions you want to register ensembles from.
+
+        spatial_bin_size_radians: don't change this
+
+        running_only: bool
+            Whether to only consider bins where the mouse is running.
+
+        std_thresh: int
+            Number of standard deviations above the mean for an ensemble to be considered active.
+
+        reference_session: 0 or 1
+            Which session of the pair to be considered the reference. match_ensembles() will take ensembles
+            from the first session and register them to the second session. Do this functionally by flipping the
+            tuple values.
+
+        :returns
+        ---
+        ensemble_fields: list of (n_ensembles, spatial_bins) ensemble spatial fields.
+        ensemble_field_data: list of PlaceFields class instances.
+
+        """
+        if reference_session == 0:
+            pass
+        elif reference_session == 1:
+            session_pair = (session_pair[1], session_pair[0])
+        else:
+            raise ValueError(f'Invalid value for reference_session: {reference_session}')
+
         # Register the ensembles.
         registered_ensembles = self.match_ensembles(mouse, session_pair)
 
@@ -5327,6 +5365,13 @@ class RecentReversal:
             ],
         ]
         ensemble_fields[1][registered_ensembles["poor_matches"]] = np.nan
+
+        # If the second session was the reference, we had swapped the positions of the sessions prior
+        # to registration, so the outputs of match_ensembles() don't correspond to the original session_pair
+        # input. Swap the list items so they do.
+        if reference_session == 1:
+            ensemble_fields[0], ensemble_fields[1] = ensemble_fields[1], ensemble_fields[0]
+            ensemble_field_data[0], ensemble_field_data[1] = ensemble_field_data[1], ensemble_field_data[1]
 
         return ensemble_fields, ensemble_field_data
 
@@ -5456,14 +5501,18 @@ class RecentReversal:
         spatial_bin_size_radians=0.05,
         show_plot=True,
         axs=None,
-        sort_on=0,
+        sort_by=0,
         subset=None,
-        subset_on=0,
+        reference_session=0,
     ):
         # Map the ensembles to each other.
         ensemble_fields = self.map_ensemble_fields(
-            mouse, session_types, spatial_bin_size_radians=spatial_bin_size_radians
+            mouse, session_types, spatial_bin_size_radians=spatial_bin_size_radians,
+            reference_session=reference_session,
         )[0]
+
+        if subset is None:
+            subset = range(len(ensemble_fields[0]))
 
         # Get linearized position and port locations.
         lin_positions = [
@@ -5513,7 +5562,7 @@ class RecentReversal:
         ]
 
         # Sort the fields.
-        order = np.argsort(np.argmax(ensemble_fields[sort_on], axis=1))
+        order = np.argsort(np.argmax(ensemble_fields[sort_by], axis=1))
 
         # Plot.
         if show_plot:
@@ -5523,7 +5572,7 @@ class RecentReversal:
             for ax, fields, ports, session in zip(
                 axs, ensemble_fields, port_locations_bins, session_types
             ):
-                ax.imshow(fields[order])
+                ax.imshow(fields[order][subset])
                 ax.axis("tight")
                 ax.set_ylabel("Ensemble #")
                 ax.set_xlabel("Location")
