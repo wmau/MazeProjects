@@ -33,9 +33,7 @@ from sklearn.model_selection import (
 from sklearn.svm import LinearSVC
 from sklearn.linear_model import SGDClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.inspection import permutation_importance
-from sklearn.feature_selection import SequentialFeatureSelector, RFECV
+from sklearn.feature_selection import RFECV
 import numpy as np
 import os
 from CircleTrack.plotting import (
@@ -45,7 +43,7 @@ from CircleTrack.plotting import (
     plot_port_activations,
     color_boxes,
 )
-from CaImaging.Assemblies import preprocess_multiple_sessions, lapsed_activation
+from CaImaging.Assemblies import find_assemblies, preprocess_multiple_sessions, lapsed_activation
 from CircleTrack.Assemblies import (
     plot_assembly,
     spatial_bin_ensemble_activations,
@@ -53,7 +51,6 @@ from CircleTrack.Assemblies import (
     find_memberships,
     plot_pattern,
 )
-from pylab import cm
 import xarray as xr
 import pymannkendall as mk
 from sklearn.metrics.pairwise import cosine_similarity
@@ -72,8 +69,6 @@ from CircleTrack.utils import (
 )
 import pandas as pd
 import pingouin as pg
-from joblib import Parallel, delayed
-import multiprocessing as mp
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -956,6 +951,64 @@ class RecentReversal:
         self.scatter_box(trials, "Trials")
 
         return trials
+
+    ############################ ACTIVITY FUNCTIONS ##########################
+
+    def percent_fading_neurons(self, mouse, session_type, x='trial',
+                               z_threshold=None, x_bin_size=6, alpha=0.01):
+        trends, binned_activations, slopes = \
+            self.find_activity_trends(mouse, session_type, x=x,
+                                      z_threshold=z_threshold, x_bin_size=x_bin_size,
+                                      alpha=alpha, data_type='S')
+        n_fading = len(trends['decreasing'])
+        n_neurons = self.data[mouse][session_type].imaging['n_neurons']
+        p_fading = n_fading / n_neurons
+
+        return p_fading
+
+    def plot_percent_fading_neurons(self, session_pair=('Goals4','Reversal'), x='trial',
+                                    z_threshold=None, x_bin_size=6, alpha=0.01):
+        """
+        Plot the percentage of fading neurons on two sessions, usually Goals4 and Reversal.
+
+        :return
+        ---
+        df: DataFrame
+            'age': 'young' or 'aged'
+            'mouse': mouse name
+            'p_fading': percentage of fading neurons
+            'session': session
+        """
+        data = {'age': [],
+                'mouse': [],
+                'p_fading': [],
+                'session': []}
+        for mouse in self.meta['mice']:
+            age = 'aged' if mouse in aged_mice else 'young'
+
+            for session in session_pair:
+                p_fading = self.percent_fading_neurons(mouse, session, x=x, z_threshold=z_threshold,
+                                                       x_bin_size=x_bin_size, alpha=alpha)
+
+                for key, value in zip(data.keys(), [age, mouse, p_fading, session]):
+                    data[key].append(value)
+
+        df = pd.DataFrame(data)
+
+        fig, axs = plt.subplots(1,2, sharey=True)
+        fig.subplots_adjust(wspace=0)
+        for age, color, ax in zip(ages, age_colors, axs):
+            plot_me = [df['p_fading'].loc[np.logical_and(df['session']==session, df['age']==age)]
+                       for session in session_pair]
+
+            ax.plot(session_pair, plot_me, c=color)
+            ax.set_title(age)
+            ax.tick_params(axis='x', labelrotation=45)
+            ax.set_xlim([-0.5, 1.5])
+        axs[0].set_ylabel('Percent fading neurons')
+        fig.tight_layout()
+
+        return df
 
     ############################ OVERLAP FUNCTIONS ############################
 
@@ -2623,7 +2676,7 @@ class RecentReversal:
     ):
         """
         For each session pair, compute the mean decoding error and plot it in a matrix.
-        
+
         """
         shape = (5, 5)
         decoding_error_matrix = nan_array(shape)
@@ -2932,6 +2985,39 @@ class RecentReversal:
                 )
 
         return p_promiscuous_neurons
+
+    def split_session_ensembles(self, mouse, session_type, overwrite_ensembles=False):
+        """
+        Split a session in half then look for ensembles separately for each half.
+
+        """
+        session = self.data[mouse][session_type]
+        if session.meta['local']:
+            folder = get_equivalent_local_path(session.meta['folder'])
+        else:
+            folder = session.meta['folder']
+        fpath = os.path.join(folder, 'SplitSessionEnsembles.pkl')
+
+        try:
+            if overwrite_ensembles:
+                print(f"Overwriting {fpath}")
+                raise Exception
+            with open(fpath, "rb") as file:
+                split_ensembles = pkl.load(file)
+        except:
+            processed_for_assembly_detection = preprocess_multiple_sessions(
+                [session.imaging["S"]], smooth_factor=5, use_bool=True
+            )
+            split_data = np.array_split(processed_for_assembly_detection["processed"][0], 2, axis=1)
+
+            split_ensembles = {half: find_assemblies(data, nullhyp='circ', plot=False,
+                                                     n_shuffles=500)
+                               for half, data in zip(['first', 'second'], split_data)}
+
+            with open(fpath, "wb") as file:
+                pkl.dump(split_ensembles, file)
+
+        return split_ensembles
 
     def find_ensemble_port_locations(self, mouse, session_type):
         session = self.data[mouse][session_type]
@@ -3987,6 +4073,7 @@ class RecentReversal:
                     ["Trendless \nensembles", "Fading \nensembles"], rotation=45
                 )
                 i += 1
+                ax.set_title(age)
 
         axs[0].set_ylabel("Proportion fading cells")
         fig.tight_layout()
@@ -4282,7 +4369,7 @@ class RecentReversal:
                     ]:
                         ax.axvline(x=port, color="y")
 
-    def match_ensembles(self, mouse, session_types: tuple):
+    def match_ensembles(self, mouse, session_types, split_session=False):
         """
         Match assemblies across two sessions. For each assembly in the first session of the session_types tuple,
         find the corresponding assembly in the second session by taking the highest cosine similarity between two
@@ -4293,8 +4380,9 @@ class RecentReversal:
         mouse: str
             Mouse name.
 
-        session_types: tuple
-            Two session names (e.g. (Goals1, Goals2))
+        session_types: tuple OR str
+            Two session names (e.g. (Goals1, Goals2)) OR one session name twice ('Reversal','Reversal') in which case
+            split_session must be True.
 
         absolute_value: boolean
             Whether to take the absolute value of the pattern similarity matrix. Otherwise, try negating the pattern
@@ -4302,26 +4390,43 @@ class RecentReversal:
 
         :returns
         ---
-        similarities: {assembly_pair: cosine similarity} dict
-            Cosine similarities for every assembly combination.
+        registered_ensembles: dict
+            {'similarities': (n_ensembles_s1, n_ensembles_s2) array of cosine similarities.
+             'matches': (n_ensembles_s1,) array of indices in s2 that s1 ensembles map onto.
+             'best_similarities': (n_ensembles_s1,) array of highest cosine similarities for each ensemble in s1.
+             'patterns': list of (n_ensembles, n_neurons) weights for each session.
+             'matched_patterns': (2, n_ensembles_s1, n_neurons) array of pateerns. Each index in axis 1 corresponds to
+                the matched patterns across the two sessions.
+             'matched_activations': list of (n_ensembles, t) arrays of activations for each session.
+             'z_similarities': (2, n_ensembles_s1, n_ensembles_s2) array of z-scored similarities across a row.
+             'poor_matches': (n_ensembles_s1,) array of booleans indicating whether an ensemble was a poor match,
+                defined as an ensemble not having a single z-scored cosine similarity above 2.58. 
 
         """
-        # Get the patterns from each session, matching the neurons.
-        rearranged_patterns = self.rearrange_neurons(
-            mouse, session_types, data_type="patterns", detected="everyday"
-        )
+        if split_session:
+            split_ensembles = self.split_session_ensembles(mouse, session_types[0])
+            rearranged_patterns = [split_ensembles[half]['patterns'] for half in ['first', 'second']]
+            patterns_iterable = rearranged_patterns.copy()
 
-        # To keep consistent with its other outputs, self.rearrange_neurons()
-        # gives a neuron x something (in this use case, assemblies) matrix.
-        # We actually want to iterate over assemblies here, so transpose.
-        patterns_iterable = [
-            session_patterns.T for session_patterns in rearranged_patterns
-        ]
+            activations = [
+                split_ensembles[half]["activations"] for half in ['first', 'second']
+            ]
+        else:
+            # Get the patterns from each session, matching the neurons.
+            rearranged_patterns = self.rearrange_neurons(
+                mouse, session_types, data_type="patterns", detected="everyday"
+            )
 
-        activations = [
-            self.data[mouse][session].assemblies["activations"]
-            for session in session_types
-        ]
+            # To keep consistent with its other outputs, self.rearrange_neurons()
+            # gives a neuron x something (in this use case, assemblies) matrix.
+            # We actually want to iterate over assemblies here, so transpose.
+            patterns_iterable = [
+                session_patterns.T for session_patterns in rearranged_patterns
+            ]
+            activations = [
+                self.data[mouse][session].assemblies["activations"]
+                for session in session_types
+            ]
 
         # For each assembly in session 1, compute its cosine similarity
         # to every other assembly in session 2. Place this in a matrix.
@@ -4452,11 +4557,15 @@ class RecentReversal:
 
         return fig
 
-    def plot_matched_ensembles(self, mouse, session_types: tuple, subset="all"):
-        registered_patterns = self.match_ensembles(mouse, session_types)
-        registered_spike_times = self.rearrange_neurons(
-            mouse, session_types, "spike_times", detected="everyday"
-        )
+    def plot_matched_ensembles(self, mouse, session_types: tuple, subset="all", split_session=False):
+        registered_patterns = self.match_ensembles(mouse, session_types, split_session=split_session)
+
+        if split_session:
+            registered_spike_times = np.array_split(self.data[mouse][session_types[0]].imaging['S'], 2, axis=1)
+        else:
+            registered_spike_times = self.rearrange_neurons(
+                mouse, session_types, "spike_times", detected="everyday"
+            )
 
         if subset == "all":
             subset = range(registered_patterns["matched_patterns"].shape[1])
@@ -5193,26 +5302,22 @@ class RecentReversal:
     def map_ensemble_fields(
         self,
         mouse,
-        session_types,
+        session_pair,
         spatial_bin_size_radians=0.05,
         running_only=False,
         std_thresh=2,
     ):
         # Register the ensembles.
-        registered_ensembles = self.match_ensembles(mouse, session_types)
+        registered_ensembles = self.match_ensembles(mouse, session_pair)
 
-        ensemble_field_data = []
-        for i, session in enumerate(session_types):
-            ensemble_field_data.append(
-                self.make_ensemble_fields(
-                    mouse,
-                    session,
-                    spatial_bin_size_radians=spatial_bin_size_radians,
-                    running_only=running_only,
-                    std_thresh=std_thresh,
-                    get_zSI=False,
-                )
-            )
+        ensemble_field_data = [self.make_ensemble_fields(
+            mouse,
+            session,
+            spatial_bin_size_radians=spatial_bin_size_radians,
+            running_only=running_only,
+            std_thresh=std_thresh,
+            get_zSI=False,
+        ) for i, session in enumerate(session_pair)]
 
         # Get the spatial fields of the ensembles and reorder them.
         ensemble_fields = [
@@ -5352,6 +5457,8 @@ class RecentReversal:
         show_plot=True,
         axs=None,
         sort_on=0,
+        subset=None,
+        subset_on=0,
     ):
         # Map the ensembles to each other.
         ensemble_fields = self.map_ensemble_fields(
