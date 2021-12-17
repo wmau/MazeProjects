@@ -52,7 +52,7 @@ aged_mice = [
 ages = ["young", "aged"]
 PSAM_groups = ["vehicle", "PSEM"]
 age_colors = ["cornflowerblue", "r"]
-PSAM_colors = ['silver', 'coral']
+PSAM_colors = ['silver', 'mediumpurple']
 
 class PSAM:
     def __init__(self, mice):
