@@ -4369,7 +4369,7 @@ class RecentReversal:
                     ]:
                         ax.axvline(x=port, color="y")
 
-    def match_ensembles(self, mouse, session_types, split_session=False):
+    def match_ensembles(self, mouse, session_types):
         """
         Match assemblies across two sessions. For each assembly in the first session of the session_types tuple,
         find the corresponding assembly in the second session by taking the highest cosine similarity between two
@@ -4380,7 +4380,7 @@ class RecentReversal:
         mouse: str
             Mouse name.
 
-        session_types: tuple OR str
+        session_types: tuple
             Two session names (e.g. (Goals1, Goals2)) OR one session name twice ('Reversal','Reversal') in which case
             split_session must be True. Order matters.
 
@@ -4403,6 +4403,7 @@ class RecentReversal:
                 defined as an ensemble not having a single z-scored cosine similarity above 2.58. 
 
         """
+        split_session = True if len(np.unique(session_types)) == 1 else False
         if split_session:
             split_ensembles = self.split_session_ensembles(mouse, session_types[0])
             rearranged_patterns = [split_ensembles[half]['patterns'] for half in ['first', 'second']]
@@ -4515,21 +4516,32 @@ class RecentReversal:
         similarity,
         session_types,
         poor_match=False,
+        split_session=False,
+        frames=None,
     ):
         order = np.argsort(np.abs(registered_patterns[0]))
 
         fig = plt.figure(figsize=(19.2, 10.7))
         spec = gridspec.GridSpec(ncols=2, nrows=2, figure=fig)
         assembly_axs = [fig.add_subplot(spec[i, 0]) for i in range(2)]
+
+        if split_session:
+            assembly_axs[0].get_shared_x_axes().join(*assembly_axs)
+            assembly_axs[0].get_shared_y_axes().join(*assembly_axs)
+
         pattern_ax = fig.add_subplot(spec[:, 1])
 
-        for ax, activation, spike_times, pattern, c, session in zip(
+        if frames is None:
+            frames = [range(len(activation)) for activation in registered_activations]
+
+        for ax, activation, spike_times, pattern, c, session, frames_ in zip(
             assembly_axs,
             registered_activations,
             registered_spike_times,
             registered_patterns,
             ["k", "r"],
             session_types,
+            frames,
         ):
             # Plot assembly activation.
             plot_assembly(
@@ -4539,6 +4551,7 @@ class RecentReversal:
                 sort_by_contribution=False,
                 order=order,
                 ax=ax,
+                frames=frames_,
             )
             ax.set_title(session)
 
@@ -4557,18 +4570,30 @@ class RecentReversal:
 
         return fig
 
-    def plot_matched_ensembles(self, mouse, session_types: tuple, subset="all", split_session=False):
-        registered_patterns = self.match_ensembles(mouse, session_types, split_session=split_session)
+    def plot_matched_ensembles(self, mouse, session_types: tuple, subset="all"):
+        split_session = True if len(np.unique(session_types)) == 1 else False
+        registered_ensembles = self.match_ensembles(mouse, session_types)
 
         if split_session:
-            registered_spike_times = np.array_split(self.data[mouse][session_types[0]].imaging['S'], 2, axis=1)
+            session = self.data[mouse][session_types[0]]
+            spike_times = session.imaging['spike_times']
+            n_frames = len(session.imaging['frames'])
+
+            halfway = np.round(n_frames / 2)
+
+            # Split the spike times down the midpoint of the session.
+            registered_spike_times = [[spikes[spikes < halfway] for spikes in spike_times]]
+            registered_spike_times.append([spikes[spikes >= halfway] for spikes in spike_times])
+
+            frames = [np.arange(halfway), np.arange(halfway, n_frames)]
         else:
             registered_spike_times = self.rearrange_neurons(
                 mouse, session_types, "spike_times", detected="everyday"
             )
+            frames = None
 
         if subset == "all":
-            subset = range(registered_patterns["matched_patterns"].shape[1])
+            subset = range(registered_ensembles["matched_patterns"].shape[1])
 
         for (
             s1_activation,
@@ -4578,12 +4603,12 @@ class RecentReversal:
             poor_match,
             similarity,
         ) in zip(
-            registered_patterns["matched_activations"][0][subset],
-            registered_patterns["matched_activations"][1][subset],
-            registered_patterns["matched_patterns"][0][subset],
-            registered_patterns["matched_patterns"][1][subset],
-            registered_patterns["poor_matches"][subset],
-            registered_patterns["best_similarities"][subset],
+            registered_ensembles["matched_activations"][0][subset],
+            registered_ensembles["matched_activations"][1][subset],
+            registered_ensembles["matched_patterns"][0][subset],
+            registered_ensembles["matched_patterns"][1][subset],
+            registered_ensembles["poor_matches"][subset],
+            registered_ensembles["best_similarities"][subset],
         ):
             self.plot_matched_ensemble(
                 (s1_activation, s2_activation),
@@ -4592,6 +4617,8 @@ class RecentReversal:
                 similarity,
                 session_types,
                 poor_match=poor_match,
+                split_session=split_session,
+                frames=frames,
             )
 
     def spiralplot_matched_ensembles(

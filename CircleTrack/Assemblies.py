@@ -10,7 +10,7 @@ from CaImaging.Behavior import spatial_bin
 
 
 def plot_assembly(
-    pattern, activation, spike_times, sort_by_contribution=True, order=None, ax=None
+    pattern, activation, spike_times, sort_by_contribution=True, order=None, ax=None, frames=None,
 ):
     """
     Plots single assemblies. This plot contains the activation profile (activation over time)
@@ -61,7 +61,10 @@ def plot_assembly(
     else:
         sorted_spike_times = spike_times
 
-    activation_ax.plot(activation, linewidth=2, color='r')
+    if frames is None:
+        frames = range(len(activation))
+
+    activation_ax.plot(frames, activation, linewidth=2, color='r')
     activation_ax.set_ylabel("Activation strength [a.u.]", color='r', fontsize=22)
     activation_ax.set_xlabel("Frame #", fontsize=22)
     spikes_ax.eventplot(sorted_spike_times, color="k", alpha=0.2)
