@@ -172,7 +172,7 @@ class RecentReversal:
                             pkl.dump(session.assemblies["fields"], file)
 
     ############################ HELPER FUNCIONS ############################
-    def rearrange_neurons(self, mouse, session_types, data_type, detected="everyday"):
+    def rearrange_neurons(self, mouse, selected_sessions, data_type, detected="everyday"):
         """
         Rearrange neural activity matrix to have the same neuron in
         each row.
@@ -192,17 +192,17 @@ class RecentReversal:
         """
         sessions = self.data[mouse]
         trimmed_map = self.get_cellreg_mappings(
-            mouse, session_types, detected=detected, neurons_from_session1=None
+            mouse, selected_sessions, detected=detected, neurons_from_session1=None
         )[0]
 
         # Get calcium activity from each session for this mouse.
         if data_type == "patterns":
             activity_list = [
-                sessions[session].assemblies[data_type].T for session in session_types
+                sessions[session].assemblies[data_type].T for session in selected_sessions
             ]
         else:
             activity_list = [
-                sessions[session].imaging[data_type] for session in session_types
+                sessions[session].imaging[data_type] for session in selected_sessions
             ]
 
         # Rearrange the neurons.
@@ -4570,12 +4570,30 @@ class RecentReversal:
 
         return fig
 
-    def plot_matched_ensembles(self, mouse, session_types: tuple, subset="all"):
-        split_session = True if len(np.unique(session_types)) == 1 else False
-        registered_ensembles = self.match_ensembles(mouse, session_types)
+    def plot_matched_ensembles(self, mouse, session_pair: tuple, subset="all"):
+        """
+        Plot ensemble activations of two matched ensembles across time for two sessions.
+        Can also plot two matched ensembles across session halves.
+
+        :parameters
+        ---
+        mouse: str
+            Mouse name.
+
+        session_pair: tuple
+            Two sessions you want to match. If the two sessions are the same, the function matches the split-session
+            ensembles instead.
+
+        subset: str or array-like
+            If 'all', plots all ensembles. Otherwise, plots the ensemble numbers from the first value in the session_pair tuple.
+
+
+        """
+        split_session = True if len(np.unique(session_pair)) == 1 else False
+        registered_ensembles = self.match_ensembles(mouse, session_pair)
 
         if split_session:
-            session = self.data[mouse][session_types[0]]
+            session = self.data[mouse][session_pair[0]]
             spike_times = session.imaging['spike_times']
             n_frames = len(session.imaging['frames'])
 
@@ -4588,7 +4606,7 @@ class RecentReversal:
             frames = [np.arange(halfway), np.arange(halfway, n_frames)]
         else:
             registered_spike_times = self.rearrange_neurons(
-                mouse, session_types, "spike_times", detected="everyday"
+                mouse, session_pair, "spike_times", detected="everyday"
             )
             frames = None
 
@@ -4615,17 +4633,17 @@ class RecentReversal:
                 (s1_pattern, s2_pattern),
                 registered_spike_times,
                 similarity,
-                session_types,
+                session_pair,
                 poor_match=poor_match,
                 split_session=split_session,
                 frames=frames,
             )
 
     def spiralplot_matched_ensembles(
-        self, mouse, session_types: tuple, thresh=1, subset="all"
+        self, mouse, session_pair: tuple, thresh=1, subset="all"
     ):
         # Match assemblies.
-        registered_ensembles = self.match_ensembles(mouse, session_types)
+        registered_ensembles = self.match_ensembles(mouse, session_pair)
 
         if subset == "all":
             subset = range((len(registered_ensembles["matches"])))
@@ -4633,11 +4651,11 @@ class RecentReversal:
         # Get timestamps and linearized position.
         t = [
             self.data[mouse][session].behavior.data["df"]["t"]
-            for session in session_types
+            for session in session_pair
         ]
         linearized_position = [
             self.data[mouse][session].behavior.data["df"]["lin_position"]
-            for session in session_types
+            for session in session_pair
         ]
 
         # For each assembly in session 1 and its corresponding match in session 2, get their activation profiles.
@@ -4648,7 +4666,7 @@ class RecentReversal:
                 activations = [
                     self.data[mouse][session_type].assemblies["activations"][assembly]
                     for session_type, assembly in zip(
-                        session_types, [s1_assembly, s2_assembly]
+                        session_pair, [s1_assembly, s2_assembly]
                     )
                 ]
 
@@ -4662,7 +4680,7 @@ class RecentReversal:
                     t,
                     linearized_position,
                     [s1_assembly, s2_assembly],
-                    session_types,
+                        session_pair,
                 ):
 
                     # Find activation threshold and plot location of assembly activation.
