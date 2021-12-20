@@ -4369,7 +4369,7 @@ class RecentReversal:
                     ]:
                         ax.axvline(x=port, color="y")
 
-    def match_ensembles(self, mouse, session_types):
+    def match_ensembles(self, mouse, session_pair):
         """
         Match assemblies across two sessions. For each assembly in the first session of the session_types tuple,
         find the corresponding assembly in the second session by taking the highest cosine similarity between two
@@ -4380,7 +4380,7 @@ class RecentReversal:
         mouse: str
             Mouse name.
 
-        session_types: tuple
+        session_pair: tuple
             Two session names (e.g. (Goals1, Goals2)) OR one session name twice ('Reversal','Reversal') in which case
             split_session must be True. Order matters.
 
@@ -4403,11 +4403,12 @@ class RecentReversal:
                 defined as an ensemble not having a single z-scored cosine similarity above 2.58. 
 
         """
-        split_session = True if len(np.unique(session_types)) == 1 else False
+        split_session = True if len(np.unique(session_pair)) == 1 else False
         if split_session:
-            split_ensembles = self.split_session_ensembles(mouse, session_types[0])
+            split_ensembles = self.split_session_ensembles(mouse, session_pair[0])
             rearranged_patterns = [split_ensembles[half]['patterns'] for half in ['first', 'second']]
             patterns_iterable = rearranged_patterns.copy()
+            rearranged_patterns = [pattern.T for pattern in rearranged_patterns]
 
             activations = [
                 split_ensembles[half]["activations"] for half in ['first', 'second']
@@ -4415,7 +4416,7 @@ class RecentReversal:
         else:
             # Get the patterns from each session, matching the neurons.
             rearranged_patterns = self.rearrange_neurons(
-                mouse, session_types, data_type="patterns", detected="everyday"
+                mouse, session_pair, data_type="patterns", detected="everyday"
             )
 
             # To keep consistent with its other outputs, self.rearrange_neurons()
@@ -4426,7 +4427,7 @@ class RecentReversal:
             ]
             activations = [
                 self.data[mouse][session].assemblies["activations"]
-                for session in session_types
+                for session in session_pair
             ]
 
         # For each assembly in session 1, compute its cosine similarity
@@ -4721,7 +4722,7 @@ class RecentReversal:
         :return:
         """
         similarities = dict()
-        for age in ["young", "aged"]:
+        for age in ages:
             similarities[age] = []
             for mouse in self.meta["grouped_mice"][age]:
                 registered_ensembles = self.match_ensembles(mouse, session_pair)
@@ -4753,7 +4754,7 @@ class RecentReversal:
         self, session_pair1=("Goals3", "Goals4"), session_pair2=("Goals4", "Reversal")
     ):
         percent_matches = dict()
-        for age in ["young", "aged"]:
+        for age in ages:
             percent_matches[age] = dict()
 
             for session_pair in [session_pair1, session_pair2]:
@@ -4769,7 +4770,7 @@ class RecentReversal:
         fig, axs = plt.subplots(1, 2)
         fig.subplots_adjust(wspace=0)
 
-        for age, ax, color in zip(["young", "aged"], axs, age_colors):
+        for age, ax, color in zip(ages, axs, age_colors):
             boxes = ax.boxplot(percent_matches[age].values(), patch_artist=True)
             for patch, med in zip(boxes["boxes"], boxes["medians"]):
                 patch.set_facecolor(color)
@@ -4939,9 +4940,9 @@ class RecentReversal:
             age: nan_array(
                 (len(self.meta["grouped_mice"][age]), n_sessions, n_sessions)
             )
-            for age in ["young", "aged"]
+            for age in ages
         }
-        for age in ["young", "aged"]:
+        for age in ages:
             for i, mouse in tqdm(enumerate(self.meta["grouped_mice"][age])):
                 best_similarities[age][i] = self.pattern_similarity_matrix(mouse)[1]
 
