@@ -3265,7 +3265,7 @@ class RecentReversal:
     def fit_lick_decoder(
         self,
         mouse: str,
-        session_types: tuple,
+        session_pair: tuple,
         classifier=RandomForestClassifier,
         licks_to_include="all",
         lag=0,
@@ -3275,34 +3275,50 @@ class RecentReversal:
         do_zscore=True,
         **classifier_kwargs,
     ):
-        if data_type == 'ensembles':
-            registered_ensembles = self.match_ensembles(mouse, session_types)
-            registered_data = registered_ensembles['matched_activations']
-        elif data_type in ['S', 'S_binary']:
-            registered_data = self.rearrange_neurons(mouse, session_types, data_type)
+        split_session = len(np.unique(session_pair)) == 1
+        # If the specified sessions in session_pair are the same, split the session in half
+        # and train on the first half.
+        if split_session:
+            if data_type == 'ensembles':
+                raise NotImplementedError(f'{data_type} not yet implemented.')
+            elif data_type in ['S', 'S_binary']:
+                registered_data = np.array_split(self.data[mouse][session_pair[0]].imaging[data_type], 2, axis=1)
+            else:
+                raise NotImplementedError(f'{data_type} not implemented.')
 
-            if data_type == 'S_binary':
-                registered_data = [np.asarray(data, dtype=int) for data in registered_data]
+        # Otherwise, register the sessions' neurons or ensembles.
         else:
-            raise NotImplementedError(f'{data_type} not implemented.')
+            if data_type == 'ensembles':
+                registered_ensembles = self.match_ensembles(mouse, session_pair)
+                registered_data = registered_ensembles['matched_activations']
+            elif data_type in ['S', 'S_binary']:
+                registered_data = self.rearrange_neurons(mouse, session_pair, data_type)
+            else:
+                raise NotImplementedError(f'{data_type} not implemented.')
+
+        if data_type == 'S_binary':
+            registered_data = [np.asarray(data, dtype=int) for data in registered_data]
 
         if exclude is None:
             exclude = np.zeros((registered_data[0].shape[0],), dtype=bool)
         if data_type == 'ensembles':
             exclude = np.logical_or(exclude, registered_ensembles["poor_matches"])
 
+        if split_session:
+            lick_data = np.array_split(np.asarray(self.data[mouse][session_pair[0]].behavior.data['df']['lick_port']), 2)
+        else:
+            lick_data = [np.asarray(self.data[mouse][session_type].behavior.data['df']['lick_port'])
+                         for session_type in session_pair]
+
         # Gather predictor neural data.
         X = dict()
         y = dict()
-        for session_activations, t, session_type in zip(
+        for session_activations, licks, t, session_type in zip(
             registered_data,
+            lick_data,
             ["train", "test"],
-            session_types,
+            session_pair,
         ):
-            licks = np.asarray(
-                self.data[mouse][session_type].behavior.data["df"]["lick_port"]
-            )
-
             activations = session_activations[~exclude].T
             if do_zscore:
                 activations = zscore(activations, axis=1)
