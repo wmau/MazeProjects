@@ -24,7 +24,7 @@ from scipy.spatial import distance
 from CircleTrack.SessionCollation import MultiAnimal
 from CircleTrack.MiniscopeFunctions import CalciumSession
 from CaImaging.CellReg import rearrange_neurons, trim_map, scrollplot_footprints
-from sklearn.naive_bayes import BernoulliNB, GaussianNB
+from sklearn.naive_bayes import BernoulliNB, GaussianNB, MultinomialNB
 from sklearn.model_selection import (
     StratifiedKFold,
     StratifiedShuffleSplit,
@@ -3278,8 +3278,11 @@ class RecentReversal:
         if data_type == 'ensembles':
             registered_ensembles = self.match_ensembles(mouse, session_types)
             registered_data = registered_ensembles['matched_activations']
-        elif data_type in ['S', 'S_binary', 'spike_times']:
+        elif data_type in ['S', 'S_binary']:
             registered_data = self.rearrange_neurons(mouse, session_types, data_type)
+
+            if data_type == 'S_binary':
+                registered_data = [np.asarray(data, dtype=int) for data in registered_data]
         else:
             raise NotImplementedError(f'{data_type} not implemented.')
 
@@ -3338,10 +3341,39 @@ class RecentReversal:
             X[t] = activations
             y[t] = licks
 
-        classifier = classifier(**classifier_kwargs)
-        classifier.fit(X["train"], y["train"])
+        clf = classifier(**classifier_kwargs)
+        clf.fit(X["train"], y["train"])
 
-        return X, y, classifier
+        return X, y, clf
+
+    def compare_lick_decoding_accuracy(self, session_pairs=(('Goals3', 'Goals4'), ('Goals4', 'Reversal')),
+                                       classifier=RandomForestClassifier, data_type='S', do_zscore=False, licks_to_include='first',
+                                       **classifier_kwargs):
+        """
+        Compare the lick decoding accuracy of classifiers trained and tested on different sessions.
+
+        :parameters
+        ---
+        session_pairs: tuple of tuples ((session1, session2), (session3, session4))
+            Train on session 1 and session 3, test on session 2 and session 4.
+
+
+        """
+        accuracy = dict()
+        for age in ages:
+            accuracy[age] = dict()
+            for session_pair in session_pairs:
+                accuracy[age][session_pair] = []
+
+                for mouse in self.meta['grouped_mice'][age]:
+                    X, y, clf = self.fit_lick_decoder(mouse, session_pair, classifier=classifier,
+                                                             data_type=data_type, do_zscore=do_zscore,
+                                                             licks_to_include=licks_to_include,
+                                                             **classifier_kwargs)
+
+                    accuracy[age][session_pair].append(clf.score(X['test'], y['test']))
+
+        return accuracy
 
     def registered_ensemble_lick_decoder(
         self,
