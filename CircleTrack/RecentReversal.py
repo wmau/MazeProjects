@@ -31,6 +31,7 @@ from sklearn.model_selection import (
     permutation_test_score,
 )
 from sklearn.svm import LinearSVC
+from sklearn.impute import SimpleImputer
 from sklearn.linear_model import SGDClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import RFECV
@@ -1935,7 +1936,7 @@ class RecentReversal:
                     ]
                 )
             else:
-                raise ValueError("mode must be holoviews, png, or scroll")
+                raise NotImplementedError("mode must be holoviews, png, or scroll")
             daily_rasters.append(rasters)
 
         if mode == "png":
@@ -1994,7 +1995,7 @@ class RecentReversal:
             ylabel = ''
 
         if aggregate_mode not in ["median", "mean", "all"]:
-            raise ValueError("Invalid aggregate_mode")
+            raise NotImplementedError("Invalid aggregate_mode")
 
         spatial_info = dict()
         for age in ages:
@@ -2435,7 +2436,7 @@ class RecentReversal:
                     zscore(np.squeeze(session_activations[~poor_matches]), axis=0)
                 )
         else:
-            raise ValueError
+            raise NotImplementedError
         fps = 15
 
         running = [
@@ -3261,7 +3262,7 @@ class RecentReversal:
             axs[0].set_ylabel("Proportion")
             axs[1].legend()
 
-    def fit_ensemble_lick_decoder(
+    def fit_lick_decoder(
         self,
         mouse: str,
         session_types: tuple,
@@ -3269,25 +3270,43 @@ class RecentReversal:
         licks_to_include="all",
         lag=0,
         fps=15,
+        data_type='ensembles',
+        exclude=None,
+        do_zscore=True,
         **classifier_kwargs,
     ):
-        registered_ensembles = self.match_ensembles(mouse, session_types)
-        poor_matches = registered_ensembles["poor_matches"]
+        if data_type == 'ensembles':
+            registered_ensembles = self.match_ensembles(mouse, session_types)
+            registered_data = registered_ensembles['matched_activations']
+        elif data_type in ['S', 'S_binary', 'spike_times']:
+            registered_data = self.rearrange_neurons(mouse, session_types, data_type)
+        else:
+            raise NotImplementedError(f'{data_type} not implemented.')
+
+        if exclude is None:
+            exclude = np.zeros((registered_data[0].shape[0],), dtype=bool)
+        if data_type == 'ensembles':
+            exclude = np.logical_or(exclude, registered_ensembles["poor_matches"])
 
         # Gather predictor neural data.
         X = dict()
         y = dict()
         for session_activations, t, session_type in zip(
-            registered_ensembles["matched_activations"],
+            registered_data,
             ["train", "test"],
             session_types,
         ):
             licks = np.asarray(
                 self.data[mouse][session_type].behavior.data["df"]["lick_port"]
             )
-            activations = zscore(
-                np.squeeze(session_activations[~poor_matches]), axis=0
-            ).T
+
+            activations = session_activations[~exclude].T
+            if do_zscore:
+                activations = zscore(activations, axis=1)
+
+            imp = SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=0)
+            activations = imp.fit_transform(activations)
+
             lick_bool = licks > -1
             lick_inds = np.where(lick_bool)[0]
             activation_inds = lick_inds + np.round(lag * fps).astype(int)
@@ -3336,12 +3355,13 @@ class RecentReversal:
         ax=None,
         **classifier_kwargs,
     ):
-        X, y, classifier = self.fit_ensemble_lick_decoder(
+        X, y, classifier = self.fit_lick_decoder(
             mouse,
             session_types,
             classifier=classifier,
             lag=lag,
             licks_to_include=licks_to_include,
+            data_type='ensembles',
             **classifier_kwargs,
         )
 
@@ -3372,12 +3392,13 @@ class RecentReversal:
         axs=None,
         **classifier_kwargs,
     ):
-        X, y, classifier = self.fit_ensemble_lick_decoder(
+        X, y, classifier = self.fit_lick_decoder(
             mouse,
             session_types,
             classifier=classifier,
             lag=lag,
             licks_to_include=licks_to_include,
+            data_type='ensembles',
             **classifier_kwargs,
         )
 
@@ -3689,7 +3710,7 @@ class RecentReversal:
         elif data_type in ["C", "S", "S_binary"]:
             neural_data = session.imaging[data_type]
         else:
-            raise ValueError
+            raise NotImplementedError
 
         if inds is None:
             inds = range(neural_data.shape[0])
@@ -3871,7 +3892,7 @@ class RecentReversal:
         elif data_type == "S_binary":
             data = session.imaging[data_type]
         else:
-            raise ValueError
+            raise NotImplementedError
         slopes = nan_array(data.shape[0])
         if subset is not None:
             data = data[subset]
@@ -3911,7 +3932,7 @@ class RecentReversal:
                 binned_activations[:, i] = np.nanmean(activations[:, in_trial], axis=1)
 
         else:
-            raise ValueError("Invalid value for x.")
+            raise NotImplementedError("Invalid value for x.")
 
         # Group cells/ensembles into either increasing, decreasing, or no trend in occurrence rate.
         trends = {
@@ -5389,7 +5410,7 @@ class RecentReversal:
         elif reference_session == 1:
             session_pair = (session_pair[1], session_pair[0])
         else:
-            raise ValueError(f'Invalid value for reference_session: {reference_session}')
+            raise NotImplementedError(f'Invalid value for reference_session: {reference_session}')
 
         # Register the ensembles.
         registered_ensembles = self.match_ensembles(mouse, session_pair)
