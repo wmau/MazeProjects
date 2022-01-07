@@ -1579,13 +1579,16 @@ class RecentReversal:
         self,
         corr_matrices,
         session_pairs=(("Goals3", "Goals4"), ("Goals4", "Reversal")),
+        ages_to_plot=ages,
     ):
         """
         For the specified sessions, plot the PV correlation coefficient between those sessions,
         separated by age.
 
-
         """
+        if type(ages_to_plot) is str:
+            ages_to_plot = [ages_to_plot]
+
         data = {session_pair: dict() for session_pair in session_pairs}
         for session_pair in session_pairs:
             s1 = self.meta["session_types"].index(session_pair[0])
@@ -1596,8 +1599,13 @@ class RecentReversal:
                 for mouse in self.meta["grouped_mice"][age]:
                     data[session_pair][age].append(corr_matrices[mouse][s1, s2])
 
-        fig, axs = plt.subplots(1, len(session_pairs), sharey=True)
-        for ax, age, color in zip(axs, ages, age_colors):
+        n_plots = len(ages_to_plot)
+        fig, axs = plt.subplots(1, n_plots, sharey=True, figsize=(4*n_plots, 4))
+        if n_plots == 1:
+            axs = [axs]
+
+        colors = [age_colors[ages.index(age)] for age in ages_to_plot]
+        for ax, age, color in zip(axs, ages_to_plot, colors):
             boxes = ax.boxplot(
                 [data[session_pair][age] for session_pair in session_pairs],
                 widths=0.75,
@@ -1962,6 +1970,7 @@ class RecentReversal:
                 rasters=daily_rasters,
                 tuning_curves=placefields,
                 titles=ax_titles,
+                figsize=(4,10)
             )
 
         # List of dictionaries. Do HoloMap(daily_rasters) in a
@@ -3389,6 +3398,16 @@ class RecentReversal:
 
                     accuracy[age][session_pair].append(clf.score(X['test'], y['test']))
 
+        fig, axs = plt.subplots(1,2, sharey=True)
+        labels = [f'Train: {session_pair[0]}\nTest: {session_pair[1]}'
+                  for session_pair in session_pairs]
+        for ax, age, color in zip(axs, ages, age_colors):
+            ax.plot(labels, [accuracy[age][session_pair] for session_pair in session_pairs], color=color)
+            ax.set_title(age)
+            ax.set_xlim([-.5, 1.5])
+            plt.setp(ax.get_xticklabels(), rotation=45)
+        axs[0].set_ylabel('Lick decoder accuracy')
+
         return accuracy
 
     def registered_ensemble_lick_decoder(
@@ -4235,6 +4254,7 @@ class RecentReversal:
         data_type="ensembles",
         alpha=0.01,
         show_plot=True,
+        ages_to_plot=None,
     ):
         ensemble_trends, ensemble_counts = self.plot_assembly_trends(
             x=x,
@@ -4258,9 +4278,21 @@ class RecentReversal:
                 "increasing": "rising",
                 "no trend": "flat",
             }
-            fig, axs = plt.subplots(1, 2, figsize=(7, 6), sharey=True)
+            if ages_to_plot is None:
+                ages_to_plot = ages
+                plot_colors = age_colors
+            else:
+                plot_colors = [age_colors[ages.index(ages_to_plot)]]
+            if type(ages_to_plot) is str:
+                ages_to_plot = [ages_to_plot]
+
+            n_ages_to_plot = len(ages_to_plot)
+            fig, axs = plt.subplots(1, n_ages_to_plot, figsize=(3.5 * n_ages_to_plot, 6),
+                                    sharey=True)
             fig.subplots_adjust(wspace=0)
-            for ax, age, color in zip(axs, ages, age_colors):
+            if n_ages_to_plot == 1:
+                axs = [axs]
+            for i, (ax, age, color) in enumerate(zip(axs, ages_to_plot, plot_colors)):
                 boxes = ax.boxplot(
                     p_changing_split_by_age[age],
                     patch_artist=True,
@@ -4284,7 +4316,7 @@ class RecentReversal:
                         markersize=10,
                     )
 
-                if age == "aged":
+                if i > 0:
                     ax.tick_params(labelleft=False)
                 else:
                     ax.set_ylabel("Proportion " + ylabel[trend] + " ensembles")
