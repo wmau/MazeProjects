@@ -2942,6 +2942,57 @@ class RecentReversal:
 
         return n_ensembles, df
 
+    def plot_ensembles_by_trial(self, mouse, session_type, bin_size=None,
+                                running_only=False):
+        session = self.data[mouse][session_type]
+        behavior_df = session.behavior.data['df']
+        lin_position = np.asarray(behavior_df['lin_position'])
+
+        if running_only:
+            running = session.spatial.data['running']
+        else:
+            running = np.ones_like(session.spatial.data['running'], dtype=bool)
+
+        filler = np.zeros_like(lin_position)
+        activations = session.assemblies['activations']
+
+        if bin_size is None:
+            bin_size = session.meta['spatial_bin_size']
+
+        bin_edges = spatial_bin(
+            lin_position,
+            filler,
+            bin_size_cm=bin_size,
+            nbins=None,
+            one_dim=True
+        )[1]
+
+        fields = nan_array(
+            (
+                session.assemblies['significance'].nassemblies,
+                session.behavior.data['ntrials'],
+                len(bin_edges) - 1,
+            )
+        )
+
+        for trial_number in range(session.behavior.data['ntrials']):
+            time_bins = behavior_df['trials'] == trial_number
+            positions_this_trial = behavior_df.loc[time_bins, 'lin_position']
+            filler = np.zeros_like(positions_this_trial)
+            running_this_trial = running[time_bins]
+
+            for n, neuron in enumerate(activations):
+                activation = (neuron[time_bins] * running_this_trial)
+                fields[n, trial_number, :] = spatial_bin(
+                    positions_this_trial,
+                    filler,
+                    bins=bin_edges,
+                    one_dim=True,
+                    weights=activation,
+                )[0]
+
+        return fields
+
     def count_unique_ensemble_members(self, session_type, filter_method="sd", thresh=2):
         proportion_unique_members = {age: [] for age in ages}
         ensemble_size = {age: [] for age in ages}
