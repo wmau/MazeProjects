@@ -2942,8 +2942,8 @@ class RecentReversal:
 
         return n_ensembles, df
 
-    def plot_ensembles_by_trial(self, mouse, session_type, bin_size=None,
-                                running_only=False):
+    def make_ensemble_raster(self, mouse, session_type, bin_size=None,
+                             running_only=False):
         session = self.data[mouse][session_type]
         behavior_df = session.behavior.data['df']
         lin_position = np.asarray(behavior_df['lin_position'])
@@ -2967,7 +2967,7 @@ class RecentReversal:
             one_dim=True
         )[1]
 
-        fields = nan_array(
+        rasters = nan_array(
             (
                 session.assemblies['significance'].nassemblies,
                 session.behavior.data['ntrials'],
@@ -2983,7 +2983,7 @@ class RecentReversal:
 
             for n, neuron in enumerate(activations):
                 activation = (neuron[time_bins] * running_this_trial)
-                fields[n, trial_number, :] = spatial_bin(
+                rasters[n, trial_number, :] = spatial_bin(
                     positions_this_trial,
                     filler,
                     bins=bin_edges,
@@ -2991,7 +2991,29 @@ class RecentReversal:
                     weights=activation,
                 )[0]
 
-        return fields
+        session.assemblies['rasters'] = rasters
+        session.assemblies['meta'] = {'raster_bin_size': bin_size,
+                                      'running_only': running_only}
+
+    def plot_ensemble_raster(self, mouse, session_type, ensemble_number, bin_size=0.6,
+                             running_only=False):
+        session = self.data[mouse][session_type]
+        try:
+            assert (session.assemblies['meta']['raster_bin_size'] == bin_size
+                    and session.assemblies['meta']['running_only'] == running_only),\
+                "Stored raster parameters don't match inputs, recalculating rasters."
+
+        except:
+            self.make_ensemble_raster(mouse, session_type, bin_size=bin_size,
+                                      running_only=running_only)
+
+        rasters = session.assemblies['rasters']
+        fig, ax = plt.subplots()
+        ax.imshow(rasters[ensemble_number], cmap='viridis', interpolation='hanning')
+        ax.axis('tight')
+        ax.set_xlabel('Linearized position')
+        ax.set_ylabel('Lap #')
+        ax.set_xticklabels([])
 
     def count_unique_ensemble_members(self, session_type, filter_method="sd", thresh=2):
         proportion_unique_members = {age: [] for age in ages}
