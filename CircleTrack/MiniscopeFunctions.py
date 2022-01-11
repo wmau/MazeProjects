@@ -265,6 +265,9 @@ class CalciumSession:
         rasters = self.spatial.data["rasters"][neurons]
         if binary:
             rasters = rasters > 0
+            cmap = 'binary'
+        else:
+            cmap = 'gray'
 
         tuning_curves = self.spatial.data["placefields_normalized"][neurons]
 
@@ -282,7 +285,8 @@ class CalciumSession:
             tuning_curves=tuning_curves,
             port_bins=port_bins,
             rewarded=behavior_data['rewarded_ports'],
-            binary=binary,
+            cmap=cmap,
+            interpolation='none',
             titles=cell_number_labels,
             figsize=(5, 8),
         )

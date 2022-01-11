@@ -60,19 +60,18 @@ def plot_spiral(ScrollObj):
 
 
 def plot_raster(ScrollObj):
-    attrs = ["rasters", "tuning_curves", "binary", "port_bins",
-             "rewarded"]
+    attrs = ["rasters", "tuning_curves", "cmap", "port_bins",
+             "rewarded", "interpolation"]
     check_attrs(ScrollObj, attrs)
 
     axs = ScrollObj.ax
     rasters = ScrollObj.rasters
     tuning_curve = ScrollObj.tuning_curves
-    if ScrollObj.binary:
-        cmap = "gray"
-    else:
-        cmap = "binary"
+    cmap = ScrollObj.cmap
+    interpolation = ScrollObj.interpolation
+
     axs[0].set_title(ScrollObj.titles[ScrollObj.current_position])
-    axs[0].imshow(rasters[ScrollObj.current_position], cmap=cmap)
+    axs[0].imshow(rasters[ScrollObj.current_position], cmap=cmap, interpolation=interpolation)
     axs[1].plot(tuning_curve[ScrollObj.current_position])
     axs[0].set_ylabel('Laps')
     axs[1].set_xlabel('Linearized position')
@@ -82,9 +81,10 @@ def plot_raster(ScrollObj):
     port_colors = {True: 'g',
                    False: 'gray',
                    }
+    alphas = [0.8 if rewarded else 0.2 for rewarded in ScrollObj.rewarded]
     for ax in axs:
-        for port, rewarded in zip(ScrollObj.port_bins, ScrollObj.rewarded):
-            ax.axvline(x=port, color=port_colors[rewarded])
+        for port, rewarded, alpha in zip(ScrollObj.port_bins, ScrollObj.rewarded, alphas):
+            ax.axvline(x=port, color=port_colors[rewarded], alpha=alpha)
 
     ScrollObj.last_position = len(ScrollObj.rasters)
 

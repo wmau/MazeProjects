@@ -43,6 +43,7 @@ from CircleTrack.plotting import (
     highlight_column,
     plot_port_activations,
     color_boxes,
+    plot_raster
 )
 from CaImaging.Assemblies import find_assemblies, preprocess_multiple_sessions, lapsed_activation
 from CircleTrack.Assemblies import (
@@ -2994,6 +2995,7 @@ class RecentReversal:
         session.assemblies['rasters'] = rasters
         session.assemblies['meta'] = {'raster_bin_size': bin_size,
                                       'running_only': running_only}
+        session.assemblies['tuning_curves'] = np.mean(rasters, axis=1)
 
     def plot_ensemble_raster(self, mouse, session_type, ensemble_number, bin_size=0.6,
                              running_only=False):
@@ -3014,6 +3016,46 @@ class RecentReversal:
         ax.set_xlabel('Linearized position')
         ax.set_ylabel('Lap #')
         ax.set_xticklabels([])
+
+    def scrollplot_ensemble_rasters(self, mouse, session_type, bin_size=0.6,
+                                    running_only=False, subset=None):
+
+        session = self.data[mouse][session_type]
+        behavior_data = session.behavior.data
+        try:
+            assert (session.assemblies['meta']['raster_bin_size'] == bin_size
+                    and session.assemblies['meta']['running_only'] == running_only), \
+                "Stored raster parameters don't match inputs, recalculating rasters."
+
+        except:
+            self.make_ensemble_raster(mouse, session_type, bin_size=bin_size,
+                                      running_only=running_only)
+
+        if subset is None:
+            subset = range(session.assemblies['significance'].nassemblies)
+
+        rasters = session.assemblies['rasters'][subset]
+        tuning_curves = session.assemblies['tuning_curves'][subset]
+        port_bins = find_reward_spatial_bins(behavior_data['df']['lin_position'],
+                                             np.asarray(behavior_data['lin_ports']),
+                                             spatial_bin_size_radians=bin_size)[0]
+        rewarded = behavior_data['rewarded_ports']
+
+        ensemble_labels = [f'Ensemble #{n}' for n in subset]
+        self.raster_plot = ScrollPlot(
+            plot_raster,
+            nrows=2,
+            rasters=rasters,
+            tuning_curves=tuning_curves,
+            port_bins=port_bins,
+            rewarded=rewarded,
+            cmap='viridis',
+            interpolation='hanning',
+            titles=ensemble_labels,
+            figsize=(5,8),
+        )
+
+        return self.raster_plot
 
     def count_unique_ensemble_members(self, session_type, filter_method="sd", thresh=2):
         proportion_unique_members = {age: [] for age in ages}
