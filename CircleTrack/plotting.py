@@ -148,12 +148,12 @@ def plot_daily_rasters(ScrollObj):
 
     for day, (raster, tuning_curve, title) in enumerate(zip(rasters, tuning_curves, titles)):
         axs[day, 0].imshow(raster[ScrollObj.current_position], cmap='gray', aspect='auto')
-        axs[day, 0].set_ylabel('Laps')
-        axs[day, 0].set_title(title)
+        axs[day, 0].set_ylabel(f'{title} trials')
         axs[day, 1].plot(tuning_curve[ScrollObj.current_position])
-        axs[day, 1].set_ylabel('Transient\nrate')
+        axs[day, 1].set_ylabel('$Ca^{2+}$ event '
+                               'rate')
     fig = axs[0,0].figure
-    fig.supxlabel('Linearized position')
+    fig.supxlabel('Linearized position (cm)')
     fig.tight_layout()
 
     ymax = []
@@ -163,13 +163,20 @@ def plot_daily_rasters(ScrollObj):
         ymin.append(ylims[0])
         ymax.append(ylims[1])
 
-    for ax in axs:
+    for ax, raster in zip(axs, rasters):
         ax[1].set_ylim([min(ymin), max(ymax)])
+        [ax[1].spines[side].set_visible(False) for side in ['top', 'right']]
+        ax[0].set_yticks([1, raster.shape[1]-1])
+
+        for ax_ in ax:
+            ax_.set_xticks(ax_.get_xlim())
+            ax_.set_xticklabels([0, 220])
 
     ScrollObj.last_position = rasters[0].shape[0] - 1
 
 
-def spiral_plot(t, lin_position, markers, ax=None, marker_legend="Licks"):
+def spiral_plot(t, lin_position, markers, ax=None, marker_legend="Licks",
+                plot_legend=True):
     """
     Plot trajectory of the mouse over time in a circular (polar) axis. Theta
     corresponds to the animal's position while the radius (distance from center)
@@ -195,7 +202,9 @@ def spiral_plot(t, lin_position, markers, ax=None, marker_legend="Licks"):
         ax = fig.add_subplot(111, projection="polar")
     ax.plot(lin_position, t)
     ax.plot(lin_position[markers], t[markers], "ro", markersize=2)
-    ax.legend(["Trajectory", marker_legend])
+
+    if plot_legend:
+        ax.legend(["Trajectory", marker_legend])
 
     # Clean up axes.
     ax.spines["polar"].set_visible(False)

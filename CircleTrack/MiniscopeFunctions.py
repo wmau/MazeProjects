@@ -569,7 +569,8 @@ class CalciumSession:
             trials=trials,
         )
 
-    def plot_assembly(self, assembly_number, neurons=None, get_members=True, filter_method='sd', thresh=2):
+    def plot_assembly(self, assembly_number, neurons=None, get_members=True,
+                      filter_method='sd', thresh=2):
         pattern = self.assemblies["patterns"][assembly_number]
         n_neurons = len(pattern)
         activation = self.assemblies["activations"][assembly_number]
@@ -616,6 +617,12 @@ class CalciumSession:
             ax=assembly_ax,
         )
         activation_ax.set_title(f'Ensemble # {assembly_number}', fontsize=22)
+        [assembly_ax.spines[side].set_visible(False) for side in ['top', 'right']]
+
+        xticks = activation_ax.get_xlim()
+        activation_ax.set_xticks(activation_ax.get_xlim())
+        activation_ax.set_xticklabels([0, np.rint(xticks[-1]/15)])
+        activation_ax.set_xlabel('Time (s)')
 
         if get_members:
             n_members = len(members)
@@ -654,7 +661,7 @@ class CalciumSession:
         pattern_ax.invert_yaxis()
         pattern_ax.axis("off")
 
-        return activation_ax, spikes_ax
+        return fig, activation_ax, spikes_ax
 
     def plot_all_assemblies(self):
         sorted_spiking, sorted_colors = membership_sort(

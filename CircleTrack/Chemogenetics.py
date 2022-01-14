@@ -7,6 +7,7 @@ from CaImaging.util import nan_array, sem
 import pandas as pd
 from CaImaging.plotting import errorfill, beautify_ax, jitter_x
 import matplotlib.patches as mpatches
+import os
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -68,13 +69,18 @@ colors = {"PSAM": ["silver", "mediumpurple"],
 
 
 class Chemogenetics:
-    def __init__(self, mice, actuator='DREADDs'):
+    def __init__(self, mice, actuator='DREADDs', save_figs=True, ext='pdf',
+                 save_path=r'Z:\Will\Manuscripts\Memory flexibility\Figures'):
         project_name = project_names[actuator]
         self.data = MultiAnimal(
             mice, project_name=project_name,
             SessionFunction=BehaviorSession
         )
 
+        self.save_configs = {'save_figs': save_figs,
+                             'ext': ext,
+                             'path': save_path,
+                             }
         self.meta = {
             "session_types": session_types[project_name],
             "mice": mice,
@@ -97,6 +103,10 @@ class Chemogenetics:
             else:
                 mouse_list = [mouse for mouse in self.meta["mice"] if mouse not in grouped_mice[actuator]]
             self.meta["grouped_mice"][key] = mouse_list
+
+    def save_fig(self, fig, fname):
+        fpath = os.path.join(self.save_configs['path'], f'{fname}.{self.save_configs["ext"]}')
+        fig.savefig(fpath)
 
     def set_legend(self, fig, groups=None, colors=None):
         if groups is None:
@@ -376,7 +386,11 @@ class Chemogenetics:
             )
             ax.set_xticks([])
             ax.set_title(title)
+
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+
         axs[0].set_ylabel(ylabels[performance_metric])
+        axs[1].tick_params(axis='y', length=0)
 
         self.set_legend(fig)
 
@@ -388,6 +402,9 @@ class Chemogenetics:
             axis=1,
             keys=sessions,
         )
+
+        if self.save_configs['save_figs']:
+            self.save_fig(fig, f'session {performance_metric}')
 
         return performance, df
 
@@ -436,6 +453,9 @@ class Chemogenetics:
             ),
             columns=sessions,
         )
+
+        if self.save_configs['save_figs']:
+            self.save_fig(fig, f'all_mice_{performance_metric}')
 
         return df
 
@@ -573,5 +593,11 @@ class Chemogenetics:
 
 
 if __name__ == "__main__":
-    mice = ["PSAM_" + str(i) for i in np.arange(6, 18)]
-    P = Chemogenetics(mice)
+    PSAM_mice = ['PSAM_' + str(i) for i in np.arange(4,28)]
+    mistargets = ['PSAM_' + str(i) for i in [4, 5, 6, 8]]
+    PSAM_mice.remove('PSAM_18') # Bad reversal session.
+    exclude_non_learners = True
+    if exclude_non_learners:
+        [PSAM_mice.remove(x) for x in ['PSAM_' + str(i) for i in [13,15]]]
+    [PSAM_mice.remove(x) for x in mistargets]
+    C = Chemogenetics(PSAM_mice, actuator='PSAM')
