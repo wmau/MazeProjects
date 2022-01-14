@@ -3720,7 +3720,8 @@ class RecentReversal:
         """
         scores = dict()
         fig, axs = plt.subplots(
-            2, len(session_types), sharey=True, sharex=True, figsize=(12, 8.5)
+            2, len(session_types), sharey=True, sharex=True,
+            figsize=(12, 8.5)
         )
         time_bins = np.arange(n_splits)
 
@@ -3778,6 +3779,9 @@ class RecentReversal:
         fig.supxlabel("Time in session (normalized)")
         fig.supylabel("Lick decoding accuracy")
         fig.tight_layout()
+
+        if self.save_configs['save_figs']:
+            self.save_fig(fig, f'EnsembleLickDecoding')
 
         anova_dfs = {
             age: pg.rm_anova(
@@ -5944,13 +5948,20 @@ class RecentReversal:
             ):
                 ax.imshow(fields[order][subset])
                 ax.axis("tight")
-                ax.set_ylabel("Ensemble #")
-                ax.set_xlabel("Location")
                 ax.set_title(session)
 
+                ax.set_xticks(ax.get_xlim())
+                ax.set_xticklabels([0, 220])
+
                 for port in ports:
-                    ax.axvline(port, c="r", alpha=0.5)
+                    ax.axvline(port, c="g", alpha=0.5)
+
+            axs[0].set_ylabel('Ensemble #')
             fig.suptitle(mouse)
+            fig.supxlabel('Linearized position (cm)')
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f'{mouse}_ensemble_snakeplot')
 
         return ensemble_fields
 
