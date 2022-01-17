@@ -185,6 +185,19 @@ class RecentReversal:
     def save_fig(self, fig, fname):
         fpath = os.path.join(self.save_configs['path'], f'{fname}.{self.save_configs["ext"]}')
         fig.savefig(fpath)
+        
+    def ages_to_plot_parser(self, ages_to_plot):
+        if ages_to_plot is None:
+            ages_to_plot = ages
+            plot_colors = age_colors
+        else:
+            plot_colors = [age_colors[ages.index(ages_to_plot)]]
+        if type(ages_to_plot) is str:
+            ages_to_plot = [ages_to_plot]
+
+        n_ages_to_plot = len(ages_to_plot)
+            
+        return ages_to_plot, plot_colors, n_ages_to_plot
 
     def rearrange_neurons(self, mouse, selected_sessions, data_type, detected="everyday"):
         """
@@ -3697,11 +3710,93 @@ class RecentReversal:
             fig.tight_layout()
 
         return port_accuracies
+    
+    def plot_lick_decoder(
+            self, 
+            classifier=RandomForestClassifier,
+            licks_to_include='first',
+            n_splits=6,
+            session_types=(("Goals4", "Goals3"), ("Goals4", "Reversal")),
+            lag=0,
+            ages_to_plot=None,
+            **classifier_kwargs,
+    ):
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+
+        scores = dict()
+        fig, axs = plt.subplots(
+            n_ages_to_plot, len(session_types), sharey=True, sharex=True,
+            figsize=(9, 7*n_ages_to_plot)
+        )
+        if n_ages_to_plot == 1:
+            axs = [axs]
+
+        time_bins = np.arange(n_splits)
+    
+        mice_, decoded_session, ages_, time_bins_ = [], [], [], []
+        for age, cohort_ax in zip(ages_to_plot, axs):
+            scores[age] = []
+            for mouse in self.meta["grouped_mice"][age]:
+                for ax, session_pair in zip(cohort_ax, session_types):
+                    scores_ = self.registered_ensemble_lick_decoder(
+                        mouse,
+                        session_pair,
+                        classifier=classifier,
+                        licks_to_include=licks_to_include,
+                        n_splits=n_splits,
+                        show_plot=True,
+                        lag=lag,
+                        ax=ax,
+                        **classifier_kwargs,
+                    )
+    
+                    scores[age].extend(scores_)
+                    decoded_session.extend([session_pair[1] for i in range(n_splits)])
+                    mice_.extend([mouse for i in range(n_splits)])
+                    ages_.extend([age for i in range(n_splits)])
+                    time_bins_.extend(time_bins)
+    
+        df = pd.DataFrame(
+            {
+                "mice": mice_,
+                "age": ages_,
+                "decoded_session": decoded_session,
+                "time_bins": time_bins_,
+                "scores": np.hstack([scores[age] for age in ages_to_plot]),
+            }
+        )
+        means = df.groupby(["age", "decoded_session", "time_bins"]).mean()
+        sem = df.groupby(["age", "decoded_session", "time_bins"]).sem()
+    
+        for age, row_ax, color in zip(ages_to_plot, axs, plot_colors):
+            for session_pair, ax in zip(session_types, row_ax):
+                ax.errorbar(
+                    np.linspace(0, 1, n_splits),
+                    means.loc[age].loc[session_pair[1]].to_numpy(),
+                    yerr=np.squeeze(sem.loc[age].loc[session_pair[1]].to_numpy()),
+                    capsize=2,
+                    color=color,
+                )
+                ax.set_title(
+                    f"{age}, trained on {session_pair[0].replace('Goals', 'Training')}"
+                    f"\n tested on {session_pair[1].replace('Goals', 'Training')}"
+                )
+                ax.axhline(y=1 / 8, color="darkred")
+    
+                [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+        fig.supxlabel("Time in session (normalized)")
+        fig.supylabel("Lick decoding accuracy")
+        fig.tight_layout()
+    
+        if self.save_configs['save_figs']:
+            self.save_fig(fig, f'EnsembleLickDecoding_{ages_to_plot}')
+            
+        return df
 
     def ensemble_lick_anova(
         self,
         classifier=RandomForestClassifier,
-        licks_to_include="all",
+        licks_to_include="first",
         n_splits=6,
         session_types=(("Goals4", "Goals3"), ("Goals4", "Reversal")),
         lag=0,
@@ -3718,70 +3813,15 @@ class RecentReversal:
         :param classifier_kwargs:
         :return:
         """
-        scores = dict()
-        fig, axs = plt.subplots(
-            2, len(session_types), sharey=True, sharex=True,
-            figsize=(12, 8.5)
+        df = self.plot_lick_decoder(
+            classifier=classifier,
+            licks_to_include=licks_to_include,
+            n_splits=n_splits,
+            session_types=session_types,
+            lag=lag,
+            ages_to_plot=None,
+            **classifier_kwargs
         )
-        time_bins = np.arange(n_splits)
-
-        mice_, decoded_session, ages_, time_bins_ = [], [], [], []
-        for age, cohort_ax in zip(ages, axs):
-            scores[age] = []
-            for mouse in self.meta["grouped_mice"][age]:
-                for ax, session_pair in zip(cohort_ax, session_types):
-                    scores_ = self.registered_ensemble_lick_decoder(
-                        mouse,
-                        session_pair,
-                        classifier=classifier,
-                        licks_to_include=licks_to_include,
-                        n_splits=n_splits,
-                        show_plot=True,
-                        lag=lag,
-                        ax=ax,
-                        **classifier_kwargs,
-                    )
-
-                    scores[age].extend(scores_)
-                    decoded_session.extend([session_pair[1] for i in range(n_splits)])
-                    mice_.extend([mouse for i in range(n_splits)])
-                    ages_.extend([age for i in range(n_splits)])
-                    time_bins_.extend(time_bins)
-
-        df = pd.DataFrame(
-            {
-                "mice": mice_,
-                "age": ages_,
-                "decoded_session": decoded_session,
-                "time_bins": time_bins_,
-                "scores": np.hstack([scores[age] for age in ages]),
-            }
-        )
-        means = df.groupby(["age", "decoded_session", "time_bins"]).mean()
-        sem = df.groupby(["age", "decoded_session", "time_bins"]).sem()
-
-        for age, row_ax, color in zip(ages, axs, age_colors):
-            for session_pair, ax in zip(session_types, row_ax):
-                ax.errorbar(
-                    np.linspace(0, 1, n_splits),
-                    means.loc[age].loc[session_pair[1]].to_numpy(),
-                    yerr=np.squeeze(sem.loc[age].loc[session_pair[1]].to_numpy()),
-                    capsize=2,
-                    color=color,
-                )
-                ax.set_title(
-                    f"{age}, trained on {session_pair[0].replace('Goals', 'Training')}"
-                    f"\n tested on {session_pair[1].replace('Goals', 'Training')}"
-                )
-                ax.axhline(y=1 / 8, color="darkred")
-
-                [ax.spines[side].set_visible(False) for side in ['top', 'right']]
-        fig.supxlabel("Time in session (normalized)")
-        fig.supylabel("Lick decoding accuracy")
-        fig.tight_layout()
-
-        if self.save_configs['save_figs']:
-            self.save_fig(fig, f'EnsembleLickDecoding')
 
         anova_dfs = {
             age: pg.rm_anova(
@@ -4495,15 +4535,9 @@ class RecentReversal:
                 "increasing": "rising",
                 "no trend": "flat",
             }
-            if ages_to_plot is None:
-                ages_to_plot = ages
-                plot_colors = age_colors
-            else:
-                plot_colors = [age_colors[ages.index(ages_to_plot)]]
-            if type(ages_to_plot) is str:
-                ages_to_plot = [ages_to_plot]
 
-            n_ages_to_plot = len(ages_to_plot)
+            ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+
             fig, axs = plt.subplots(1, n_ages_to_plot, figsize=(3.5 * n_ages_to_plot, 6),
                                     sharey=True)
             if n_ages_to_plot > 1:
@@ -4610,13 +4644,8 @@ class RecentReversal:
         ylabels = {"CRs": "Peak correct rejection rate",
                    "hits": "Peak hit rate",
                    "d_prime": "Peak d'"}
-        if ages_to_plot is None:
-            ages_to_plot = ages
-            plot_colors = age_colors
-        else:
-            plot_colors = [age_colors[ages.index(ages_to_plot)]]
-            if type(ages_to_plot) is str:
-                ages_to_plot = [ages_to_plot]
+        
+        ages_to_plot, plot_colors = self.ages_to_plot_parser(ages_to_plot)
 
         for age, c in zip(ages_to_plot, plot_colors):
             prop_fading = np.asarray(p_changing_split_by_age[age], dtype=float)
@@ -4911,6 +4940,42 @@ class RecentReversal:
         fig.tight_layout()
 
         return fig
+
+    def plot_registered_patterns(self, patterns, ensemble_number, same_plot=False,
+                                 do_sort=True, sort_by=0, colors=['k','k']):
+        if same_plot:
+            fig, ax = plt.subplots()
+            axs = [ax, ax]
+        else:
+            fig, axs = plt.subplots(2,1, figsize=(3.5,5))
+
+        if do_sort:
+            order = np.argsort(patterns[sort_by, ensemble_number])
+        else:
+            order = range(patterns.shape[-1])
+
+        for i, (ax, color) in enumerate(zip(axs, colors)):
+            plot_pattern(patterns[i, ensemble_number][order], ax=ax, alpha=0.5, markersize=3,
+                         color=color)
+            ax.axis('off')
+        fig.tight_layout()
+
+        return fig, axs, order
+
+    def plot_ensemble_registration_ex(self, mouse='Miranda', session_types=('Goals3', 'Goals4'),
+                                      ensemble_number=11):
+        registered_ensembles = self.match_ensembles(mouse, session_types)
+        patterns = registered_ensembles['matched_patterns']
+        order = self.plot_registered_patterns(patterns, ensemble_number)[2]
+
+        n = 3
+        non_matches = [registered_ensembles['matches'][ensemble_number+i] for i in range(n)]
+        fig, axs = plt.subplots(n,1,figsize=(3.5, 2.5*n))
+
+        for non_match, ax in zip(non_matches, axs):
+            plot_pattern(patterns[1, non_match][order], ax=ax, alpha=0.5, markersize=3, color='k')
+            ax.axis('off')
+        fig.tight_layout()
 
     def plot_matched_ensembles(self, mouse, session_pair: tuple, subset="all"):
         """
