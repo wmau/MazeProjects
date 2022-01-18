@@ -11,6 +11,7 @@ from CaImaging.Behavior import spatial_bin
 
 def plot_assembly(
     pattern, activation, spike_times, sort_by_contribution=True, order=None, ax=None, frames=None,
+        activation_color='r',
 ):
     """
     Plots single assemblies. This plot contains the activation profile (activation over time)
@@ -64,10 +65,14 @@ def plot_assembly(
     if frames is None:
         frames = range(len(activation))
 
-    activation_ax.plot(frames, activation, linewidth=2, color='r')
-    activation_ax.set_ylabel("Activation strength [a.u.]", color='r', fontsize=22)
-    activation_ax.set_xlabel("Frame #", fontsize=22)
-    spikes_ax.eventplot(sorted_spike_times, color="k", alpha=0.2)
+    activation_ax.plot(frames, activation, linewidth=2, color=activation_color)
+    xlims = list(activation_ax.get_xlim())
+    activation_ax.set_xticks(xlims)
+    xlims[-1] /= 15
+    activation_ax.set_xticklabels([0, np.rint(xlims[-1])])
+    activation_ax.set_ylabel("Activation strength [a.u.]", color=activation_color, fontsize=22)
+    activation_ax.set_xlabel("Time (s)", fontsize=22)
+    spikes_ax.eventplot(sorted_spike_times, color="k", alpha=0.2, rasterized=True)
     spikes_ax.set_ylabel("Neurons", rotation=-90, fontsize=22)
     spikes_ax.set_yticks([0, len(sorted_spike_times)])
 
@@ -243,17 +248,21 @@ def spatial_bin_ensemble_activations(activations, lin_position, occupancy_normal
     return ensemble_fields
 
 def plot_pattern(pattern, ax=None, color='k', alpha=1, linewidth=0.5,
-                 markersize=5):
+                 markersize=5, order=None):
     if ax is None:
         fig, ax = plt.subplots()
 
-    markerline, stemlines, baseline = ax.stem(range(len(pattern)), pattern, color, markerfmt=color + 'o', basefmt=" ")
+    n_neurons = len(pattern)
+    if order is None:
+        order = range(n_neurons)
+
+    markerline, stemlines, baseline = ax.stem(range(n_neurons), pattern[order], color, markerfmt=color + 'o', basefmt=" ")
     plt.setp(markerline, alpha=alpha)
     plt.setp(stemlines, alpha=alpha)
     plt.setp(stemlines, 'linewidth', linewidth)
     plt.setp(markerline, 'markersize', markersize)
 
-    ax.set_ylabel("Weight [a.u.]")
-    ax.set_xlabel("Neurons")
+    ax.set_ylabel("Weight [a.u.]", fontsize=22)
+    ax.set_xlabel("Neurons", fontsize=22)
 
     return ax

@@ -762,6 +762,7 @@ class RecentReversal:
             )
             ax.set_xticks([])
             ax.set_title(title)
+            [ax.spines[side].set_visible(False) for side in ['top','right']]
         axs[0].set_ylabel(ylabels[performance_metric])
 
         patches = [
@@ -769,6 +770,9 @@ class RecentReversal:
             for c, label in zip(age_colors, ages)
         ]
         fig.legend(handles=patches, loc="lower right")
+
+        if self.save_configs['save_figs']:
+            self.save_fig(fig, 'Performance_age_v_young')
 
         return performance
 
@@ -3789,7 +3793,7 @@ class RecentReversal:
         fig.tight_layout()
     
         if self.save_configs['save_figs']:
-            self.save_fig(fig, f'EnsembleLickDecoding_{ages_to_plot}')
+            self.save_fig(fig, f'EnsembleLickDecoding_{ages_to_plot}_lag{lag}')
             
         return df
 
@@ -4890,7 +4894,7 @@ class RecentReversal:
         split_session=False,
         frames=None,
     ):
-        order = np.argsort(np.abs(registered_patterns[0]))
+        order = np.argsort(registered_patterns[0])
 
         fig = plt.figure(figsize=(19.2, 10.7))
         spec = gridspec.GridSpec(ncols=2, nrows=2, figure=fig)
@@ -4898,7 +4902,7 @@ class RecentReversal:
 
         if split_session:
             assembly_axs[0].get_shared_x_axes().join(*assembly_axs)
-            assembly_axs[0].get_shared_y_axes().join(*assembly_axs)
+        assembly_axs[0].get_shared_y_axes().join(*assembly_axs)
 
         pattern_ax = fig.add_subplot(spec[:, 1])
 
@@ -4910,7 +4914,7 @@ class RecentReversal:
             registered_activations,
             registered_spike_times,
             registered_patterns,
-            ["k", "r"],
+            ["r", "b"],
             session_types,
             frames,
         ):
@@ -4923,18 +4927,21 @@ class RecentReversal:
                 order=order,
                 ax=ax,
                 frames=frames_,
+                activation_color=c,
             )
-            ax.set_title(session)
-
+            ax.set_title(session.replace('Goals', 'Training'), fontsize=22, color=c)
+            ax.set_rasterized(True)
             # Plot the patterns.
-            pattern_ax = plot_pattern(pattern, ax=pattern_ax, color=c, alpha=0.5)
+            pattern_ax = plot_pattern(pattern, ax=pattern_ax, color=c, alpha=0.5, order=order)
+            plt.setp(ax.spines.values(), linewidth=2)
 
         # Label the patterns.
-        pattern_ax.legend(session_types)
+        pattern_ax.legend([session.replace('Goals','Training') for session in session_types],
+                          fontsize=22)
         title = f"Cosine similarity: {np.round(similarity, 3)}"
         if poor_match:
             title += " NON-SIG MATCH!"
-        pattern_ax.set_title(title)
+        pattern_ax.set_title(title, fontsize=22)
         pattern_ax.set_xticks([0, registered_patterns[0].shape[0]])
         pattern_ax = beautify_ax(pattern_ax)
         fig.tight_layout()
