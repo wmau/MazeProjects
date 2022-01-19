@@ -184,7 +184,7 @@ class RecentReversal:
     ############################ HELPER FUNCIONS ############################
     def save_fig(self, fig, fname):
         fpath = os.path.join(self.save_configs['path'], f'{fname}.{self.save_configs["ext"]}')
-        fig.savefig(fpath)
+        fig.savefig(fpath, bbox_inches='tight')
         
     def ages_to_plot_parser(self, ages_to_plot):
         if ages_to_plot is None:
@@ -685,8 +685,13 @@ class RecentReversal:
                 ax.set_xticks([1, 2])
                 ax.set_xticklabels(ages)
                 ax.set_ylabel(ylabels[performance_metric])
+                [ax.spines[side].set_visible(False) for side in ['top', 'right']]
                 # ax = beautify_ax(ax)
                 plt.tight_layout()
+
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f'age v young_{performance_metric}')
 
         return peak_performance
 
@@ -795,7 +800,7 @@ class RecentReversal:
 
         return df
 
-    def scatter_box(self, data, ylabel="", ax=None):
+    def scatter_box(self, data, ylabel="", ax=None, ages_to_plot=None):
         """
         Make boxplot split into aged versus young. Scatter plot individual data points on top.
 
@@ -805,10 +810,12 @@ class RecentReversal:
             Data in array-likes, split into "young" and "old".
 
         """
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+
         if ax is None:
             fig, ax = plt.subplots()
         boxes = ax.boxplot(
-            [data[age] for age in ages],
+            [data[age] for age in ages_to_plot],
             widths=0.75,
             showfliers=False,
             zorder=0,
@@ -824,10 +831,10 @@ class RecentReversal:
                 zorder=1,
                 s=50,
             )
-            for i, (age, color) in enumerate(zip(ages, age_colors))
+            for i, (age, color) in enumerate(zip(ages_to_plot, plot_colors))
         ]
 
-        for patch, med, color in zip(boxes["boxes"], boxes["medians"], age_colors):
+        for patch, med, color in zip(boxes["boxes"], boxes["medians"], plot_colors):
             patch.set_facecolor(color)
             med.set(color="k")
         ax.set_xticks([])
@@ -2902,7 +2909,8 @@ class RecentReversal:
 
     ############################ ENSEMBLE FUNCTIONS ############################
     def count_ensembles(self, grouped=True, normalize=True,
-                        sessions_to_plot=None):
+                        sessions_to_plot=None,
+                        ages_to_plot=None):
         """
         Plot number of ensembles for each session. Can also normalize by total number of neurons.
 
@@ -2957,21 +2965,20 @@ class RecentReversal:
                     n_ensembles[session_type][age] = df[session_type].loc[df['aged'] == aged]
 
             # Plot.
-            fig, axs = plt.subplots(1, len(self.meta["session_types"]))
+            fig, axs = plt.subplots(1, len(self.meta["session_types"]), sharey=True)
             fig.subplots_adjust(wspace=0)
 
             for i, (ax, session_type, title) in enumerate(
                 zip(axs, sessions_to_plot, session_labels)
             ):
-                self.scatter_box(n_ensembles[session_type], ax=ax)
+                self.scatter_box(n_ensembles[session_type], ax=ax, ages_to_plot=ages_to_plot)
                 ax.set_title(title)
+                [ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
-                if i > 0:
-                    ax.set_yticks([])
-                else:
-                    ax.set_ylabel(ylabel)
+            axs[0].set_ylabel(ylabel)
 
-            self.set_age_legend(fig)
+            if ages_to_plot is None:
+                self.set_age_legend(fig)
 
         else:
             n_ensembles = nan_array(
@@ -2996,6 +3003,9 @@ class RecentReversal:
             ax.set_ylabel(ylabel)
             plt.setp(ax.xaxis.get_majorticklabels(), rotation=45)
             fig.subplots_adjust(bottom=0.2)
+
+        if self.save_configs['save_figs']:
+            self.save_fig(fig, f'NumberEnsembles_{ages_to_plot}')
 
         return n_ensembles, df
 
@@ -3160,7 +3170,7 @@ class RecentReversal:
                             len(members_this_ensemble)
                             for members_this_ensemble in members
                         ]
-                    )
+                    ) * 100
                     / n_neurons
                 )
                 proportion_unique_members[age].append(
@@ -3290,7 +3300,7 @@ class RecentReversal:
         axs[0].set_ylabel("Proportion of ensembles active near Reversal goals")
 
     def plot_proportion_fading_ensembles_near_important_ports(
-        self, show_plot=True, alpha=0.01, decompose_relevant_ports=False
+        self, show_plot=True, alpha='sidak', decompose_relevant_ports=False
     ):
         p_near = dict()
         port_types = ["rewarded", "previously_rewarded", "other", "relevant"]
@@ -3889,7 +3899,7 @@ class RecentReversal:
         return fs
 
     def plot_ensemble_sizes(
-        self, filter_method="sd", thresh=2, data_type="unique_members"
+        self, filter_method="sd", thresh=2, data_type="unique_members", ages_to_plot=None,
     ):
         """
         Plots the relative size of an ensemble (defined by "members") for each session, grouped by age.
@@ -3918,7 +3928,7 @@ class RecentReversal:
                 session_type, filter_method=filter_method, thresh=thresh
             )
 
-        fig, axs = plt.subplots(1, len(self.meta["session_types"]))
+        fig, axs = plt.subplots(1, len(self.meta["session_types"]), sharey=True)
         fig.subplots_adjust(wspace=0)
 
         data = {
@@ -3927,24 +3937,19 @@ class RecentReversal:
         }
         ylabels = {
             "unique_members": "Unique members / total # neurons",
-            "ensemble_size": "Median # members per ensemble / total # neurons",
+            "ensemble_size": "% of total neurons per ensemble",
         }
         to_plot = data[data_type]
         for i, (ax, session_type) in enumerate(zip(axs, self.meta["session_types"])):
-            box = ax.boxplot(
-                [to_plot[session_type][age] for age in ages],
-                labels=ages,
-                patch_artist=True,
-                widths=0.75,
-            )
-            for patch, med, color in zip(box["boxes"], box["medians"], age_colors):
-                patch.set_facecolor(color)
-                med.set(color="k")
+            self.scatter_box(to_plot[session_type], ax=ax, ages_to_plot=ages_to_plot)
             ax.set_xticks([])
-            ax.set_title(session_type)
+            ax.set_title(session_type.replace('Goals', 'Training'))
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
-        [ax.set_yticks([]) for ax in axs[1:]]
         axs[0].set_ylabel(ylabels[data_type])
+
+        if self.save_configs['save_figs']:
+            self.save_fig(fig, f'EnsembleSize_{data_type}_{ages_to_plot}')
 
         return data
 
@@ -4150,10 +4155,10 @@ class RecentReversal:
         session_type,
         x="trial",
         z_threshold=None,
-        x_bin_size=6,
+        x_bin_size=1,
         data_type="ensembles",
         subset=None,
-        alpha=0.01,
+        alpha='sidak',
     ):
         """
         Find assembly "trends", whether they are increasing/decreasing in occurrence rate over the course
@@ -4649,7 +4654,7 @@ class RecentReversal:
                    "hits": "Peak hit rate",
                    "d_prime": "Peak d'"}
         
-        ages_to_plot, plot_colors = self.ages_to_plot_parser(ages_to_plot)
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
 
         for age, c in zip(ages_to_plot, plot_colors):
             prop_fading = np.asarray(p_changing_split_by_age[age], dtype=float)
@@ -4669,7 +4674,7 @@ class RecentReversal:
         ax.set_ylabel(ylabels[performance_metric])
         [ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
-        if ages_to_plot is None:
+        if n_ages_to_plot == 2:
             ax.legend(ages_to_plot, loc="lower right")
 
         for age in ages_to_plot:
@@ -4706,42 +4711,6 @@ class RecentReversal:
         df['aged'] = [self.meta['aged'][mouse] for mouse in df.index]
 
         return df
-
-    def plot_assembly_by_trend(
-        self,
-        mouse,
-        session_type,
-        trend,
-        x="trial",
-        x_bin_size=6,
-        plot_type="temporal",
-        thresh=2.5,
-        trend_z_threshold=None,
-        alpha=0.01,
-    ):
-        assembly_trends = self.find_activity_trends(
-            mouse,
-            session_type,
-            x=x,
-            x_bin_size=x_bin_size,
-            z_threshold=trend_z_threshold,
-            alpha=alpha,
-        )[0]
-
-        session = self.data[mouse][session_type]
-        for assembly_number in assembly_trends[trend]:
-            if plot_type == "temporal":
-                session.plot_assembly(assembly_number)
-            elif plot_type == "spiral":
-                ax = session.spiralplot_assembly(assembly_number, threshold=thresh)
-
-                if session_type == "Reversal":
-                    goals4 = self.data[mouse]["Goals4"].behavior.data
-                    reversal = self.data[mouse]["Reversal"].behavior.data
-                    for port in np.asarray(reversal["lin_ports"])[
-                        goals4["rewarded_ports"]
-                    ]:
-                        ax.axvline(x=port, color="y")
 
     def match_ensembles(self, mouse, session_pair):
         """
@@ -5709,17 +5678,21 @@ class RecentReversal:
         ax.plot(normalized_field)
         [ax.axvline(x=port, color="r") for port in ports]
 
-    def get_spatial_ensembles(self, mouse, session_type, pval_threshold=0.05):
-        is_spatial = (
-            self.data[mouse][session_type]
-            .assemblies["fields"]
-            .data["spatial_info_pvals"]
-            < pval_threshold
-        )
+    def get_spatial_ensembles(self, mouse, session_type, alpha=0.05, method='sidak'):
+        if method is None:
+            is_spatial = (
+                self.data[mouse][session_type]
+                .assemblies["fields"]
+                .data["spatial_info_pvals"]
+                < alpha
+            )
+        else:
+            is_spatial = multipletests(self.data[mouse][session_type].assemblies['fields'].data['spatial_info_pvals'],
+                                       alpha=alpha, method=method)[0]
 
         return is_spatial
 
-    def find_proportion_spatial_ensembles(self, pval_threshold=0.05):
+    def find_proportion_spatial_ensembles(self, pval_threshold=0.05, method='sidak'):
         p = dict()
         for session in self.meta["session_types"]:
             p[session] = dict()
@@ -5729,37 +5702,23 @@ class RecentReversal:
 
                 for mouse in self.meta["grouped_mice"][age]:
                     is_spatial = self.get_spatial_ensembles(
-                        mouse, session, pval_threshold
+                        mouse, session, pval_threshold, method=method
                     )
 
                     p[session][age].append(sum(is_spatial) / len(is_spatial))
 
-        fig, axs = plt.subplots(1, len(self.meta["session_types"]))
+        fig, axs = plt.subplots(1, len(self.meta["session_types"]), sharey=True)
         fig.subplots_adjust(wspace=0)
 
         for i, (ax, session) in enumerate(zip(axs, self.meta["session_types"])):
-            box = ax.boxplot(
-                [p[session][age] for age in ages],
-                labels=ages,
-                patch_artist=True,
-                widths=0.75,
-            )
-            for patch, med, color in zip(box["boxes"], box["medians"], age_colors):
-                patch.set_facecolor(color)
-                med.set(color="k")
+            self.scatter_box(p[session], ax=ax)
+
             ax.set_xticks([])
-            ax.set_title(session)
+            ax.set_title(session.replace('Goals','Training'))
 
-            if i > 0:
-                ax.set_yticks([])
-            else:
-                ax.set_ylabel("Proportion of ensembles with spatial selectivity")
+        axs[0].set_ylabel("Proportion of ensembles with spatial selectivity")
 
-        patches = [
-            mpatches.Patch(facecolor=c, label=label, edgecolor="k")
-            for c, label in zip(age_colors, ["Young", "Aged"])
-        ]
-        fig.legend(handles=patches, loc="lower right")
+        self.set_age_legend(fig)
 
         return p
 
@@ -6074,7 +6033,7 @@ class RecentReversal:
 
         return SI
 
-    def boxplot_all_assembly_SI(self):
+    def boxplot_all_assembly_SI(self, ages_to_plot=None):
         SI = {
             session_type: {
                 age: [
@@ -6090,26 +6049,26 @@ class RecentReversal:
             for session_type in self.meta["session_types"]
         }
 
-        fig, axs = plt.subplots(1, len(self.meta["session_types"]))
+        fig, axs = plt.subplots(1, len(self.meta["session_types"]), sharey=True)
         fig.subplots_adjust(wspace=0)
 
         for ax, session_type, title in zip(
             axs, self.meta["session_types"], self.meta["session_labels"]
         ):
-            boxes = ax.boxplot(
-                [SI[session_type][age] for age in ages], patch_artist=True, widths=0.75
-            )
+            self.scatter_box(SI[session_type], ax=ax, ages_to_plot=ages_to_plot)
 
-            for patch, med, color in zip(boxes["boxes"], boxes["medians"], age_colors):
-                patch.set_facecolor(color)
-                med.set(color="k")
-
-            if session_type != self.meta["session_types"][0]:
-                ax.set_yticks([])
-            else:
-                ax.set_ylabel("Mean assembly spatial information (z)")
             ax.set_xticks([])
             ax.set_title(title)
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+        axs[0].set_ylabel("Mean assembly spatial information (z)")
+
+        if n_ages_to_plot==2:
+           self.set_age_legend(fig)
+
+        if self.save_configs['save_figs']:
+            self.save_fig(fig, f'Ensemble_spatial_info_{ages_to_plot}')
 
         return SI
 
