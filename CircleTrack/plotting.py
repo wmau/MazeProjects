@@ -225,6 +225,8 @@ def highlight_column(column, ax, **kwargs):
     return rect
 
 def color_boxes(boxes, colors):
+    if type(colors) is str:
+        colors = [colors for i in boxes['boxes']]
     for patch, med, color in zip(boxes["boxes"], boxes["medians"], colors):
         patch.set_facecolor(color)
         med.set(color="k")

@@ -419,13 +419,17 @@ class CalciumSession:
 
         return place_cells
 
-    def placefield_reliability(self, neuron, field_threshold=0.15, even_split=True, split=4,
-                               show_plot=True):
+    def placefield_reliability(self, spatial_data, neuron: int, field_threshold=0.15,
+                               tuning_curve='placefields_normalized', even_split=True,
+                               split=4, show_plot=True):
         """
         Compute the trial-by-trial in-field consistency of a neuron (whether it fired in field).
 
         :parameters
         ---
+        spatial_data: PlaceFields.data
+            The data dict in the PlaceFields object. Should have a key called "rasters" and also "placefields_normalized".
+
         neuron: int
             Neuron number.
 
@@ -437,12 +441,12 @@ class CalciumSession:
             instead split is the number of trials in each split.
 
         split: int
-            If even_split, the number of parts to divide the trial into.
+            If even_split, the number of parts to divide the session into.
             If not even_split, the number of trials in each split.
 
         """
-        raster = self.spatial.data['rasters'][neuron]
-        placefield = self.spatial.data['placefields_normalized'][neuron]
+        raster = spatial_data['rasters'][neuron]
+        placefield = spatial_data[tuning_curve][neuron]
 
         field_bins = np.where(placefield > max(placefield) * field_threshold)[0]
         fired_in_field = np.any(raster[:, field_bins], axis=1)
@@ -453,6 +457,7 @@ class CalciumSession:
         split_fired_in_field = np.array_split(fired_in_field, split)
 
         # Handles cases where you don't actually want to split the reliability across trials.
+        # In other words, just take the fraction of trials where the unit was active.
         if split == 1 and even_split:
             reliability = np.sum(split_fired_in_field[0])/len(split_fired_in_field[0])
         else:

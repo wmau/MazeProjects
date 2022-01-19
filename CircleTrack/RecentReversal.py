@@ -849,9 +849,7 @@ class RecentReversal:
             for i, (age, color) in enumerate(zip(ages_to_plot, plot_colors))
         ]
 
-        for patch, med, color in zip(boxes["boxes"], boxes["medians"], plot_colors):
-            patch.set_facecolor(color)
-            med.set(color="k")
+        color_boxes(boxes, plot_colors)
         ax.set_xticks([])
         ax.set_ylabel(ylabel)
 
@@ -1772,9 +1770,7 @@ class RecentReversal:
                 for i, session_pair in enumerate(session_pairs)
             ]
 
-            for patch, med in zip(boxes["boxes"], boxes["medians"]):
-                patch.set_facecolor(color)
-                med.set(color="k")
+            color_boxes(boxes, color)
             ax.set_xticklabels(
                 [
                     f'{session_pair[0].replace("Goals", "Training")} vs. \n'
@@ -2039,9 +2035,7 @@ class RecentReversal:
                     positions=position,
                     patch_artist=True,
                 )
-                for patch, med in zip(boxes["boxes"], boxes["medians"]):
-                    patch.set_facecolor(color)
-                    med.set(color="k")
+                color_boxes(boxes, color)
 
             if age == "aged":
                 ax.set_yticks([])
@@ -2287,7 +2281,8 @@ class RecentReversal:
 
         return anova_df, pairwise_df, df
 
-    def plot_reliabilities(self, session_type, field_threshold=0.15, show_plot=True):
+    def plot_reliabilities(self, session_type, field_threshold=0.5, show_plot=True,
+                           data_type='spatial_ensembles'):
         """
         Plot the reliability for each mouse, split by young and aged. Reliability is defined as the fraction
         of trials where there was a calcium transient inside the field. The field is every spatial bin where
@@ -2303,20 +2298,43 @@ class RecentReversal:
 
         """
         reliabilities = {}
+
         for age in ages:
             reliabilities[age] = []
             for mouse in self.meta["grouped_mice"][age]:
                 session = self.data[mouse][session_type]
-                place_cells = session.spatial.data["place_cells"]
+
+                if 'cells' in data_type:
+                    spatial_data = session.spatial.data
+
+                    if data_type == 'cells':
+                        units = range(session.imaging['n_neurons'])
+                    elif data_type == 'place_cells':
+                        units = session.spatial.data["place_cells"]
+
+                elif 'ensembles' in data_type:
+                    # Compute rasters if not already done.
+                    if 'rasters' not in session.assemblies['fields'].data:
+                        self.make_ensemble_raster(mouse, session_type, running_only=False)
+                    spatial_data = session.assemblies['fields'].data
+                    if data_type == 'ensembles':
+                        units = range(session.assemblies['significance'].nassemblies)
+                    elif data_type == 'spatial_ensembles':
+                        units = np.where(self.get_spatial_ensembles(mouse, session_type))[0]
+
+                else:
+                    raise NotImplementedError
+
                 reliabilities_ = [
                     session.placefield_reliability(
-                        neuron,
+                        spatial_data,
+                        i,
                         field_threshold=field_threshold,
                         even_split=True,
                         split=1,
                         show_plot=False,
                     )
-                    for neuron in place_cells
+                    for i in units
                 ]
                 reliabilities[age].append(reliabilities_)
 
@@ -2327,9 +2345,7 @@ class RecentReversal:
             for age, color, ax in zip(ages, age_colors, axs):
                 mice = self.meta["grouped_mice"][age]
                 boxes = ax.boxplot(reliabilities[age], patch_artist=True)
-                for patch, med in zip(boxes["boxes"], boxes["medians"]):
-                    patch.set_facecolor(color)
-                    med.set(color="k")
+                color_boxes(boxes, color)
 
                 if age == "aged":
                     ax.set_yticks([])
@@ -2340,7 +2356,8 @@ class RecentReversal:
         return reliabilities
 
     def plot_reliabilities_comparisons(
-        self, session_types=("Goals4", "Reversal"), field_threshold=0.5, show_plot=True
+        self, session_types=("Goals4", "Reversal"), field_threshold=0.9, show_plot=True,
+            data_type='ensembles', ages_to_plot=None,
     ):
         """
         Plot the distribution of reliabilities for each cell in each mouse, separated by age, for the two sessions.
@@ -2360,17 +2377,24 @@ class RecentReversal:
         mean_reliabilities = {session_type: dict() for session_type in session_types}
         for session_type in session_types:
             reliabilities[session_type] = self.plot_reliabilities(
-                session_type, field_threshold=field_threshold, show_plot=False
+                session_type, field_threshold=field_threshold, show_plot=False, data_type=data_type,
             )
             for age in ages:
                 mean_reliabilities[session_type][age] = [
-                    np.nanmean(r) for r in reliabilities[session_type][age]
+                    np.nanmedian(r) for r in reliabilities[session_type][age]
                 ]
 
         if show_plot:
-            fig, axs = plt.subplots(1, 2)
+            ylabel_data_type = {
+                "ensembles": "Ensemble",
+                "spatial_ensembles": "Spatial ensemble",
+                "place_cells": "Place cell",
+                "cells": "All cells",
+            }
+            fig, axs = plt.subplots(1, 2, sharey=True)
             fig.subplots_adjust(wspace=0)
 
+            # Plot distributions for each mouse.
             for age, ax, color in zip(ages, axs, age_colors):
                 mice = self.meta["grouped_mice"][age]
                 positions = [
@@ -2384,28 +2408,61 @@ class RecentReversal:
                         positions=position,
                         patch_artist=True,
                     )
-                    for patch, med in zip(boxes["boxes"], boxes["medians"]):
-                        patch.set_facecolor(color)
-                        med.set(color="k")
+                    color_boxes(boxes, color)
 
-                if age == "aged":
-                    ax.set_yticks([])
-                else:
-                    ax.set_ylabel("Place cell reliabilities")
                 ax.set_xticks(label_positions)
                 ax.set_xticklabels(mice, rotation=45)
+            axs[0].set_ylabel(f"{ylabel_data_type[data_type]} spatial reliability")
 
+            # Plot distributions of mean reliabilities.
             fig, axs = plt.subplots(1, len(session_types), sharey=True)
             fig.subplots_adjust(wspace=0)
 
             for session_type, ax in zip(session_types, axs):
-                ylabel = (
-                    "Mean place field reliability"
-                    if session_type == session_types[0]
-                    else None
-                )
-                self.scatter_box(mean_reliabilities[session_type], ylabel=ylabel, ax=ax)
+                self.scatter_box(mean_reliabilities[session_type], ax=ax)
                 ax.set_title(session_type)
+            axs[0].set_ylabel(f"{ylabel_data_type[data_type]} spatial reliability")
+
+            # Group by age.
+            if len(session_types) == 2:
+                ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+                fig, axs = plt.subplots(1, n_ages_to_plot, sharey=True, figsize=(3.2*n_ages_to_plot, 4.8))
+
+                if n_ages_to_plot == 1:
+                    axs = [axs]
+                for age, color, ax in zip(ages_to_plot, plot_colors, axs):
+                    mean_reliabilities_by_session = [mean_reliabilities[session_type][age]
+                                                     for session_type in session_types]
+
+                    boxes = ax.boxplot(
+                        mean_reliabilities_by_session,
+                        patch_artist=True,
+                        widths=0.75,
+                        zorder=0,
+                        showfliers=False,
+                    )
+                    color_boxes(boxes, color)
+
+                    data_points = np.vstack(mean_reliabilities_by_session).T
+                    for mouse_data in data_points:
+                        ax.plot(
+                            jitter_x([1, 2], 0.05),
+                            mouse_data,
+                            "o-",
+                            color="k",
+                            markerfacecolor=color,
+                            zorder=1,
+                            markersize=10,
+                        )
+                    ax.set_xticklabels([session_type.replace('Goals','Training')
+                                        for session_type in session_types], rotation=45)
+
+                    if n_ages_to_plot > 1:
+                        ax.set_title(age)
+
+                axs[0].set_ylabel(f"{ylabel_data_type[data_type]} spatial reliability")
+                fig.tight_layout()
+                fig.subplots_adjust(wspace=0)
 
         return reliabilities, mean_reliabilities
 
@@ -2413,7 +2470,9 @@ class RecentReversal:
         self,
         performance_metric="d_prime",
         session_types=("Goals4", "Reversal"),
-        field_threshold=0.15,
+        field_threshold=0.9,
+        data_type='ensembles',
+        ages_to_plot=None,
     ):
         """
         It's in the name. Spearman correlation.
@@ -2430,6 +2489,7 @@ class RecentReversal:
             session_types=session_types,
             field_threshold=field_threshold,
             show_plot=False,
+            data_type=data_type,
         )
 
         performance = self.plot_performance_session_type(
@@ -2438,17 +2498,40 @@ class RecentReversal:
             performance_metric=performance_metric,
             show_plot=False,
         )
+
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+
+        ylabel_data_type = {
+            "ensembles": "Ensemble",
+            "spatial_ensembles": "Spatial ensemble",
+            "place_cells": "Place cell",
+            "cells": "All cells",
+        }
+
         fig, ax = plt.subplots()
-        for age, color in zip(ages, age_colors):
-            ax.scatter(
-                mean_reliabilities["Reversal"][age], performance[age], color=color
-            )
+        for age, color in zip(ages_to_plot, plot_colors):
+            x = mean_reliabilities["Reversal"][age]
+            y = performance[age]
+            ax.scatter(x, y, color=color)
+
+            # Plot fit line.
+            z = np.polyfit(x, y, 1)
+            y_hat = np.poly1d(z)(x)
+            ax.plot(x, y_hat, color=color)
+
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
         ylabel = {"CRs": "Correct rejection rate", "hits": "Hit rate", "d_prime": "d'"}
-        ax.set_ylabel(ylabel[performance_metric])
-        ax.set_xlabel("Place field reliability")
+        ax.set_ylabel(ylabel[performance_metric], fontsize=22)
+        ax.set_xlabel(f"{ylabel_data_type[data_type]} reliability", fontsize=22)
+        fig.tight_layout()
 
-        r, pvalue = spearmanr(
+        r, pvalue = dict(), dict()
+        for age in ages:
+            r[age], pvalue[age] = spearmanr(mean_reliabilities["Reversal"][age],
+                                            performance[age])
+
+        r['combined'], pvalue['combined'] = spearmanr(
             np.hstack([mean_reliabilities["Reversal"][age] for age in ages]),
             np.hstack([performance[age] for age in ages]),
         )
@@ -3177,12 +3260,10 @@ class RecentReversal:
                     weights=activation,
                 )[0]
 
-        session.assemblies["rasters"] = rasters
-        session.assemblies["meta"] = {
-            "raster_bin_size": bin_size,
-            "running_only": running_only,
-        }
-        session.assemblies["tuning_curves"] = np.mean(rasters, axis=1)
+        session.assemblies['fields'].data["rasters"] = rasters
+        session.assemblies['fields'].data["tuning_curves"] = np.mean(rasters, axis=1)
+        session.assemblies['fields'].meta["raster_bin_size"] = bin_size
+        session.assemblies['fields'].meta["raster_running_only"] = running_only
 
     def plot_ensemble_raster(
         self, mouse, session_type, ensemble_number, bin_size=0.6, running_only=False
@@ -3190,15 +3271,15 @@ class RecentReversal:
         session = self.data[mouse][session_type]
         try:
             assert (
-                session.assemblies["meta"]["raster_bin_size"] == bin_size
-                and session.assemblies["meta"]["running_only"] == running_only
+                session.assemblies["fields"].meta["raster_bin_size"] == bin_size
+                and session.assemblies["fields"].meta["raster_running_only"] == running_only
             ), "Stored raster parameters don't match inputs, recalculating rasters."
 
         except:
             self.make_ensemble_raster(
                 mouse, session_type, bin_size=bin_size, running_only=running_only
             )
-        rasters = session.assemblies["rasters"]
+        rasters = session.assemblies['fields'].data["rasters"]
 
         behavior_data = session.behavior.data
         port_bins = find_reward_spatial_bins(
@@ -3246,8 +3327,8 @@ class RecentReversal:
         behavior_data = session.behavior.data
         try:
             assert (
-                session.assemblies["meta"]["raster_bin_size"] == bin_size
-                and session.assemblies["meta"]["running_only"] == running_only
+                session.assemblies['fields'].meta["raster_bin_size"] == bin_size
+                and session.assemblies['fields'].meta["raster_running_only"] == running_only
             ), "Stored raster parameters don't match inputs, recalculating rasters."
 
         except:
@@ -3258,8 +3339,8 @@ class RecentReversal:
         if subset is None:
             subset = range(session.assemblies["significance"].nassemblies)
 
-        rasters = session.assemblies["rasters"][subset]
-        tuning_curves = session.assemblies["tuning_curves"][subset]
+        rasters = session.assemblies['fields'].data["rasters"][subset]
+        tuning_curves = session.assemblies['fields'].data["tuning_curves"][subset]
         port_bins = find_reward_spatial_bins(
             behavior_data["df"]["lin_position"],
             np.asarray(behavior_data["lin_ports"]),
@@ -3511,9 +3592,7 @@ class RecentReversal:
                     zorder=0,
                     showfliers=False,
                 )
-                for patch, med, color in zip(box["boxes"], box["medians"], age_colors):
-                    patch.set_facecolor(color)
-                    med.set(color="k")
+                color_boxes(box, age_colors)
 
                 for i, (age, color) in enumerate(zip(ages, age_colors)):
                     ax.scatter(
@@ -4738,9 +4817,7 @@ class RecentReversal:
                     zorder=0,
                     showfliers=False,
                 )
-                for patch, med in zip(boxes["boxes"], boxes["medians"]):
-                    patch.set_facecolor(color)
-                    med.set(color="k")
+                color_boxes(boxes, [color, color])
 
                 data_points = np.vstack(p_changing_split_by_age[age]).T
                 for mouse_data in data_points:
@@ -5349,9 +5426,7 @@ class RecentReversal:
             for age, color, ax in zip(ages, age_colors, axs):
                 mice = self.meta["grouped_mice"][age]
                 boxes = ax.boxplot(similarities[age], patch_artist=True)
-                for patch, med in zip(boxes["boxes"], boxes["medians"]):
-                    patch.set_facecolor(color)
-                    med.set(color="k")
+                color_boxes(boxes, [color, color])
 
                 if age == "aged":
                     ax.set_yticks([])
@@ -5383,9 +5458,7 @@ class RecentReversal:
 
         for age, ax, color in zip(ages, axs, age_colors):
             boxes = ax.boxplot(percent_matches[age].values(), patch_artist=True)
-            for patch, med in zip(boxes["boxes"], boxes["medians"]):
-                patch.set_facecolor(color)
-                med.set(color="k")
+            color_boxes(boxes, color)
 
             if age == "aged":
                 ax.set_yticks([])
@@ -5432,9 +5505,7 @@ class RecentReversal:
                     positions=position,
                     patch_artist=True,
                 )
-                for patch, med in zip(boxes["boxes"], boxes["medians"]):
-                    patch.set_facecolor(color)
-                    med.set(color="k")
+                color_boxes(boxes, color)
 
             if age == "aged":
                 ax.set_yticks([])
@@ -5716,9 +5787,7 @@ class RecentReversal:
                 patch_artist=True,
             )
 
-            for patch, med, color in zip(boxes["boxes"], boxes["medians"], age_colors):
-                patch.set_facecolor(color)
-                med.set(color="k")
+            color_boxes(boxes, age_colors)
 
             if session == "Goals1":
                 ax.set_ylabel("Median distance of field center to reward")
@@ -6070,9 +6139,7 @@ class RecentReversal:
             for age, color, ax in zip(ages, age_colors, axs):
                 boxes = ax.boxplot(ensemble_field_rhos[age], patch_artist=True)
 
-                for patch, med in zip(boxes["boxes"], boxes["medians"]):
-                    patch.set_facecolor(color)
-                    med.set(color="k")
+                color_boxes(boxes, color)
 
                 if age == "aged":
                     ax.set_yticks([])
@@ -6113,9 +6180,7 @@ class RecentReversal:
                         positions=position,
                         patch_artist=True,
                     )
-                    for patch, med in zip(boxes["boxes"], boxes["medians"]):
-                        patch.set_facecolor(color)
-                        med.set(color="k")
+                    color_boxes(boxes, color)
 
                 if age == "aged":
                     ax.set_yticks([])
@@ -6147,9 +6212,7 @@ class RecentReversal:
         if ax is None:
             fig, ax = plt.subplots(figsize=(3, 5))
         boxes = ax.boxplot([rhos[age] for age in ages], widths=0.75, patch_artist=True)
-        for patch, med, color in zip(boxes["boxes"], boxes["medians"], age_colors):
-            patch.set_facecolor(color)
-            med.set(color="k")
+        color_boxes(boxes, age_colors)
         ax.set_xticklabels(ages)
         ax.set_title(session_pair)
         ax.set_ylabel("Ensemble field correlation [Spearman rho]")
@@ -6273,9 +6336,7 @@ class RecentReversal:
             boxes = ax.boxplot(SI[age], patch_artist=True)
 
             # color the boxplots.
-            for patch, med in zip(boxes["boxes"], boxes["medians"]):
-                patch.set_facecolor(color)
-                med.set(color="k")
+            color_boxes(boxes, color)
 
             if age == "aged":
                 ax.set_yticks([])
