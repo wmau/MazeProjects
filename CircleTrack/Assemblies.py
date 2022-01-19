@@ -10,8 +10,14 @@ from CaImaging.Behavior import spatial_bin
 
 
 def plot_assembly(
-    pattern, activation, spike_times, sort_by_contribution=True, order=None, ax=None, frames=None,
-        activation_color='r',
+    pattern,
+    activation,
+    spike_times,
+    sort_by_contribution=True,
+    order=None,
+    ax=None,
+    frames=None,
+    activation_color="r",
 ):
     """
     Plots single assemblies. This plot contains the activation profile (activation over time)
@@ -70,7 +76,9 @@ def plot_assembly(
     activation_ax.set_xticks(xlims)
     xlims[-1] /= 15
     activation_ax.set_xticklabels([0, np.rint(xlims[-1])])
-    activation_ax.set_ylabel("Activation strength [a.u.]", color=activation_color, fontsize=22)
+    activation_ax.set_ylabel(
+        "Activation strength [a.u.]", color=activation_color, fontsize=22
+    )
     activation_ax.set_xlabel("Time (s)", fontsize=22)
     spikes_ax.eventplot(sorted_spike_times, color="k", alpha=0.2, rasterized=True)
     spikes_ax.set_ylabel("Neurons", rotation=-90, fontsize=22)
@@ -80,8 +88,12 @@ def plot_assembly(
 
 
 def write_assembly_triggered_movie(
-    activation, frame_numbers, behavior_movie, fpath=None, threshold=2.58,
-        trials=None,
+    activation,
+    frame_numbers,
+    behavior_movie,
+    fpath=None,
+    threshold=2.58,
+    trials=None,
 ):
     z_activation = zscore(activation)
     inds = np.where(z_activation > threshold)[0]
@@ -102,23 +114,32 @@ def write_assembly_triggered_movie(
 
     writeFile = cv2.VideoWriter(fpath, codec, 15, (cols, rows), isColor=True)
     print(f"Writing {fpath}")
-    for i, (chunked_frames, chunked_inds) in \
-            enumerate(zip(grouped_frames, grouped_inds)):
+    for i, (chunked_frames, chunked_inds) in enumerate(
+        zip(grouped_frames, grouped_inds)
+    ):
         for frame_number in chunked_frames:
             cap.set(1, frame_number)
             ret, frame = cap.read()
             writeFile.write(frame)
 
         blank_frame = np.zeros_like(frame)
-        text = f'Activation #{i}'
+        text = f"Activation #{i}"
 
-        cv2.putText(blank_frame, text, (50, 50),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        cv2.putText(
+            blank_frame, text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2
+        )
 
         if trials is not None:
-            trial_text = f'Lap # {trials[chunked_inds[0]]}'
-            cv2.putText(blank_frame, trial_text, (50, 100),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            trial_text = f"Lap # {trials[chunked_inds[0]]}"
+            cv2.putText(
+                blank_frame,
+                trial_text,
+                (50, 100),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (255, 255, 255),
+                2,
+            )
 
         for i in range(15):
             writeFile.write(blank_frame)
@@ -127,7 +148,7 @@ def write_assembly_triggered_movie(
     cap.release()
 
 
-def find_members(patterns, filter_method='sd', thresh=2):
+def find_members(patterns, filter_method="sd", thresh=2):
     """
     Find the members of an ensemble defined by high weights exceeding some threshold.
 
@@ -149,16 +170,20 @@ def find_members(patterns, filter_method='sd', thresh=2):
 
     """
     if patterns.ndim == 1:
-        patterns = patterns[np.newaxis,:]
+        patterns = patterns[np.newaxis, :]
     n_patterns, n_neurons = patterns.shape
 
     member_candidates = np.zeros((2, *patterns.shape))
-    if filter_method == 'sd':
+    if filter_method == "sd":
         # Take the mean and standard deviation to find high neuron weights.
         pattern_mean = np.mean(patterns, axis=1)
         pattern_stds = np.std(patterns, axis=1)
-        member_candidates[0] = patterns > np.tile(pattern_mean + thresh*pattern_stds, (n_neurons, 1)).T
-        member_candidates[1] = patterns < np.tile(pattern_mean - thresh*pattern_stds, (n_neurons, 1)).T
+        member_candidates[0] = (
+            patterns > np.tile(pattern_mean + thresh * pattern_stds, (n_neurons, 1)).T
+        )
+        member_candidates[1] = (
+            patterns < np.tile(pattern_mean - thresh * pattern_stds, (n_neurons, 1)).T
+        )
 
         # Determine if the weight vectors have negative or positive values for ensemble members.
         # Do this by counting number of highly contributing neurons in both negative and positive and finding which
@@ -179,13 +204,13 @@ def find_members(patterns, filter_method='sd', thresh=2):
         # For each ensemble, get the index of bool_members.
         member_idx_ = [np.where(members)[0] for members in bool_members]
 
-    elif filter_method == 'z':
-        raise ValueError('z method not done yet')
+    elif filter_method == "z":
+        raise ValueError("z method not done yet")
         # bool_members = patterns > thresh
         # member_idx = [np.where(members)[0] for members in bool_members]
 
     else:
-        raise ValueError('Unaccepted filter_method.')
+        raise ValueError("Unaccepted filter_method.")
 
     # Sort neurons by their weight.
     member_idx = []
@@ -201,7 +226,8 @@ def find_members(patterns, filter_method='sd', thresh=2):
 
     return bool_members, member_idx, corrected_patterns
 
-def find_memberships(patterns, filter_method='sd', thresh=2):
+
+def find_memberships(patterns, filter_method="sd", thresh=2):
     """
     Rather than finding the members for each ensemble, do the inverse -- find which ensemble each neuron belongs to.
 
@@ -218,13 +244,19 @@ def find_memberships(patterns, filter_method='sd', thresh=2):
     for neuron in range(n_neurons):
         memberships.append([])
         for i, ensemble in enumerate(member_list):
-            if neuron in ensemble: memberships[neuron].append(i)
+            if neuron in ensemble:
+                memberships[neuron].append(i)
 
     return memberships
 
 
-def spatial_bin_ensemble_activations(activations, lin_position, occupancy_normalization,
-                                     spatial_bin_size_radians=0.05, do_zscore=True):
+def spatial_bin_ensemble_activations(
+    activations,
+    lin_position,
+    occupancy_normalization,
+    spatial_bin_size_radians=0.05,
+    do_zscore=True,
+):
 
     # Bin all the assembly activations in space.
     ensemble_fields = []
@@ -239,16 +271,15 @@ def spatial_bin_ensemble_activations(activations, lin_position, occupancy_normal
             weights=assembly,
             one_dim=True,
         )[0]
-        ensemble_fields.append(
-            assembly_field
-            / occupancy_normalization
-        )
+        ensemble_fields.append(assembly_field / occupancy_normalization)
     ensemble_fields = np.vstack(ensemble_fields)
 
     return ensemble_fields
 
-def plot_pattern(pattern, ax=None, color='k', alpha=1, linewidth=0.5,
-                 markersize=5, order=None):
+
+def plot_pattern(
+    pattern, ax=None, color="k", alpha=1, linewidth=0.5, markersize=5, order=None
+):
     if ax is None:
         fig, ax = plt.subplots()
 
@@ -256,11 +287,13 @@ def plot_pattern(pattern, ax=None, color='k', alpha=1, linewidth=0.5,
     if order is None:
         order = range(n_neurons)
 
-    markerline, stemlines, baseline = ax.stem(range(n_neurons), pattern[order], color, markerfmt=color + 'o', basefmt=" ")
+    markerline, stemlines, baseline = ax.stem(
+        range(n_neurons), pattern[order], color, markerfmt=color + "o", basefmt=" "
+    )
     plt.setp(markerline, alpha=alpha)
     plt.setp(stemlines, alpha=alpha)
-    plt.setp(stemlines, 'linewidth', linewidth)
-    plt.setp(markerline, 'markersize', markersize)
+    plt.setp(stemlines, "linewidth", linewidth)
+    plt.setp(markerline, "markersize", markersize)
 
     ax.set_ylabel("Weight [a.u.]", fontsize=22)
     ax.set_xlabel("Neurons", fontsize=22)
