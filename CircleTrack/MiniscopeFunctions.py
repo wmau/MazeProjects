@@ -607,7 +607,7 @@ class CalciumSession:
                 print("Excluded ensemble members: " + str(excluded_members))
                 included_neurons = members[in_neurons]
 
-        fig = plt.figure(figsize=(10.5, 7.5))
+        fig = plt.figure()
         spec = gridspec.GridSpec(nrows=1, ncols=6, figure=fig)
         assembly_ax = fig.add_subplot(spec[:5])
         pattern_ax = fig.add_subplot(spec[-1])
@@ -626,7 +626,7 @@ class CalciumSession:
 
         xticks = activation_ax.get_xlim()
         activation_ax.set_xticks(activation_ax.get_xlim())
-        activation_ax.set_xticklabels([0, np.rint(xticks[-1]/15)])
+        activation_ax.set_xticklabels([0, 1800])
         activation_ax.set_xlabel('Time (s)')
 
         if get_members:

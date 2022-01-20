@@ -80,7 +80,7 @@ import pingouin as pg
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
 plt.rcParams["text.usetex"] = False
-plt.rcParams.update({"font.size": 12})
+plt.rcParams.update({"font.size": 16})
 
 session_types = {
     "Drift": [
@@ -193,9 +193,9 @@ class RecentReversal:
                             pkl.dump(session.assemblies["fields"], file)
 
     ############################ HELPER FUNCIONS ############################
-    def save_fig(self, fig, fname):
+    def save_fig(self, fig, fname, folder):
         fpath = os.path.join(
-            self.save_configs["path"], f'{fname}.{self.save_configs["ext"]}'
+            self.save_configs["path"], str(folder), f'{fname}.{self.save_configs["ext"]}'
         )
         fig.savefig(fpath, bbox_inches="tight")
 
@@ -707,7 +707,7 @@ class RecentReversal:
                 plt.tight_layout()
 
             if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"age v young_{performance_metric}")
+                self.save_fig(fig, f"age v young_{performance_metric}", 1)
 
         return peak_performance
 
@@ -791,7 +791,7 @@ class RecentReversal:
         fig.legend(handles=patches, loc="lower right")
 
         if self.save_configs["save_figs"]:
-            self.save_fig(fig, "Performance_age_v_young")
+            self.save_fig(fig, "Performance_age_v_young", 4)
 
         return performance
 
@@ -1647,12 +1647,10 @@ class RecentReversal:
             matrices.append(matrix)
             im = ax.imshow(matrix)
             ax.set_title(f"{age}")
-            ax.set_xlabel("Day")
-            ax.set_ylabel("Day")
             ax.set_xticks(range(len(self.meta["session_types"])))
             ax.set_yticks(range(len(self.meta["session_types"])))
-            ax.set_xticklabels(self.meta["session_labels"], rotation=90)
-            ax.set_yticklabels(self.meta["session_labels"])
+            ax.set_xticklabels(self.meta["session_labels"], rotation=45, fontsize=22)
+            ax.set_yticklabels(self.meta["session_labels"], fontsize=22)
         fig.tight_layout()
         min_clim = np.min(matrices)
         max_clim = np.max(matrices)
@@ -1667,7 +1665,7 @@ class RecentReversal:
         cbar = fig.colorbar(im, cax=cbar_ax)
         cbar.set_label("Spatial PV correlation (Spearman rho)")
 
-        self.save_fig(fig, f"PVCorr")
+        self.save_fig(fig, f"PVCorr", 1)
 
     def get_diagonals(self, corr_matrices):
         """
@@ -1723,16 +1721,14 @@ class RecentReversal:
         self,
         corr_matrices,
         session_pairs=(("Goals3", "Goals4"), ("Goals4", "Reversal")),
-        ages_to_plot=ages,
+        ages_to_plot=None,
     ):
         """
         For the specified sessions, plot the PV correlation coefficient between those sessions,
         separated by age.
 
         """
-        if type(ages_to_plot) is str:
-            ages_to_plot = [ages_to_plot]
-
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
         data = {session_pair: dict() for session_pair in session_pairs}
         for session_pair in session_pairs:
             s1 = self.meta["session_types"].index(session_pair[0])
@@ -1743,13 +1739,11 @@ class RecentReversal:
                 for mouse in self.meta["grouped_mice"][age]:
                     data[session_pair][age].append(corr_matrices[mouse][s1, s2])
 
-        n_plots = len(ages_to_plot)
-        fig, axs = plt.subplots(1, n_plots, sharey=True, figsize=(4 * n_plots, 4))
-        if n_plots == 1:
+        fig, axs = plt.subplots(1, n_ages_to_plot, sharey=True, figsize=(4.8 * n_ages_to_plot, 4.8))
+        if n_ages_to_plot == 1:
             axs = [axs]
 
-        colors = [age_colors[ages.index(age)] for age in ages_to_plot]
-        for ax, age, color in zip(axs, ages_to_plot, colors):
+        for ax, age, color in zip(axs, ages_to_plot, plot_colors):
             boxes = ax.boxplot(
                 [data[session_pair][age] for session_pair in session_pairs],
                 widths=0.75,
@@ -1765,7 +1759,7 @@ class RecentReversal:
                     color=color,
                     edgecolor="k",
                     zorder=1,
-                    s=50,
+                    s=100,
                 )
                 for i, session_pair in enumerate(session_pairs)
             ]
@@ -1780,15 +1774,17 @@ class RecentReversal:
                 rotation=45,
             )
             ax.tick_params(axis="x", length=0)
-            ax.set_title(age)
+
+            if n_ages_to_plot == 2:
+                ax.set_title(age)
 
             [ax.spines[side].set_visible(False) for side in ["top", "right"]]
 
-        axs[0].set_ylabel("Spatial PV correlation coefficients")
+        axs[0].set_ylabel("Spatial PV\ncorrelation coefficients", fontsize=22)
         fig.tight_layout()
 
         if self.save_configs["save_figs"]:
-            self.save_fig(fig, f"PVCorr_scatterbox")
+            self.save_fig(fig, f"PVCorr_scatterbox", 1)
 
         df = pd.concat(
             [
@@ -2114,7 +2110,7 @@ class RecentReversal:
                 fig.savefig(fname, bbox_inches="tight")
                 plt.close(fig)
         elif mode == "scroll":
-            ScrollPlot(
+            ScrollObj = ScrollPlot(
                 plot_daily_rasters,
                 current_position=0,
                 nrows=len(session_types),
@@ -2124,6 +2120,8 @@ class RecentReversal:
                 titles=ax_titles,
                 figsize=(5, 9),
             )
+            if self.save_configs['save_figs']:
+                self.save_fig(ScrollObj.fig, f'{mouse}_longitudinal_cell', 1)
 
         # List of dictionaries. Do HoloMap(daily_rasters) in a
         # jupyter notebook.
@@ -2182,7 +2180,7 @@ class RecentReversal:
 
         return spatial_info
 
-    def plot_all_spatial_info(self, aggregate_mode="median", place_cells_only=False):
+    def plot_all_spatial_info(self, aggregate_mode="mean", place_cells_only=False):
         """
         Plot aggregated spatial information for each mouse and each session.
 
@@ -2249,7 +2247,7 @@ class RecentReversal:
 
         return spatial_infos, df
 
-    def spatial_info_anova(self, aggregate_mode="median", place_cells_only=False):
+    def spatial_info_anova(self, aggregate_mode="mean", place_cells_only=False):
         """
         Do ANOVA on the spatial information.
 
@@ -2282,7 +2280,7 @@ class RecentReversal:
         return anova_df, pairwise_df, df
 
     def plot_reliabilities(self, session_type, field_threshold=0.5, show_plot=True,
-                           data_type='spatial_ensembles'):
+                           data_type='ensembles'):
         """
         Plot the reliability for each mouse, split by young and aged. Reliability is defined as the fraction
         of trials where there was a calcium transient inside the field. The field is every spatial bin where
@@ -2412,7 +2410,7 @@ class RecentReversal:
 
                 ax.set_xticks(label_positions)
                 ax.set_xticklabels(mice, rotation=45)
-            axs[0].set_ylabel(f"{ylabel_data_type[data_type]} spatial reliability")
+            axs[0].set_ylabel(f"{ylabel_data_type[data_type]} spatial stability", fontsize=22)
 
             # Plot distributions of mean reliabilities.
             fig, axs = plt.subplots(1, len(session_types), sharey=True)
@@ -2421,12 +2419,12 @@ class RecentReversal:
             for session_type, ax in zip(session_types, axs):
                 self.scatter_box(mean_reliabilities[session_type], ax=ax)
                 ax.set_title(session_type)
-            axs[0].set_ylabel(f"{ylabel_data_type[data_type]} spatial reliability")
+            axs[0].set_ylabel(f"{ylabel_data_type[data_type]} spatial stability")
 
             # Group by age.
             if len(session_types) == 2:
                 ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
-                fig, axs = plt.subplots(1, n_ages_to_plot, sharey=True, figsize=(3.2*n_ages_to_plot, 4.8))
+                fig, axs = plt.subplots(1, n_ages_to_plot, sharey=True, figsize=(3.5 * n_ages_to_plot, 6))
 
                 if n_ages_to_plot == 1:
                     axs = [axs]
@@ -2455,14 +2453,18 @@ class RecentReversal:
                             markersize=10,
                         )
                     ax.set_xticklabels([session_type.replace('Goals','Training')
-                                        for session_type in session_types], rotation=45)
+                                        for session_type in session_types], rotation=45, fontsize=16)
+                    [ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
                     if n_ages_to_plot > 1:
                         ax.set_title(age)
 
-                axs[0].set_ylabel(f"{ylabel_data_type[data_type]} spatial reliability")
+                axs[0].set_ylabel(f"{ylabel_data_type[data_type]}\nspatial stability", fontsize=22)
                 fig.tight_layout()
                 fig.subplots_adjust(wspace=0)
+
+                if self.save_configs['save_figs']:
+                    self.save_fig(fig, f'Mean {data_type} stability during Reversal_{ages_to_plot}', 2)
 
         return reliabilities, mean_reliabilities
 
@@ -2471,6 +2473,7 @@ class RecentReversal:
         performance_metric="d_prime",
         session_types=("Goals4", "Reversal"),
         field_threshold=0.9,
+        window=5,
         data_type='ensembles',
         ages_to_plot=None,
     ):
@@ -2494,7 +2497,7 @@ class RecentReversal:
 
         performance = self.plot_performance_session_type(
             "Reversal",
-            window=None,
+            window=window,
             performance_metric=performance_metric,
             show_plot=False,
         )
@@ -2512,7 +2515,7 @@ class RecentReversal:
         for age, color in zip(ages_to_plot, plot_colors):
             x = mean_reliabilities["Reversal"][age]
             y = performance[age]
-            ax.scatter(x, y, color=color)
+            ax.scatter(x, y, color=color, edgecolors="k", s=100)
 
             # Plot fit line.
             z = np.polyfit(x, y, 1)
@@ -2521,9 +2524,9 @@ class RecentReversal:
 
             [ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
-        ylabel = {"CRs": "Correct rejection rate", "hits": "Hit rate", "d_prime": "d'"}
-        ax.set_ylabel(ylabel[performance_metric], fontsize=22)
-        ax.set_xlabel(f"{ylabel_data_type[data_type]} reliability", fontsize=22)
+        ylabel = {"CRs": "correct rejection rate", "hits": "hit rate", "d_prime": "d'"}
+        ax.set_ylabel(f"Peak {ylabel[performance_metric]}", fontsize=22)
+        ax.set_xlabel(f"{ylabel_data_type[data_type]} stability", fontsize=22)
         fig.tight_layout()
 
         r, pvalue = dict(), dict()
@@ -2535,6 +2538,9 @@ class RecentReversal:
             np.hstack([mean_reliabilities["Reversal"][age] for age in ages]),
             np.hstack([performance[age] for age in ages]),
         )
+
+        if self.save_configs['save_figs']:
+            self.save_fig(fig, f'{data_type} stability correlated with {performance_metric}_{ages_to_plot}', 2)
 
         return r, pvalue
 
@@ -2599,8 +2605,8 @@ class RecentReversal:
                 ]
 
             ax.axis("tight")
-            ax.set_ylabel("Neuron #")
-            ax.set_xlabel("Location")
+            ax.set_ylabel("Neuron #", fontsize=22)
+            ax.set_xlabel("Location", fontsize=22)
 
             ax.set_xticks(ax.get_xlim())
             ax.set_xticklabels([0, 220])
@@ -2638,17 +2644,17 @@ class RecentReversal:
             self.snakeplot_placefields(
                 mouse, session_type, neurons=trimmed_map[:, i], order=order, ax=ax
             )
-            ax.set_title(label)
+            ax.set_title(label, fontsize=22)
             ax.set_xlabel("")
 
             if i > 0:
                 ax.set_ylabel("")
                 ax.set_yticks([])
         fig.suptitle(f"{mouse}, {age}")
-        fig.supxlabel("Linearized position (cm)")
+        fig.supxlabel("Linearized position (cm)", fontsize=22)
         fig.tight_layout()
 
-        self.save_fig(fig, f"{mouse}_snakeplot")
+        self.save_fig(fig, f"{mouse}_snakeplot", 1)
 
     ############################ DECODER FUNCTIONS ############################
     def decode_place(
@@ -3169,10 +3175,10 @@ class RecentReversal:
                 self.scatter_box(
                     n_ensembles[session_type], ax=ax, ages_to_plot=ages_to_plot
                 )
-                ax.set_title(title)
+                ax.set_title(title, fontsize=14)
                 [ax.spines[side].set_visible(False) for side in ["top", "right"]]
 
-            axs[0].set_ylabel(ylabel)
+            axs[0].set_ylabel(ylabel, fontsize=22)
 
             if ages_to_plot is None:
                 self.set_age_legend(fig)
@@ -3202,7 +3208,7 @@ class RecentReversal:
             fig.subplots_adjust(bottom=0.2)
 
         if self.save_configs["save_figs"]:
-            self.save_fig(fig, f"NumberEnsembles_{ages_to_plot}")
+            self.save_fig(fig, f"NumberEnsembles_{ages_to_plot}", 2)
 
         return n_ensembles, df
 
@@ -3212,7 +3218,7 @@ class RecentReversal:
         )[0]
 
         if self.save_configs["save_figs"]:
-            self.save_fig(fig, f"{mouse}_{session_type}_ensemble{ensemble_number}")
+            self.save_fig(fig, f"{mouse}_{session_type}_ensemble{ensemble_number}", 2)
 
     def make_ensemble_raster(
         self, mouse, session_type, bin_size=None, running_only=False
@@ -3288,9 +3294,9 @@ class RecentReversal:
             spatial_bin_size_radians=bin_size,
         )[0]
 
-        fig, axs = plt.subplots(2, 1, figsize=(4, 5.5))
-        axs[0].imshow(rasters[ensemble_number], cmap="viridis", interpolation="hanning")
-        axs[1].plot(np.mean(rasters[ensemble_number], axis=0))
+        fig, ax = plt.subplots()
+        ax.imshow(rasters[ensemble_number], cmap="viridis", interpolation="hanning")
+        #axs[1].plot(np.mean(rasters[ensemble_number], axis=0))
         port_colors = {
             True: "g",
             False: "gray",
@@ -3298,25 +3304,23 @@ class RecentReversal:
         alphas = [
             0.8 if rewarded else 0.2 for rewarded in behavior_data["rewarded_ports"]
         ]
-        for ax in axs:
-            for port, rewarded, alpha in zip(
-                port_bins, behavior_data["rewarded_ports"], alphas
-            ):
-                ax.axvline(x=port, color=port_colors[rewarded], alpha=alpha)
+        for port, rewarded, alpha in zip(
+            port_bins, behavior_data["rewarded_ports"], alphas
+        ):
+            ax.axvline(x=port, color=port_colors[rewarded], alpha=alpha)
 
-            ax.set_xticks(ax.get_xlim())
-            ax.set_xticklabels([0, 220])
+        ax.set_xticks(ax.get_xlim())
+        ax.set_xticklabels([0, 220])
 
-        axs[0].set_yticks([1, rasters[ensemble_number].shape[0]])
-        axs[0].axis("tight")
-        axs[0].set_ylabel("Trial")
-        axs[1].set_ylabel("Average ensemble activation [A.U.]")
-        axs[1].set_xlabel("Linearized position (cm)")
+        ax.set_yticks([1, rasters[ensemble_number].shape[0]])
+        ax.axis("tight")
+        ax.set_ylabel("Trial", fontsize=22)
+        ax.set_xlabel("Linearized position (cm)", fontsize=22)
         fig.tight_layout()
 
         if self.save_configs["save_figs"]:
             self.save_fig(
-                fig, f"{mouse}_{session_type}_ensemble{ensemble_number}_raster"
+                fig, f"{mouse}_{session_type}_ensemble{ensemble_number}_raster", 2
             )
 
     def scrollplot_ensemble_rasters(
@@ -4053,7 +4057,7 @@ class RecentReversal:
         fig.tight_layout()
 
         if self.save_configs["save_figs"]:
-            self.save_fig(fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}")
+            self.save_fig(fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", 3)
 
         return df
 
@@ -4203,7 +4207,7 @@ class RecentReversal:
         axs[0].set_ylabel(ylabels[data_type])
 
         if self.save_configs["save_figs"]:
-            self.save_fig(fig, f"EnsembleSize_{data_type}_{ages_to_plot}")
+            self.save_fig(fig, f"EnsembleSize_{data_type}_{ages_to_plot}", 2)
 
         return data
 
@@ -4834,21 +4838,22 @@ class RecentReversal:
                 if i > 0:
                     ax.tick_params(labelleft=False)
                 else:
-                    ax.set_ylabel(f"Proportion {ylabel[trend]} ensembles")
-                ax.set_title(age)
+                    ax.set_ylabel(f"Proportion {ylabel[trend]} ensembles", fontsize=22)
+
+                if n_ages_to_plot == 2:
+                    ax.set_title(age)
                 ax.set_xticklabels(
                     [
                         session_type.replace("Goals", "Training")
                         for session_type in sessions
                     ],
-                    rotation=45,
+                    rotation=45, fontsize=16
                 )
                 [ax.spines[side].set_visible(False) for side in ["top", "right"]]
-                ax.tick_params(axis="x", length=0)
 
             fig.tight_layout()
             if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"Percent_fading_{ages_to_plot}")
+                self.save_fig(fig, f"Percent_fading_{ages_to_plot}", 2)
 
         return p_changing_split_by_age
 
@@ -4927,18 +4932,20 @@ class RecentReversal:
                 perf,
                 facecolors=c,
                 edgecolors="k",
-                s=50,
+                s=100,
             )
             z = np.polyfit(prop_fading, perf, 1)
             y_hat = np.poly1d(z)(prop_fading)
             ax.plot(prop_fading, y_hat, color=c)
 
-        ax.set_xlabel("Proportion fading ensembles")
-        ax.set_ylabel(ylabels[performance_metric])
+        ax.set_xlabel("Proportion fading ensembles", fontsize=22)
+        ax.set_ylabel(ylabels[performance_metric], fontsize=22)
         [ax.spines[side].set_visible(False) for side in ["top", "right"]]
 
         if n_ages_to_plot == 2:
             ax.legend(ages_to_plot, loc="lower right")
+
+        fig.tight_layout()
 
         for age in ages_to_plot:
             r, pvalue = spearmanr(
@@ -4961,7 +4968,7 @@ class RecentReversal:
 
         if self.save_configs["save_figs"]:
             self.save_fig(
-                fig, f"FadingEnsembleCorr_{performance_metric}_{ages_to_plot}"
+                fig, f"FadingEnsembleCorr_{performance_metric}_{ages_to_plot}", 2
             )
 
         return p_changing_split_by_age, performance
@@ -5395,7 +5402,7 @@ class RecentReversal:
 
                 if self.save_configs["save_figs"]:
                     self.save_fig(
-                        fig, f"{mouse}_ensemble{s1_assembly}_from_{session_pair[0]}"
+                        fig, f"{mouse}_ensemble{s1_assembly}_from_{session_pair[0]}", 3
                     )
 
         return registered_ensembles
@@ -6302,7 +6309,7 @@ class RecentReversal:
             fig.supxlabel("Linearized position (cm)")
 
             if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"{mouse}_ensemble_snakeplot")
+                self.save_fig(fig, f"{mouse}_ensemble_snakeplot", 3)
 
         return ensemble_fields
 
@@ -6362,6 +6369,28 @@ class RecentReversal:
             for session_type in self.meta["session_types"]
         }
 
+        sessions_, ages_, mice_, SIs_ = [] , [], [], []
+        for session_type in self.meta['session_types']:
+            for age in ages:
+                for mouse in self.meta['grouped_mice'][age]:
+                    SIs_.append(np.mean(
+                        self.data[mouse][session_type]
+                            .assemblies["fields"]
+                            .data["spatial_info_z"]
+                    ))
+
+                    mice_.append(mouse)
+                    ages_.append(age)
+                    sessions_.append(session_type)
+
+        df = pd.DataFrame(
+            {'mice': mice_,
+             'age': ages_,
+             'session': sessions_,
+             'SI': SIs_,
+             }
+        )
+
         fig, axs = plt.subplots(1, len(self.meta["session_types"]), sharey=True)
         fig.subplots_adjust(wspace=0)
 
@@ -6377,15 +6406,80 @@ class RecentReversal:
         ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(
             ages_to_plot
         )
-        axs[0].set_ylabel("Mean assembly spatial information (z)")
+        axs[0].set_ylabel("Ensemble spatial info. (z)", fontsize=22)
 
         if n_ages_to_plot == 2:
             self.set_age_legend(fig)
 
         if self.save_configs["save_figs"]:
-            self.save_fig(fig, f"Ensemble_spatial_info_{ages_to_plot}")
+            self.save_fig(fig, f"Ensemble_spatial_info_{ages_to_plot}", 2)
 
-        return SI
+        return SI, df
+
+    def ensemble_SI_anova(self, df):
+        SI_anova = pg.rm_anova(df, dv='SI', subject='mice', within='session')
+        pairwise_df = df.pairwise_ttests(dv='SI', between='session', subject='mice', padjust='fdr_bh')
+
+        return SI_anova, pairwise_df
+
+    def make_fig1(self, panels=None):
+        with open(r'Z:\Will\RemoteReversal\Data\PV_corr_matrices.pkl', 'rb') as file:
+            corr_matrices = pkl.load(file)
+        if panels is None:
+            panels = ['G', 'H', 'I', 'J']
+
+        if 'G' in panels:
+            _ = self.scrollplot_rasters_by_day('Miranda', self.meta['session_types'])
+
+        if 'H' in panels:
+            self.snakeplot_matched_placefields('Miranda', ['Goals3', 'Goals4', 'Reversal'], 1)
+
+        if 'I' in panels:
+            self.plot_corr_matrix(corr_matrices, ages_to_plot=['young'])
+
+        if 'J' in panels:
+            data = self.plot_session_PV_corr_comparisons(corr_matrices, ages_to_plot='young')
+
+
+    def make_fig2(self, panels=None):
+        if panels is None:
+            panels = ['A', 'B', 'C', 'D', 'E', 'F']
+        if 'A' in panels:
+            self.plot_ensemble('Lyra', 'Reversal', 9)
+
+        if 'B' in panels:
+            self.count_ensembles(normalize=False, ages_to_plot='young')
+
+        # if 'C' in panels:
+        #     SI = self.boxplot_all_assembly_SI(ages_to_plot='young')[1]
+        #     SI_anova, pairwise_df = self.ensemble_SI_anova(SI)
+        #     print(SI_anova.to_string())
+        #     print(pairwise_df.to_string())
+
+        if 'C' in panels:
+            self.plot_reliabilities_comparisons(ages_to_plot='young')
+
+        if 'D' in panels:
+            r, pvalue = self.correlate_field_reliability_to_performance(performance_metric='CRs',
+                                                            data_type='ensembles',
+                                                            ages_to_plot='young')
+            print(r)
+            print(pvalue)
+
+        if 'E' in panels:
+            for i in [27, 56]:
+                self.plot_ensemble_raster('Lyra', 'Reversal', i)
+
+            for i in [27,56]:
+                self.plot_ensemble('Lyra', 'Reversal', i)
+
+        if 'F' in panels:
+            self.plot_proportion_changing_ensembles(ages_to_plot='young')
+
+        if 'G' in panels:
+            self.correlate_prop_changing_ensembles_to_behavior(performance_metric='CRs',
+                                                               ages_to_plot='young')
+
 
     # def correlate_stability_to_reversal(
     #     self,

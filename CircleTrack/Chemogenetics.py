@@ -3,6 +3,7 @@ from CircleTrack.SessionCollation import MultiAnimal
 from CircleTrack.BehaviorFunctions import BehaviorSession
 import matplotlib.pyplot as plt
 import xarray as xr
+from scipy.stats import ttest_ind
 from CaImaging.util import nan_array, sem
 import pandas as pd
 from CaImaging.plotting import errorfill, beautify_ax, jitter_x
@@ -12,7 +13,7 @@ import os
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
 plt.rcParams["text.usetex"] = False
-plt.rcParams.update({"font.size": 12})
+plt.rcParams.update({"font.size": 22})
 
 project_names = {"DREADDs": "DREADDs_Reversal",
                  "PSAM": "PSAMReversal"}
@@ -104,8 +105,9 @@ class Chemogenetics:
                 mouse_list = [mouse for mouse in self.meta["mice"] if mouse not in grouped_mice[actuator]]
             self.meta["grouped_mice"][key] = mouse_list
 
-    def save_fig(self, fig, fname):
-        fpath = os.path.join(self.save_configs['path'], f'{fname}.{self.save_configs["ext"]}')
+    def save_fig(self, fig, fname, folder):
+        fpath = os.path.join(self.save_configs['path'], str(folder),
+                             f'{fname}.{self.save_configs["ext"]}')
         fig.savefig(fpath)
 
     def set_legend(self, fig, groups=None, colors=None):
@@ -322,28 +324,8 @@ class Chemogenetics:
                 fig, ax = plt.subplots(figsize=(3, 4.75))
             else:
                 label_axes = False
-            box = ax.boxplot(
-                [best_performance[inj] for inj in self.meta['groups']],
-                labels=self.meta['groups'],
-                patch_artist=True,
-                widths=0.75,
-                showfliers=False,
-                zorder=0,
-            )
 
-            [
-                ax.scatter(
-                    jitter_x(np.ones_like(best_performance[group]) * (i + 1), 0.1),
-                    best_performance[group],
-                    color=color,
-                    edgecolor="k",
-                    zorder=1,
-                )
-                for i, (group, color) in enumerate(zip(self.meta['groups'], self.meta['colors']))
-            ]
-            for patch, med, color in zip(box["boxes"], box["medians"], self.meta['colors']):
-                patch.set_facecolor(color)
-                med.set(color="k")
+            self.scatter_box(best_performance, ax=ax)
 
             if label_axes:
                 ax.set_xticks([1, 2])
@@ -390,8 +372,9 @@ class Chemogenetics:
             [ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
         axs[0].set_ylabel(ylabels[performance_metric])
-        axs[1].tick_params(axis='y', length=0)
 
+        fig.tight_layout()
+        fig.subplots_adjust(wspace=0)
         self.set_legend(fig)
 
         df = pd.concat(
@@ -404,7 +387,7 @@ class Chemogenetics:
         )
 
         if self.save_configs['save_figs']:
-            self.save_fig(fig, f'session {performance_metric}')
+            self.save_fig(fig, f'session {performance_metric}', 1)
 
         return performance, df
 
@@ -433,7 +416,7 @@ class Chemogenetics:
             performance_all[:, i] = performance[self.meta['groups'][0]]
 
         ylabel = {"CRs": "Correct rejection rate", "hits": "Hit rate", "d_prime": "d'"}
-        fig, ax = plt.subplots(figsize=(4, 5))
+        fig, ax = plt.subplots(figsize=(5, 6))
         ax.plot(performance_all.T, color="gray", alpha=0.5)
         errorfill(
             session_labels,
@@ -443,6 +426,7 @@ class Chemogenetics:
             color="k",
         )
         [tick.set_rotation(45) for tick in ax.get_xticklabels()]
+        [ax.spines[side].set_visible(False) for side in ['top', 'right']]
         ax.set_ylabel(ylabel[performance_metric])
         fig.tight_layout()
 
@@ -455,7 +439,7 @@ class Chemogenetics:
         )
 
         if self.save_configs['save_figs']:
-            self.save_fig(fig, f'all_mice_{performance_metric}')
+            self.save_fig(fig, f'all_mice_{performance_metric}', 1)
 
         return df
 
@@ -548,7 +532,7 @@ class Chemogenetics:
                 color=color,
                 edgecolor="k",
                 zorder=1,
-                s=50,
+                s=100,
             )
             for i, (group, color) in enumerate(zip(self.meta['groups'], self.meta['colors']))
         ]
@@ -590,6 +574,16 @@ class Chemogenetics:
         self.scatter_box(licks, ylabel="Licks")
 
         return licks
+
+    def make_fig1(self):
+        d_prime = self.plot_behavior_grouped(performance_metric='d_prime',
+                                          sessions=['Goals' + str(i) for i in np.arange(1,5)])
+
+        performance_metric = 'hits'
+        perf = self.plot_best_performance_all_sessions(performance_metric=performance_metric,
+                                                    sessions=['Goals4', 'Reversal'])[0]
+        h = ttest_ind(perf['Reversal']['vehicle'], perf['Reversal']['PSEM'])
+        print(f"{performance_metric} on Reversal, vehicle vs PSEM: p = {round(h.pvalue, 3)}")
 
 
 if __name__ == "__main__":
