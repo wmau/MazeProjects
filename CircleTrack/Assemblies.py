@@ -74,8 +74,7 @@ def plot_assembly(
     activation_ax.plot(frames, activation, linewidth=2, color=activation_color)
     xlims = list(activation_ax.get_xlim())
     activation_ax.set_xticks(xlims)
-    xlims[-1] /= 15
-    activation_ax.set_xticklabels([0, np.rint(xlims[-1])])
+    activation_ax.set_xticklabels([0, 1800])
     activation_ax.set_ylabel(
         "Activation strength [a.u.]", color=activation_color, fontsize=22
     )
@@ -288,10 +287,10 @@ def plot_pattern(
         order = range(n_neurons)
 
     markerline, stemlines, baseline = ax.stem(
-        range(n_neurons), pattern[order], color, markerfmt=color + "o", basefmt=" "
+        range(n_neurons), pattern[order], color, markerfmt="o", basefmt=" "
     )
-    plt.setp(markerline, alpha=alpha)
-    plt.setp(stemlines, alpha=alpha)
+    plt.setp(markerline, color=color, alpha=alpha)
+    plt.setp(stemlines, color=color, alpha=alpha)
     plt.setp(stemlines, "linewidth", linewidth)
     plt.setp(markerline, "markersize", markersize)
 

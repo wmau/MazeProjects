@@ -4046,7 +4046,7 @@ class RecentReversal:
                     color=color,
                 )
                 ax.set_title(
-                    f"{age}, trained on {session_pair[0].replace('Goals', 'Training')}"
+                    f"trained on {session_pair[0].replace('Goals', 'Training')}"
                     f"\n tested on {session_pair[1].replace('Goals', 'Training')}"
                 )
                 ax.axhline(y=1 / 8, color="darkred")
@@ -5146,7 +5146,7 @@ class RecentReversal:
     ):
         order = np.argsort(registered_patterns[0])
 
-        fig = plt.figure(figsize=(19.2, 10.7))
+        fig = plt.figure(figsize=(14,9))
         spec = gridspec.GridSpec(ncols=2, nrows=2, figure=fig)
         assembly_axs = [fig.add_subplot(spec[i, 0]) for i in range(2)]
 
@@ -5164,7 +5164,7 @@ class RecentReversal:
             registered_activations,
             registered_spike_times,
             registered_patterns,
-            ["r", "b"],
+            ["teal", "navy"],
             session_types,
             frames,
         ):
@@ -5302,22 +5302,22 @@ class RecentReversal:
         if subset == "all":
             subset = range(registered_ensembles["matched_patterns"].shape[1])
 
-        for (
+        for i, (
             s1_activation,
             s2_activation,
             s1_pattern,
             s2_pattern,
             poor_match,
             similarity,
-        ) in zip(
+        ) in enumerate(zip(
             registered_ensembles["matched_activations"][0][subset],
             registered_ensembles["matched_activations"][1][subset],
             registered_ensembles["matched_patterns"][0][subset],
             registered_ensembles["matched_patterns"][1][subset],
             registered_ensembles["poor_matches"][subset],
             registered_ensembles["best_similarities"][subset],
-        ):
-            self.plot_matched_ensemble(
+        )):
+            fig = self.plot_matched_ensemble(
                 (s1_activation, s2_activation),
                 (s1_pattern, s2_pattern),
                 registered_spike_times,
@@ -5327,6 +5327,9 @@ class RecentReversal:
                 split_session=split_session,
                 frames=frames,
             )
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f'{mouse}_Ensemble{subset[i]}_matched', 3)
 
     def spiralplot_matched_ensembles(
         self, mouse, session_pair: tuple, thresh=1, subset="all"
@@ -6480,6 +6483,31 @@ class RecentReversal:
             self.correlate_prop_changing_ensembles_to_behavior(performance_metric='CRs',
                                                                ages_to_plot='young')
 
+    def make_fig3(self, panels=None):
+        if panels is None:
+            panels = ['A', 'B', 'C', 'D', 'E', 'F']
+
+        if 'A' in panels:
+            self.plot_ensemble_registration_ex()
+
+        if 'B' in panels:
+            self.plot_matched_ensembles('Miranda',('Goals3','Goals4'), subset=[11])
+
+        if 'C' in panels:
+            _ = self.spiralplot_matched_ensembles('Miranda', ('Goals3', 'Goals4'), subset=[11])
+
+        if 'D' in panels:
+            ensemble_fields = self.snakeplot_matched_ensembles('Miranda', ('Goals3', 'Goals4'))
+
+        if 'E' in panels:
+            self.plot_lick_decoder(licks_to_include='first', ages_to_plot='young', class_weight='balanced',
+                                   random_state=7, n_jobs=6)
+
+        if 'F' in panels:
+            self.plot_lick_decoder(licks_to_include='first', lag=-1, ages_to_plot='young', class_weight='balanced',
+                                   random_state=7, n_jobs=6)
+
+    
 
     # def correlate_stability_to_reversal(
     #     self,
