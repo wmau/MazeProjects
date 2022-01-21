@@ -6,7 +6,6 @@ from CaImaging.util import (
     make_bins,
     ScrollPlot,
     contiguous_regions,
-    cluster,
     stack_padding,
     distinct_colors,
 )
@@ -24,16 +23,12 @@ from scipy.spatial import distance
 from CircleTrack.SessionCollation import MultiAnimal
 from CircleTrack.MiniscopeFunctions import CalciumSession
 from CaImaging.CellReg import rearrange_neurons, trim_map, scrollplot_footprints
-from sklearn.naive_bayes import BernoulliNB, GaussianNB, MultinomialNB
+from sklearn.naive_bayes import BernoulliNB, GaussianNB
 from sklearn.model_selection import (
     StratifiedKFold,
-    StratifiedShuffleSplit,
-    permutation_test_score,
 )
 from statsmodels.stats.multitest import multipletests
-from sklearn.svm import LinearSVC
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import SGDClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import RFECV
 import numpy as np
@@ -53,7 +48,6 @@ from CaImaging.Assemblies import (
 )
 from CircleTrack.Assemblies import (
     plot_assembly,
-    spatial_bin_ensemble_activations,
     find_members,
     find_memberships,
     plot_pattern,
@@ -1009,7 +1003,7 @@ class RecentReversal:
     def percent_fading_neurons(
         self, mouse, session_type, x="trial", z_threshold=None, x_bin_size=6, alpha=0.01
     ):
-        trends, binned_activations, slopes = self.find_activity_trends(
+        trends, binned_activations, slopes, _ = self.find_activity_trends(
             mouse,
             session_type,
             x=x,
@@ -3362,6 +3356,40 @@ class RecentReversal:
 
         return self.raster_plot
 
+    def plot_activation_trend(self, mouse, session_type, unit_number, x='trial',
+                              z_threshold=None, x_bin_size=1, data_type='ensembles',
+                              subset=None, alpha='sidak', ax=None):
+        trends, binned_activations, slopes, _ = self.find_activity_trends(
+            mouse,
+            session_type,
+            x=x, z_threshold=z_threshold,
+            x_bin_size=x_bin_size,
+            data_type=data_type,
+            subset=subset,
+            alpha=alpha
+        )
+        n_xbins = binned_activations.shape[1]
+
+        # Redoing some computations here, but too lazy to optimize.
+        mk_result = mk.original_test(binned_activations[unit_number])
+        x_pts = np.arange(n_xbins)
+        trend_line = x_pts * mk_result.slope + mk_result.intercept
+
+        if x_bin_size==1:
+            xlabel = 'Trial'
+        else:
+            xlabel = 'Trial block'
+        if ax is None:
+            fig, ax = plt.subplots()
+        else:
+            fig = ax.get_figure()
+        ax.scatter(x_pts, binned_activations[unit_number])
+        ax.plot(x_pts, trend_line, color='navy')
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel('Peak activity')
+        [ax.spines[side].set_visible(False) for side in ['top','right']]
+        fig.tight_layout()
+
     def count_unique_ensemble_members(self, session_type, filter_method="sd", thresh=2):
         proportion_unique_members = {age: [] for age in ages}
         ensemble_size = {age: [] for age in ages}
@@ -4453,7 +4481,7 @@ class RecentReversal:
             data = session.imaging[data_type]
         else:
             raise NotImplementedError
-        slopes = nan_array(data.shape[0])
+        slopes, tau = nan_array(data.shape[0]), nan_array(data.shape[0])
         if subset is not None:
             data = data[subset]
 
@@ -4512,6 +4540,7 @@ class RecentReversal:
                 pvals.append(mk_test.p)
 
                 slopes[i] = mk_test.slope
+                tau[i] = mk_test.Tau
 
             corr_pvals = multipletests(pvals, alpha=pval_thresh, method=alpha)[1]
 
@@ -4527,58 +4556,90 @@ class RecentReversal:
                     mk_test = mk.original_test(unit, alpha=alpha)
                     trends[mk_test.trend].append(i)
                     slopes[i] = mk_test.slope
+                    tau[i] = mk_test.Tau
             else:
                 for i, unit in enumerate(binned_activations):
                     mk_test = mk.original_test(unit, alpha=alpha)
                     trends[mk_test.trend].append(i)
                     slopes[i] = mk_test.slope
+                    tau[i] = mk_test.Tau
 
-        return trends, binned_activations, slopes
+        return trends, binned_activations, slopes, tau
 
-    def compare_trend_slopes(
-        self, mouse, session_pair=("Goals4", "Reversal"), **kwargs
-    ):
-        trends = dict()
-        slopes = dict()
+    # def compare_trend_slopes(
+    #     self, mouse, session_pair=("Goals4", "Reversal"), metric='slopes', **kwargs
+    # ):
+    #     trends = dict()
+    #     slopes = dict()
+    #     taus = dict()
+    #
+    #     registered_ensembles = self.match_ensembles(mouse, session_pair)
+    #     for session_type in session_pair:
+    #         trends[session_type], _, slopes[session_type], taus[session_type] = \
+    #             self.find_activity_trends(
+    #                 mouse, session_type, **kwargs
+    #             )
+    #
+    #     fading_ensembles = np.asarray(trends[session_pair[0]]["decreasing"])
+    #     if fading_ensembles.size == 0:
+    #         return [], []
+    #     reference_ensembles = fading_ensembles[
+    #         ~registered_ensembles["poor_matches"][fading_ensembles]
+    #     ]
+    #     fading_ensembles_yesterday = registered_ensembles["matches"][
+    #         reference_ensembles
+    #     ]
+    #
+    #     if metric == 'slopes':
+    #         x = slopes[session_pair[0]][fading_ensembles]
+    #         y = slopes[session_pair[1]][fading_ensembles_yesterday]
+    #     else:
+    #         x = taus[session_pair[0]][fading_ensembles]
+    #         y = taus[session_pair[1]][fading_ensembles_yesterday]
+    #
+    #     return x, y
+    #
+    # def compare_all_fading_ensemble_slopes(self, **kwargs):
+    #     reversal_slopes = []
+    #     training4_slopes = []
+    #     fig, ax = plt.subplots()
+    #     for age, color in zip(ages, age_colors):
+    #         for mouse in self.meta["grouped_mice"][age]:
+    #             x, y = self.compare_trend_slopes(mouse, **kwargs)
+    #             ax.scatter(x, y, edgecolor=color)
+    #
+    #             ax.set_xlabel("Ensemble activation slope on Reversal")
+    #             ax.set_ylabel("Ensemble activation slope on Training4")
+    #
+    #             reversal_slopes.extend(x)
+    #             training4_slopes.extend(y)
+    #
+    #     ax.axis("equal")
+    #
+    #     return reversal_slopes, training4_slopes
 
-        registered_ensembles = self.match_ensembles(mouse, session_pair)
+    def compare_ensemble_trends(self, mouse, session_pair=("Goals4", "Reversal"),
+                                **kwargs):
+        metrics = {
+            session_type: {}
+            for session_type in session_pair
+        }
+
         for session_type in session_pair:
-            trends[session_type], _, slopes[session_type] = self.find_activity_trends(
-                mouse, session_type, **kwargs
-            )
+            metrics[session_type]['slopes'], metrics[session_type]['taus'] = \
+                self.find_activity_trends(mouse, session_type, **kwargs)[2:]
 
-        fading_ensembles = np.asarray(trends[session_pair[0]]["decreasing"])
-        if fading_ensembles.size == 0:
-            return [], []
-        reference_ensembles = fading_ensembles[
-            ~registered_ensembles["poor_matches"][fading_ensembles]
-        ]
-        fading_ensembles_yesterday = registered_ensembles["matches"][
-            reference_ensembles
-        ]
-        x = slopes[session_pair[0]][fading_ensembles]
-        y = slopes[session_pair[1]][fading_ensembles_yesterday]
+        return metrics
 
-        return x, y
+    def proportion_ensemble_trends(self, mouse, session_type, ax=None, **kwargs):
+        trends = self.find_activity_trends(mouse, session_type, **kwargs)[0]
+        trend_types = ['no trend', 'increasing', 'decreasing']
+        if ax is None:
+            fig, ax = plt.subplots()
 
-    def compare_all_fading_ensemble_slopes(self, **kwargs):
-        reversal_slopes = []
-        training4_slopes = []
-        fig, ax = plt.subplots()
-        for age, color in zip(ages, age_colors):
-            for mouse in self.meta["grouped_mice"][age]:
-                x, y = self.compare_trend_slopes(mouse, **kwargs)
-                ax.scatter(x, y, edgecolor=color)
+        sizes = [len(trends[trend]) for trend in trend_types]
+        ax.pie(sizes, labels=trend_types)
 
-                ax.set_xlabel("Ensemble activation slope on Reversal")
-                ax.set_ylabel("Ensemble activation slope on Training4")
-
-                reversal_slopes.extend(x)
-                training4_slopes.extend(y)
-
-        ax.axis("equal")
-
-        return reversal_slopes, training4_slopes
 
     def find_proportion_changing_cells(
         self,
@@ -4854,6 +4915,15 @@ class RecentReversal:
                 self.save_fig(fig, f"Percent_fading_{ages_to_plot}", 2)
 
         return p_changing_split_by_age
+
+    def hist_ensemble_taus(self, mouse, session_type, ax=None):
+        tau = self.find_activity_trends(mouse, session_type)[3]
+
+        if ax is None:
+            fig, ax = plt.subplots()
+        ax.hist(tau)
+
+        return tau
 
     def make_fading_ensemble_df(self, p_changing_split_by_age):
         p = p_changing_split_by_age
