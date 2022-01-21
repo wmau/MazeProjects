@@ -695,6 +695,7 @@ class RecentReversal:
                 fig, ax = plt.subplots(figsize=(3, 4.75))
             else:
                 label_axes = False
+                fig = ax.get_figure()
 
             self.scatter_box(peak_performance, ax=ax)
 
@@ -705,9 +706,6 @@ class RecentReversal:
                 [ax.spines[side].set_visible(False) for side in ["top", "right"]]
                 # ax = beautify_ax(ax)
                 plt.tight_layout()
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"age v young_{performance_metric}", 1)
 
         return peak_performance
 
@@ -780,18 +778,14 @@ class RecentReversal:
                 downsample_trials=downsample_trials,
             )
             ax.set_xticks([])
-            ax.set_title(title)
+            ax.set_title(title, fontsize=16)
             [ax.spines[side].set_visible(False) for side in ["top", "right"]]
         axs[0].set_ylabel(ylabels[performance_metric])
 
-        patches = [
-            mpatches.Patch(facecolor=c, label=label, edgecolor="k")
-            for c, label in zip(age_colors, ages)
-        ]
-        fig.legend(handles=patches, loc="lower right")
+        self.set_age_legend(fig)
 
         if self.save_configs["save_figs"]:
-            self.save_fig(fig, "Performance_age_v_young", 4)
+            self.save_fig(fig, "Performance_aged_v_young", 4)
 
         return performance
 
@@ -844,7 +838,7 @@ class RecentReversal:
                 color=color,
                 edgecolor="k",
                 zorder=1,
-                s=50,
+                s=100,
             )
             for i, (age, color) in enumerate(zip(ages_to_plot, plot_colors))
         ]
@@ -4057,7 +4051,11 @@ class RecentReversal:
         fig.tight_layout()
 
         if self.save_configs["save_figs"]:
-            self.save_fig(fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", 3)
+            if ages_to_plot == 'young':
+                folder = 3
+            else:
+                folder = 4
+            self.save_fig(fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", folder)
 
         return df
 
@@ -4967,8 +4965,12 @@ class RecentReversal:
             print(msg)
 
         if self.save_configs["save_figs"]:
+            if ages_to_plot == 'young':
+                folder = 3
+            else:
+                folder = 4
             self.save_fig(
-                fig, f"FadingEnsembleCorr_{performance_metric}_{ages_to_plot}", 2
+                fig, f"FadingEnsembleCorr_{performance_metric}_{ages_to_plot}", folder
             )
 
         return p_changing_split_by_age, performance
@@ -6446,7 +6448,7 @@ class RecentReversal:
 
     def make_fig2(self, panels=None):
         if panels is None:
-            panels = ['A', 'B', 'C', 'D', 'E', 'F']
+            panels = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
         if 'A' in panels:
             self.plot_ensemble('Lyra', 'Reversal', 9)
 
@@ -6460,7 +6462,9 @@ class RecentReversal:
         #     print(pairwise_df.to_string())
 
         if 'C' in panels:
-            self.plot_reliabilities_comparisons(ages_to_plot='young')
+            mean_reliabilities = self.plot_reliabilities_comparisons(ages_to_plot='young')[1]
+            w = wilcoxon(mean_reliabilities['Goals4']['young'], mean_reliabilities['Reversal']['young'])
+            print(f'Stability on Training4 vs Reversal, {w.statistic}, p={w.pvalue}')
 
         if 'D' in panels:
             r, pvalue = self.correlate_field_reliability_to_performance(performance_metric='CRs',
@@ -6471,15 +6475,26 @@ class RecentReversal:
 
         if 'E' in panels:
             for i in [27, 56]:
-                self.plot_ensemble_raster('Lyra', 'Reversal', i)
-
-            for i in [27,56]:
                 self.plot_ensemble('Lyra', 'Reversal', i)
 
         if 'F' in panels:
-            self.plot_proportion_changing_ensembles(ages_to_plot='young')
+            for i in [27,56]:
+                self.plot_ensemble_raster('Lyra', 'Reversal', i)
 
         if 'G' in panels:
+            p_changing_split_by_age = self.plot_proportion_changing_ensembles(ages_to_plot='young')
+
+            stats = wilcoxon(p_changing_split_by_age['young'][1], p_changing_split_by_age['young'][0], alternative='greater',
+                             zero_method='zsplit')
+            W = np.round(stats.statistic, 3)
+            p = np.round(stats.pvalue, 3)
+
+            msg = f'Young: W: {W}, p = {p}'
+            if p < 0.05:
+                msg += '*'
+            print(msg)
+
+        if 'H' in panels:
             self.correlate_prop_changing_ensembles_to_behavior(performance_metric='CRs',
                                                                ages_to_plot='young')
 
@@ -6507,7 +6522,61 @@ class RecentReversal:
             self.plot_lick_decoder(licks_to_include='first', lag=-1, ages_to_plot='young', class_weight='balanced',
                                    random_state=7, n_jobs=6)
 
-    
+    def make_fig4(self, panels=None):
+        if panels is None:
+            panels = ['A', 'B', 'C', 'D', 'E', 'F']
+
+        if 'A' in panels:
+            d_prime = self.plot_peak_performance_all_sessions(performance_metric='d_prime',
+                                                              sessions=['Goals' + str(i) for i in np.arange(1,5)])
+
+        if 'B' in panels:
+            performance_metric = 'CRs'
+            performance = self.plot_performance_session_type('Reversal',
+                                                                  window=None,
+                                                                  performance_metric=performance_metric,
+                                                                  show_plot=True)
+            if self.save_configs["save_figs"]:
+                self.save_fig(plt.gcf(), f"Reversal_aged_vs_young_{performance_metric}", 4)
+
+        # if 'C' in panels:
+        #     mean_reliabilities = self.plot_reliabilities_comparisons(ages_to_plot='aged')[1]
+        #     w = wilcoxon(mean_reliabilities['Goals4']['aged'], mean_reliabilities['Reversal']['aged'])
+        #     print(f'Stability on Training4 vs Reversal, {w.statistic}, p={w.pvalue}')
+        #
+        # if 'D' in panels:
+        #     r, pvalue = self.correlate_field_reliability_to_performance(performance_metric='CRs',
+        #                                                                 data_type='ensembles',
+        #                                                                 ages_to_plot='aged')
+        #     print(r)
+        #     print(pvalue)
+
+        if 'C' in panels:
+            p_changing_split_by_age = self.plot_proportion_changing_ensembles(ages_to_plot='aged')
+
+            stats = wilcoxon(p_changing_split_by_age['aged'][1],
+                             p_changing_split_by_age['aged'][0], alternative='greater',
+                             zero_method='zsplit')
+            W = np.round(stats.statistic, 3)
+            p = np.round(stats.pvalue, 3)
+
+            msg = f'Aged: W: {W}, p = {p}'
+            if p < 0.05:
+                msg += '*'
+            print(msg)
+
+        if 'D' in panels:
+            self.correlate_prop_changing_ensembles_to_behavior(performance_metric='CRs',
+                                                               ages_to_plot='aged')
+
+        if 'E' in panels:
+            self.plot_lick_decoder(licks_to_include='first', ages_to_plot='aged', class_weight='balanced',
+                                   random_state=7, n_jobs=6)
+
+        if 'F' in panels:
+            self.plot_lick_decoder(licks_to_include='first', lag=-1, ages_to_plot='aged', class_weight='balanced',
+                                   random_state=7, n_jobs=6)
+
 
     # def correlate_stability_to_reversal(
     #     self,
