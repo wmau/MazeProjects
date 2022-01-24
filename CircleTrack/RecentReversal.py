@@ -3384,11 +3384,13 @@ class RecentReversal:
         else:
             fig = ax.get_figure()
         ax.scatter(x_pts, binned_activations[unit_number])
-        ax.plot(x_pts, trend_line, color='navy')
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel('Peak activity')
+        ax.plot(x_pts, trend_line, color='mediumpurple')
+        ax.set_xlabel(xlabel, fontsize=22)
+        ax.set_ylabel('Peak activity', fontsize=22)
         [ax.spines[side].set_visible(False) for side in ['top','right']]
         fig.tight_layout()
+
+        return fig
 
     def count_unique_ensemble_members(self, session_type, filter_method="sd", thresh=2):
         proportion_unique_members = {age: [] for age in ages}
@@ -6552,6 +6554,14 @@ class RecentReversal:
                 self.plot_ensemble_raster('Lyra', 'Reversal', i)
 
         if 'G' in panels:
+            mouse = 'Lyra'
+            for i in [27, 56]:
+                fig = self.plot_activation_trend(mouse, 'Reversal', i)
+
+                if self.save_configs['save_figs']:
+                    self.save_fig(fig, f'{mouse}_max_activity_per_trial_ensemble_{i}', 2)
+
+        if 'H' in panels:
             p_changing_split_by_age = self.plot_proportion_changing_ensembles(ages_to_plot='young')
 
             stats = wilcoxon(p_changing_split_by_age['young'][1], p_changing_split_by_age['young'][0], alternative='greater',
@@ -6564,7 +6574,7 @@ class RecentReversal:
                 msg += '*'
             print(msg)
 
-        if 'H' in panels:
+        if 'I' in panels:
             self.correlate_prop_changing_ensembles_to_behavior(performance_metric='CRs',
                                                                ages_to_plot='young')
 
