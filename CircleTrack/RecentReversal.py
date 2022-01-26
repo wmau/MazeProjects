@@ -2297,7 +2297,7 @@ class RecentReversal:
         return anova_df, pairwise_df, df
 
     def plot_reliabilities(self, session_type, field_threshold=0.5, show_plot=True,
-                           data_type='ensembles'):
+                           data_type='ensembles', bin_size=0.6):
         """
         Plot the reliability for each mouse, split by young and aged. Reliability is defined as the fraction
         of trials where there was a calcium transient inside the field. The field is every spatial bin where
@@ -2329,8 +2329,10 @@ class RecentReversal:
 
                 elif 'ensembles' in data_type:
                     # Compute rasters if not already done.
-                    if 'rasters' not in session.assemblies['fields'].data:
-                        self.make_ensemble_raster(mouse, session_type, running_only=False)
+                    if 'rasters' not in session.assemblies['fields'].data \
+                            or session.assemblies['fields'].meta['raster_bin_size'] != bin_size:
+                        self.make_ensemble_raster(mouse, session_type, bin_size=bin_size,
+                                                  running_only=False)
                     spatial_data = session.assemblies['fields'].data
                     if data_type == 'ensembles':
                         units = range(session.assemblies['significance'].nassemblies)
@@ -2372,7 +2374,7 @@ class RecentReversal:
 
     def plot_reliabilities_comparisons(
         self, session_types=("Goals4", "Reversal"), field_threshold=0.9, show_plot=True,
-            data_type='ensembles', ages_to_plot=None,
+            data_type='ensembles', ages_to_plot=None, bin_size=0.05,
     ):
         """
         Plot the distribution of reliabilities for each cell in each mouse, separated by age, for the two sessions.
@@ -2393,6 +2395,7 @@ class RecentReversal:
         for session_type in session_types:
             reliabilities[session_type] = self.plot_reliabilities(
                 session_type, field_threshold=field_threshold, show_plot=False, data_type=data_type,
+                bin_size=0.05,
             )
             for age in ages:
                 mean_reliabilities[session_type][age] = [
@@ -3238,7 +3241,7 @@ class RecentReversal:
             self.save_fig(fig, f"{mouse}_{session_type}_ensemble{ensemble_number}", 2)
 
     def make_ensemble_raster(
-        self, mouse, session_type, bin_size=None, running_only=False
+        self, mouse, session_type, bin_size=0.6, running_only=False
     ):
         session = self.data[mouse][session_type]
         behavior_df = session.behavior.data["df"]
@@ -3319,7 +3322,7 @@ class RecentReversal:
             False: "gray",
         }
         alphas = [
-            0.8 if rewarded else 0.2 for rewarded in behavior_data["rewarded_ports"]
+            0.6 if rewarded else 0.2 for rewarded in behavior_data["rewarded_ports"]
         ]
         for port, rewarded, alpha in zip(
             port_bins, behavior_data["rewarded_ports"], alphas
@@ -3377,7 +3380,7 @@ class RecentReversal:
             tuning_curves=tuning_curves,
             port_bins=port_bins,
             rewarded=rewarded,
-            cmap="viridis",
+            cmap="plasma",
             interpolation="hanning",
             titles=ensemble_labels,
             figsize=(5, 8),
@@ -4706,76 +4709,76 @@ class RecentReversal:
 
         return prop_changing_cells
 
-    def plot_proportion_fading_cells_in_ensembles(
-        self,
-        session_type="Reversal",
-        x="trial",
-        x_bin_size=6,
-        z_threshold=None,
-        alpha=0.01,
-    ):
-
-        prop_fading_cells = dict()
-        for age in ages:
-            prop_fading_cells[age] = {"trendless ensembles": [], "fading ensembles": []}
-            for mouse in self.meta["grouped_mice"][age]:
-                ensemble_trends = self.find_activity_trends(
-                    mouse,
-                    session_type,
-                    x=x,
-                    x_bin_size=x_bin_size,
-                    z_threshold=z_threshold,
-                    alpha=alpha,
-                )[0]
-
-                for key, trend in zip(
-                    prop_fading_cells[age].keys(), ["no trend", "decreasing"]
-                ):
-                    prop_fading_cells[age][key].append(
-                        self.find_proportion_changing_cells(
-                            mouse,
-                            session_type,
-                            ensemble_trends=ensemble_trends,
-                            x=x,
-                            x_bin_size=x_bin_size,
-                            z_threshold=z_threshold,
-                            ensemble_trend=trend,
-                        )
-                    )
-        n_mice = len(self.meta["mice"])
-        colors = distinct_colors(n_mice)
-        i = 0
-        mean0 = lambda x: np.nanmean(x) if x else 0
-        fig, axs = plt.subplots(1, 2, sharey=True)
-        for age, ax in zip(ages, axs):
-            for trendless, fading in zip(
-                prop_fading_cells[age]["trendless ensembles"],
-                prop_fading_cells[age]["fading ensembles"],
-            ):
-                x = np.hstack((np.ones_like(trendless), np.ones_like(fading) * 2))
-                ax.scatter(
-                    jitter_x(x, 0.05),
-                    np.hstack((trendless, fading)),
-                    alpha=0.2,
-                    color=colors[i],
-                )
-                ax.plot(
-                    jitter_x([1, 2]),
-                    np.hstack((mean0(trendless), mean0(fading))),
-                    "o-",
-                    color=colors[i],
-                )
-                ax.set_xticks([1, 2])
-                ax.set_xticklabels(
-                    ["Trendless \nensembles", "Fading \nensembles"], rotation=45
-                )
-                i += 1
-                ax.set_title(age)
-
-        axs[0].set_ylabel("Proportion fading cells")
-        fig.tight_layout()
-
-        return prop_fading_cells
+    # def plot_proportion_fading_cells_in_ensembles(
+    #     self,
+    #     session_type="Reversal",
+    #     x="trial",
+    #     x_bin_size=6,
+    #     z_threshold=None,
+    #     alpha=0.01,
+    # ):
+    #
+    #     prop_fading_cells = dict()
+    #     for age in ages:
+    #         prop_fading_cells[age] = {"trendless ensembles": [], "fading ensembles": []}
+    #         for mouse in self.meta["grouped_mice"][age]:
+    #             ensemble_trends = self.find_activity_trends(
+    #                 mouse,
+    #                 session_type,
+    #                 x=x,
+    #                 x_bin_size=x_bin_size,
+    #                 z_threshold=z_threshold,
+    #                 alpha=alpha,
+    #             )[0]
+    #
+    #             for key, trend in zip(
+    #                 prop_fading_cells[age].keys(), ["no trend", "decreasing"]
+    #             ):
+    #                 prop_fading_cells[age][key].append(
+    #                     self.find_proportion_changing_cells(
+    #                         mouse,
+    #                         session_type,
+    #                         ensemble_trends=ensemble_trends,
+    #                         x=x,
+    #                         x_bin_size=x_bin_size,
+    #                         z_threshold=z_threshold,
+    #                         ensemble_trend=trend,
+    #                     )
+    #                 )
+    #     n_mice = len(self.meta["mice"])
+    #     colors = distinct_colors(n_mice)
+    #     i = 0
+    #     mean0 = lambda x: np.nanmean(x) if x else 0
+    #     fig, axs = plt.subplots(1, 2, sharey=True)
+    #     for age, ax in zip(ages, axs):
+    #         for trendless, fading in zip(
+    #             prop_fading_cells[age]["trendless ensembles"],
+    #             prop_fading_cells[age]["fading ensembles"],
+    #         ):
+    #             x = np.hstack((np.ones_like(trendless), np.ones_like(fading) * 2))
+    #             ax.scatter(
+    #                 jitter_x(x, 0.05),
+    #                 np.hstack((trendless, fading)),
+    #                 alpha=0.2,
+    #                 color=colors[i],
+    #             )
+    #             ax.plot(
+    #                 jitter_x([1, 2]),
+    #                 np.hstack((mean0(trendless), mean0(fading))),
+    #                 "o-",
+    #                 color=colors[i],
+    #             )
+    #             ax.set_xticks([1, 2])
+    #             ax.set_xticklabels(
+    #                 ["Trendless \nensembles", "Fading \nensembles"], rotation=45
+    #             )
+    #             i += 1
+    #             ax.set_title(age)
+    #
+    #     axs[0].set_ylabel("Proportion fading cells")
+    #     fig.tight_layout()
+    #
+    #     return prop_fading_cells
 
     def plot_assembly_trends(
         self,
@@ -6528,6 +6531,9 @@ class RecentReversal:
 
         return SI_anova, pairwise_df
 
+    def ensemble_trial_PV(self):
+        pass
+
     def make_fig1(self, panels=None):
         with open(r'Z:\Will\RemoteReversal\Data\PV_corr_matrices.pkl', 'rb') as file:
             corr_matrices = pkl.load(file)
@@ -6588,7 +6594,7 @@ class RecentReversal:
 
         if 'F' in panels:
             for i in [27,56]:
-                self.plot_ensemble_raster('Lyra', 'Reversal', i)
+                self.plot_ensemble_raster('Lyra', 'Reversal', i, bin_size=0.05)
 
         if 'G' in panels:
             mouse = 'Lyra'

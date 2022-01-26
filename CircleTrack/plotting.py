@@ -81,7 +81,7 @@ def plot_raster(ScrollObj):
     port_colors = {True: 'g',
                    False: 'gray',
                    }
-    alphas = [0.8 if rewarded else 0.2 for rewarded in ScrollObj.rewarded]
+    alphas = [0.6 if rewarded else 0.2 for rewarded in ScrollObj.rewarded]
     for ax in axs:
         for port, rewarded, alpha in zip(ScrollObj.port_bins, ScrollObj.rewarded, alphas):
             ax.axvline(x=port, color=port_colors[rewarded], alpha=alpha)
