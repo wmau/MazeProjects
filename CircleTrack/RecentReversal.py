@@ -18,6 +18,7 @@ from scipy.stats import (
     wilcoxon,
     mannwhitneyu,
     pearsonr,
+    ttest_ind
 )
 from scipy.spatial import distance
 from CircleTrack.SessionCollation import MultiAnimal
@@ -799,7 +800,35 @@ class RecentReversal:
 
         df["aged"] = [self.meta["aged"][mouse] for mouse in df.index]
 
-        return df
+        mice_, ages_, metric_, session_ = [], [], [], []
+        for session in performance.keys():
+
+            for age in ages:
+                mice_.extend(self.meta['grouped_mice'][age])
+                ages_.extend([age for mouse in self.meta['grouped_mice'][age]])
+                metric_.extend(performance[session][age])
+                session_.extend([session for mouse in self.meta['grouped_mice'][age]])
+
+        long_df = pd.DataFrame(
+            {
+                'mice': mice_,
+                'age': ages_,
+                'session': session_,
+                'metric': metric_,
+            }
+        )
+
+        return df, long_df
+
+    def aged_performance_anova(self, performance_metric='d_prime',
+                               sessions=['Goals' + str(i) for i in np.arange(1,5)]):
+        d_prime = self.plot_peak_performance_all_sessions(performance_metric=performance_metric,
+                                                          sessions=sessions)
+
+        df = self.performance_to_df(d_prime)[1]
+        anova_df = pg.rm_anova(df, dv='metric', subject='mice', within=['age', 'session'])
+
+        return anova_df
 
     def scatter_box(self, data, ylabel="", ax=None, ages_to_plot=None):
         """
@@ -6515,7 +6544,13 @@ class RecentReversal:
             self.plot_corr_matrix(corr_matrices, ages_to_plot=['young'])
 
         if 'J' in panels:
-            data = self.plot_session_PV_corr_comparisons(corr_matrices, ages_to_plot='young')
+            data = self.plot_session_PV_corr_comparisons(corr_matrices, ages_to_plot='young')[0]
+            x = data[('Goals3', 'Goals4')]['young']
+            y = data[('Goals4', 'Reversal')]['young']
+            h = ttest_ind(x,y)
+            dof = len(x) + len(y) - 2
+            print(f"Training vs Reversal correlation coefficients:, t({dof})={round(h.statistic, 3)},"
+                  f" p={round(h.pvalue, 3)}")
 
 
     def make_fig2(self, panels=None):
@@ -6525,8 +6560,10 @@ class RecentReversal:
             self.plot_ensemble('Lyra', 'Reversal', 9)
 
         if 'B' in panels:
-            self.count_ensembles(normalize=False, ages_to_plot='young')
-
+            n_ensembles = self.count_ensembles(normalize=False, ages_to_plot='young')[1]
+            anova_results = pg.rm_anova(n_ensembles.loc[n_ensembles['aged']==False,
+                                                        self.meta['session_types']])
+            print(anova_results)
         # if 'C' in panels:
         #     SI = self.boxplot_all_assembly_SI(ages_to_plot='young')[1]
         #     SI_anova, pairwise_df = self.ensemble_SI_anova(SI)
@@ -6607,8 +6644,8 @@ class RecentReversal:
             panels = ['A', 'B', 'C', 'D', 'E', 'F']
 
         if 'A' in panels:
-            d_prime = self.plot_peak_performance_all_sessions(performance_metric='d_prime',
-                                                              sessions=['Goals' + str(i) for i in np.arange(1,5)])
+            anova_df = self.aged_performance_anova()
+            print(anova_df)
 
         if 'B' in panels:
             performance_metric = 'CRs'
@@ -6619,6 +6656,14 @@ class RecentReversal:
             if self.save_configs["save_figs"]:
                 self.save_fig(plt.gcf(), f"Reversal_aged_vs_young_{performance_metric}", 4)
 
+            stats = ttest_ind(performance['young'], performance['aged'])
+            p = np.round(stats.pvalue, 3)
+            t = np.round(stats.statistic, 3)
+            dof = len(performance['young']) + len(performance['aged'] ) - 2
+            msg = f'Young vs Aged on Reversal: t({dof})={t}, p={p}'
+            if p<0.05:
+                msg += '*'
+            print(msg)
         # if 'C' in panels:
         #     mean_reliabilities = self.plot_reliabilities_comparisons(ages_to_plot='aged')[1]
         #     w = wilcoxon(mean_reliabilities['Goals4']['aged'], mean_reliabilities['Reversal']['aged'])
