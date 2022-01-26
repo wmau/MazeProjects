@@ -9,6 +9,7 @@ import pandas as pd
 from CaImaging.plotting import errorfill, beautify_ax, jitter_x
 import matplotlib.patches as mpatches
 import os
+import pingouin as pg
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -575,15 +576,29 @@ class Chemogenetics:
 
         return licks
 
-    def make_fig1(self):
-        d_prime = self.plot_behavior_grouped(performance_metric='d_prime',
-                                          sessions=['Goals' + str(i) for i in np.arange(1,5)])
+    def make_fig1(self, panels=None):
+        if panels is None:
+            panels = ['C', 'D']
 
-        performance_metric = 'hits'
-        perf = self.plot_best_performance_all_sessions(performance_metric=performance_metric,
-                                                    sessions=['Goals4', 'Reversal'])[0]
-        h = ttest_ind(perf['Reversal']['vehicle'], perf['Reversal']['PSEM'])
-        print(f"{performance_metric} on Reversal, vehicle vs PSEM: p = {round(h.pvalue, 3)}")
+        if 'C' in panels:
+            d_prime = self.plot_behavior_grouped(performance_metric='d_prime',
+                                              sessions=['Goals' + str(i) for i in np.arange(1,5)])
+            anova_results = pg.rm_anova(d_prime)
+            print(anova_results)
+
+        if 'D' in panels:
+            performance_metric = 'hits'
+            perf = self.plot_best_performance_all_sessions(performance_metric=performance_metric,
+                                                        sessions=['Goals4', 'Reversal'])[0]
+
+            sessions_ = ['Goals4', 'Reversal']
+            for session in sessions_:
+                x = perf[session]['vehicle']
+                y = perf[session]['PSEM']
+                h = ttest_ind(x,y)
+                dof = len(x) + len(y) - 2
+                print(f"{performance_metric} on {session}, vehicle vs PSEM:, t({dof})={round(h.statistic, 3)},"
+                      f" p={round(h.pvalue, 3)}")
 
 
 if __name__ == "__main__":
