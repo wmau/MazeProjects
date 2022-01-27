@@ -1388,7 +1388,7 @@ class BehaviorSession:
 
         return windowed_licks
 
-    def get_learning_curve(self, trial_threshold=5, criterion=7):
+    def get_learning_curve(self, trial_threshold=5, criterion='individual'):
         """
         Get the smoothed number of correct responses over trials.
         Also get the trial number corresponding to when the mouse
@@ -1423,6 +1423,9 @@ class BehaviorSession:
         middle_of_learning = np.nan
         criterion_trial = np.nan
 
+        if criterion == 'individual':
+            criterion = np.max(correct_responses) - 2
+
         # Smooth the correct response time series.
         smoothed = savgol_filter(
             correct_responses, round_up_to_odd(self.data["ntrials"] / 3), 2
@@ -1446,7 +1449,7 @@ class BehaviorSession:
         # Learning rate is the first derivative wrt to trials.
         # Continuous improvement is the stretch of the learning rate
         # above 0.
-        learning_rate = np.diff(smoothed, prepend=smoothed[0])
+        learning_rate = np.diff(smoothed, prepend=correct_responses[0])
         consecutive_improvements = contiguous_regions(learning_rate > 0)
 
         # For each stretch of consecutive improvement, check how many
@@ -1454,17 +1457,17 @@ class BehaviorSession:
         # the mouse is learning.
         for run in consecutive_improvements:
             learning_duration = np.diff(run)
-            if learning_duration > trial_threshold:
+            if learning_duration >= trial_threshold:
                 start_of_learning = run[0]
                 middle_of_learning = int(np.floor(np.mean(run)))
 
                 break
 
         # Find criterion trial.
-        consecutive_correct_responses = contiguous_regions(smoothed >= criterion)
+        consecutive_correct_responses = contiguous_regions(correct_responses >= criterion)
         for correct_run in consecutive_correct_responses:
             duration_of_good_performance = np.diff(correct_run)
-            if duration_of_good_performance > trial_threshold:
+            if duration_of_good_performance >= trial_threshold:
                 criterion_trial = correct_run[0]
 
                 break
@@ -1477,7 +1480,7 @@ class BehaviorSession:
             criterion_trial,
         )
 
-    def plot_learning_curve(self, ax=None):
+    def plot_learning_curve(self, ax=None, plot_milestones=True):
         """
         Plot the learning curve
         :param ax:
@@ -1494,9 +1497,10 @@ class BehaviorSession:
             ax.set_ylim([0, 8])
             # ax.set_title(os.path.split(os.path.split(self.folder)[0])[-1])
 
-            ax.axvline(self.data["learning"]["start"], color="g")
-            ax.axvline(self.data["learning"]["inflection"], color="y")
-            ax.axvline(self.data["learning"]["criterion"], color="b")
+            if plot_milestones:
+                ax.axvline(self.data["learning"]["start"], color="g")
+                ax.axvline(self.data["learning"]["inflection"], color="y")
+                ax.axvline(self.data["learning"]["criterion"], color="b")
         except KeyError:
             print("Learning data not found.")
 

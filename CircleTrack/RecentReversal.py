@@ -10,7 +10,8 @@ from CaImaging.util import (
     stack_padding,
     distinct_colors,
 )
-from CaImaging.plotting import errorfill, beautify_ax, jitter_x, shiftedColorMap
+import ruptures as rpt
+from CaImaging.plotting import errorfill, beautify_ax, jitter_x, shiftedColorMap, plot_xy_line
 from scipy.stats import (
     spearmanr,
     zscore,
@@ -6615,8 +6616,95 @@ class RecentReversal:
         for ax, session_type in zip(axs, session_types):
             ax.imshow(R[session_type], vmin=clims['min'], vmax=clims['max'], cmap=cmap)
 
-
         return R
+
+    def ensemble_PV_behavior_changepoint(self, mouse, session_type='Reversal', bin_size=0.05,
+                                         changepoint_algo=rpt.BottomUp, behav_trial_threshold=3,
+                                         show_plot=True, **algo_kwargs):
+        R = self.ensemble_trial_PV_corr(mouse, session_type, bin_size=bin_size)
+        behavior = self.data[mouse][session_type].behavior
+        (
+            behavior.data["learning"]["correct_responses"],
+            behavior.data["learning"]["curve"],
+            behavior.data["learning"]["start"],
+            behavior.data["learning"]["inflection"],
+            behavior.data["learning"]["criterion"],
+        ) = behavior.get_learning_curve(trial_threshold=behav_trial_threshold,
+                                        criterion='individual')
+
+        changepoints = {
+            'ensemble': changepoint_algo(**algo_kwargs).fit_predict(R, n_bkps=1)[0],
+            'behavior': changepoint_algo(**algo_kwargs).fit_predict(behavior.data['learning']['correct_responses'],
+                                                                    n_bkps=1)[0]
+        }
+        if show_plot:
+            fig, axs = plt.subplots(2,1, figsize=(5,7.5))
+
+            axs[0].imshow(R, cmap='bwr', aspect='equal')
+            axs[0].axvline(x=changepoints['behavior'])
+            axs[0].set_xlabel('Trial')
+            axs[0].set_ylabel('Trial')
+
+            behavior.plot_learning_curve(ax=axs[1], plot_milestones=False)
+            axs[1].axvline(x=changepoints['behavior'])
+
+            fig.tight_layout()
+
+        return changepoints, R
+
+    def corr_ensemble_PV_and_behavior_changepoints(self, age, session_type='Reversal', bin_size=0.05,
+                                                   normalize=True, show_plot=True, **algo_kwargs):
+        changepoints = pd.DataFrame(columns=['mice', 'ensemble', 'behavior'])
+        for mouse in self.meta['grouped_mice'][age]:
+            session = self.data[mouse][session_type]
+            changepoints_ = self.ensemble_PV_behavior_changepoint(mouse, session_type, bin_size=bin_size,
+                                                                  **algo_kwargs)[0]
+
+            if normalize:
+                changepoints_ = {
+                    key: changepoints_[key] / session.behavior.data['ntrials']
+                    for key in ['ensemble', 'behavior']
+                }
+            changepoints = changepoints.append(
+                {
+                    'mice': mouse,
+                    'ensemble': changepoints_['ensemble'],
+                    'behavior': changepoints_['behavior'],
+                },
+                ignore_index=True
+            )
+
+        if show_plot:
+            fig, ax = plt.subplots()
+            ax.scatter(changepoints['ensemble'], changepoints['behavior'])
+            ax.set_xlabel('Ensemble changepoint')
+            ax.set_ylabel('Behavior changepoint')
+            plot_xy_line(ax)
+            fig.tight_layout()
+
+        return changepoints
+
+    def align_ensemble_peaks_to_behavioral_changepoint(self, mouse, session_type='Reversal',
+                                                       changepoint_algo=rpt.BottomUp,
+                                                       behav_trial_threshold=3, **algo_kwargs):
+        trends, binned_activations, slopes, _ = self.find_activity_trends(
+            mouse,
+            session_type,
+            x='trial', x_bin_size=1,
+        )
+        behavior = self.data[mouse][session_type].behavior
+        (
+            behavior.data["learning"]["correct_responses"],
+            behavior.data["learning"]["curve"],
+            behavior.data["learning"]["start"],
+            behavior.data["learning"]["inflection"],
+            behavior.data["learning"]["criterion"],
+        ) = behavior.get_learning_curve(trial_threshold=behav_trial_threshold,
+                                        criterion='individual')
+        changepoint = changepoint_algo(**algo_kwargs).fit_predict(behavior.data['learning']['correct_responses'],
+                                                                  n_bkps=1)[0]
+
+        return changepoint, binned_activations
 
     def make_fig1(self, panels=None):
         with open(r'Z:\Will\RemoteReversal\Data\PV_corr_matrices.pkl', 'rb') as file:
