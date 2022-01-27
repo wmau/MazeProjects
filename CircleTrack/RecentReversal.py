@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import matplotlib
 from CaImaging.util import (
     sem,
     nan_array,
@@ -9,7 +10,7 @@ from CaImaging.util import (
     stack_padding,
     distinct_colors,
 )
-from CaImaging.plotting import errorfill, beautify_ax, jitter_x
+from CaImaging.plotting import errorfill, beautify_ax, jitter_x, shiftedColorMap
 from scipy.stats import (
     spearmanr,
     zscore,
@@ -6531,8 +6532,91 @@ class RecentReversal:
 
         return SI_anova, pairwise_df
 
-    def ensemble_trial_PV(self):
-        pass
+    def ensemble_trial_PV_corr(self, mouse, session_type, bin_size=0.05):
+        session = self.data[mouse][session_type]
+        if 'rasters' not in session.assemblies['fields'].data \
+                or session.assemblies['fields'].meta['raster_bin_size'] != bin_size:
+            self.make_ensemble_raster(mouse, session_type, bin_size=bin_size,
+                                      running_only=False)
+
+        ensemble_rasters = session.assemblies['fields'].data['rasters']
+        n_trials = ensemble_rasters.shape[1]
+        R = nan_array((n_trials, n_trials))
+        for combination in product(range(n_trials), repeat=2):
+            if combination[0] != combination[1]:
+                x = ensemble_rasters[:,combination[0],:].flatten()
+                y = ensemble_rasters[:,combination[1],:].flatten()
+
+                R[combination[0], combination[1]] = spearmanr(x,y)[0]
+
+        return R
+
+    def plot_all_ensemble_PV_corrs(self, age, session_type, midpoint='zero', cmap=matplotlib.cm.bwr):
+        fig, axs = plt.subplots(3,3)
+        clims_ = {
+            'max': [],
+            'min': [],
+        }
+        R = dict()
+        for i, mouse in enumerate(self.meta['grouped_mice'][age]):
+            R[mouse] = self.ensemble_trial_PV_corr(mouse, session_type)
+
+            clims_['max'].append(np.nanmax(R[mouse]))
+            clims_['min'].append(np.nanmin(R[mouse]))
+
+            if midpoint == 'local':
+                axs.flatten()[i].imshow(R[mouse], cmap=cmap)
+
+        if midpoint == 'local':
+            return R
+
+        clims = {
+            'max': np.nanmax(clims_['max']),
+            'min': np.nanmin(clims_['min'])
+        }
+
+        if midpoint=='zero':
+            midpoint = 1 - clims['max'] / (clims['max'] + abs(clims['min']))
+            cmap = shiftedColorMap(cmap, midpoint=midpoint)
+
+        for i, mouse in enumerate(self.meta['grouped_mice'][age]):
+            axs.flatten()[i].imshow(R[mouse], vmin=clims['min'], vmax=clims['max'], cmap=cmap)
+
+        return R
+
+    def compare_ensemble_PV_corrs(self, mouse, session_types=('Reversal', 'Goals4'),
+                                  midpoint='zero', cmap=matplotlib.cm.bwr):
+        fig, axs = plt.subplots(1,2)
+        fig.suptitle(mouse)
+        clims_ = {
+            'max': [],
+            'min': [],
+        }
+        R = dict()
+        for ax, session_type in zip(axs, session_types):
+            R[session_type] = self.ensemble_trial_PV_corr(mouse, session_type)
+
+            clims_['max'].append(np.nanmax(R[session_type]))
+            clims_['min'].append(np.nanmin(R[session_type]))
+
+            if midpoint == 'local':
+                ax.imshow(R[session_type], cmap=cmap)
+
+        if midpoint == 'local':
+            return R
+
+        clims = {
+            'max': np.nanmax(clims_['max']),
+            'min': np.nanmin(clims_['min'])
+        }
+        if midpoint=='zero':
+            midpoint = 1 - clims['max'] / (clims['max'] + abs(clims['min']))
+            cmap = shiftedColorMap(cmap, midpoint=midpoint)
+        for ax, session_type in zip(axs, session_types):
+            ax.imshow(R[session_type], vmin=clims['min'], vmax=clims['max'], cmap=cmap)
+
+
+        return R
 
     def make_fig1(self, panels=None):
         with open(r'Z:\Will\RemoteReversal\Data\PV_corr_matrices.pkl', 'rb') as file:
