@@ -2397,7 +2397,7 @@ class RecentReversal:
         for session_type in session_types:
             reliabilities[session_type] = self.plot_reliabilities(
                 session_type, field_threshold=field_threshold, show_plot=False, data_type=data_type,
-                bin_size=0.05,
+                bin_size=bin_size,
             )
             for age in ages:
                 mean_reliabilities[session_type][age] = [
@@ -6533,20 +6533,27 @@ class RecentReversal:
 
         return SI_anova, pairwise_df
 
-    def ensemble_trial_PV_corr(self, mouse, session_type, bin_size=0.05):
+    def trial_PV_corr(self, mouse, session_type, bin_size=0.05, data_type='ensembles'):
         session = self.data[mouse][session_type]
-        if 'rasters' not in session.assemblies['fields'].data \
-                or session.assemblies['fields'].meta['raster_bin_size'] != bin_size:
-            self.make_ensemble_raster(mouse, session_type, bin_size=bin_size,
-                                      running_only=False)
 
-        ensemble_rasters = session.assemblies['fields'].data['rasters']
-        n_trials = ensemble_rasters.shape[1]
+        if data_type == 'ensemble':
+            if 'rasters' not in session.assemblies['fields'].data \
+                    or session.assemblies['fields'].meta['raster_bin_size'] != bin_size:
+                self.make_ensemble_raster(mouse, session_type, bin_size=bin_size,
+                                          running_only=False)
+
+            rasters = session.assemblies['fields'].data['rasters']
+        elif data_type == 'cells':
+            rasters = session.spatial.data['rasters']
+        else:
+            raise NotImplementedError
+
+        n_trials = rasters.shape[1]
         R = nan_array((n_trials, n_trials))
         for combination in product(range(n_trials), repeat=2):
             if combination[0] != combination[1]:
-                x = ensemble_rasters[:,combination[0],:].flatten()
-                y = ensemble_rasters[:,combination[1],:].flatten()
+                x = rasters[:,combination[0],:].flatten()
+                y = rasters[:,combination[1],:].flatten()
 
                 R[combination[0], combination[1]] = spearmanr(x,y)[0]
 
@@ -6560,7 +6567,7 @@ class RecentReversal:
         }
         R = dict()
         for i, mouse in enumerate(self.meta['grouped_mice'][age]):
-            R[mouse] = self.ensemble_trial_PV_corr(mouse, session_type)
+            R[mouse] = self.trial_PV_corr(mouse, session_type)
 
             clims_['max'].append(np.nanmax(R[mouse]))
             clims_['min'].append(np.nanmin(R[mouse]))
@@ -6595,7 +6602,7 @@ class RecentReversal:
         }
         R = dict()
         for ax, session_type in zip(axs, session_types):
-            R[session_type] = self.ensemble_trial_PV_corr(mouse, session_type)
+            R[session_type] = self.trial_PV_corr(mouse, session_type)
 
             clims_['max'].append(np.nanmax(R[session_type]))
             clims_['min'].append(np.nanmin(R[session_type]))
@@ -6636,9 +6643,9 @@ class RecentReversal:
         return changepoint
 
     def ensemble_PV_changepoint(self, mouse, session_type='Reversal', bin_size=0.05,
-                                changepoint_algo=rpt.BottomUp,
+                                changepoint_algo=rpt.BottomUp, data_type='ensembles',
                                 show_plot=True, **algo_kwargs):
-        R = self.ensemble_trial_PV_corr(mouse, session_type, bin_size=bin_size)
+        R = self.trial_PV_corr(mouse, session_type, data_type=data_type, bin_size=bin_size)
 
         changepoint =  changepoint_algo(**algo_kwargs).fit_predict(R, n_bkps=1)[0]
 
