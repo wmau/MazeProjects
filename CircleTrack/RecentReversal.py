@@ -6618,10 +6618,8 @@ class RecentReversal:
 
         return R
 
-    def ensemble_PV_behavior_changepoint(self, mouse, session_type='Reversal', bin_size=0.05,
-                                         changepoint_algo=rpt.BottomUp, behav_trial_threshold=3,
-                                         show_plot=True, **algo_kwargs):
-        R = self.ensemble_trial_PV_corr(mouse, session_type, bin_size=bin_size)
+    def behavior_changepoint(self, mouse, session_type='Reversal', changepoint_algo=rpt.BottomUp,
+                             behav_trial_threshold=3, **algo_kwargs):
         behavior = self.data[mouse][session_type].behavior
         (
             behavior.data["learning"]["correct_responses"],
@@ -6632,33 +6630,39 @@ class RecentReversal:
         ) = behavior.get_learning_curve(trial_threshold=behav_trial_threshold,
                                         criterion='individual')
 
-        changepoints = {
-            'ensemble': changepoint_algo(**algo_kwargs).fit_predict(R, n_bkps=1)[0],
-            'behavior': changepoint_algo(**algo_kwargs).fit_predict(behavior.data['learning']['correct_responses'],
-                                                                    n_bkps=1)[0]
-        }
+        changepoint = changepoint_algo(**algo_kwargs).fit_predict(behavior.data['learning']['correct_responses'],
+                                                                  n_bkps=1)[0]
+
+        return changepoint
+
+    def ensemble_PV_changepoint(self, mouse, session_type='Reversal', bin_size=0.05,
+                                changepoint_algo=rpt.BottomUp,
+                                show_plot=True, **algo_kwargs):
+        R = self.ensemble_trial_PV_corr(mouse, session_type, bin_size=bin_size)
+
+        changepoint =  changepoint_algo(**algo_kwargs).fit_predict(R, n_bkps=1)[0]
+
         if show_plot:
-            fig, axs = plt.subplots(2,1, figsize=(5,7.5))
+            fig, ax = plt.subplots()
 
-            axs[0].imshow(R, cmap='bwr', aspect='equal')
-            axs[0].axvline(x=changepoints['behavior'])
-            axs[0].set_xlabel('Trial')
-            axs[0].set_ylabel('Trial')
+            ax.imshow(R, cmap='bwr', aspect='equal')
+            ax.axvline(x=changepoint)
+            ax.set_xlabel('Trial')
+            ax.set_ylabel('Trial')
 
-            behavior.plot_learning_curve(ax=axs[1], plot_milestones=False)
-            axs[1].axvline(x=changepoints['behavior'])
+        return changepoint, R
 
-            fig.tight_layout()
-
-        return changepoints, R
-
-    def corr_ensemble_PV_and_behavior_changepoints(self, age, session_type='Reversal', bin_size=0.05,
-                                                   normalize=True, show_plot=True, **algo_kwargs):
+    def corr_ensemble_PV_and_behavior_changepoints(self, age, session_type='Reversal',
+                                                   normalize=True, show_plot=True, ensemble_function='binned_activations',
+                                                   **algo_kwargs):
+        f = {'binned_activations': self.binned_activations_changepoint,
+             'ensemble_PV': self.ensemble_PV_changepoint}
         changepoints = pd.DataFrame(columns=['mice', 'ensemble', 'behavior'])
+        changepoints_ = dict()
         for mouse in self.meta['grouped_mice'][age]:
             session = self.data[mouse][session_type]
-            changepoints_ = self.ensemble_PV_behavior_changepoint(mouse, session_type, bin_size=bin_size,
-                                                                  **algo_kwargs)[0]
+            changepoints_['ensemble'] = f[ensemble_function](mouse, session_type, show_plot=False, **algo_kwargs)[0]
+            changepoints_['behavior'] = self.behavior_changepoint(mouse, session_type, **algo_kwargs)
 
             if normalize:
                 changepoints_ = {
@@ -6684,27 +6688,40 @@ class RecentReversal:
 
         return changepoints
 
-    def align_ensemble_peaks_to_behavioral_changepoint(self, mouse, session_type='Reversal',
-                                                       changepoint_algo=rpt.BottomUp,
-                                                       behav_trial_threshold=3, **algo_kwargs):
+    def binned_activations_changepoint(self, mouse, session_type='Reversal', changepoint_algo=rpt.BottomUp,
+                                       show_plot=True, **algo_kwargs):
         trends, binned_activations, slopes, _ = self.find_activity_trends(
             mouse,
             session_type,
             x='trial', x_bin_size=1,
         )
-        behavior = self.data[mouse][session_type].behavior
-        (
-            behavior.data["learning"]["correct_responses"],
-            behavior.data["learning"]["curve"],
-            behavior.data["learning"]["start"],
-            behavior.data["learning"]["inflection"],
-            behavior.data["learning"]["criterion"],
-        ) = behavior.get_learning_curve(trial_threshold=behav_trial_threshold,
-                                        criterion='individual')
-        changepoint = changepoint_algo(**algo_kwargs).fit_predict(behavior.data['learning']['correct_responses'],
-                                                                  n_bkps=1)[0]
+        changepoint = changepoint_algo(**algo_kwargs).fit_predict(binned_activations.T, n_bkps=1)[0]
+
+        if show_plot:
+            fig, ax = plt.subplots()
+            ax.imshow(binned_activations)
+            ax.axvline(x=changepoint)
 
         return changepoint, binned_activations
+
+
+    def align_ensemble_peaks_to_behavioral_changepoint(self, mouse, session_type='Reversal',
+                                                       changepoint_algo=rpt.BottomUp, xtent=10,
+                                                       behav_trial_threshold=3, **algo_kwargs):
+        binned_activations_changepoint, binned_activations = \
+            self.binned_activations_changepoint(mouse, session_type, changepoint_algo=changepoint_algo,
+                                                show_plot=False, **algo_kwargs)
+        changepoints = {
+            'behavior': self.behavior_changepoint(mouse, session_type, changepoint_algo=changepoint_algo,
+                                                  behav_trial_threshold=behav_trial_threshold, **algo_kwargs),
+            'ensemble': binned_activations_changepoint
+        }
+
+        fig, ax = plt.subplots()
+        ax.plot(np.arange(-xtent,xtent),
+                np.median(binned_activations[:,changepoints['behavior']-xtent:changepoints['behavior']+xtent],
+                        axis=0))
+        return changepoints, binned_activations
 
     def make_fig1(self, panels=None):
         with open(r'Z:\Will\RemoteReversal\Data\PV_corr_matrices.pkl', 'rb') as file:
