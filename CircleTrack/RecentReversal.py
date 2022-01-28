@@ -122,7 +122,7 @@ class RecentReversal:
         behavior_only=False,
         save_figs=True,
         ext="pdf",
-        save_path=r"Z:\Will\Manuscripts\Memory flexibility\Figures",
+        save_path=r"Z:\Will\Manuscripts\memory_flexibility\Figures",
     ):
         # Collect data from all mice and sessions.
         self.data = MultiAnimal(
@@ -2784,6 +2784,7 @@ class RecentReversal:
         self,
         mouse,
         classifier=BernoulliNB(),
+        session_pairs=(("Goals4", "Goals3"), ("Goals4", "Reversal")),
         n_spatial_bins=36,
         error_time_bin_size=300 * 15,
         axs=None,
@@ -2802,8 +2803,9 @@ class RecentReversal:
         """
 
         decoding_errors = dict()
+        decoded_sessions = [s[1] for s in session_pairs]
         for key, session_pair in zip(
-            ["Training", "Reversal"], [("Goals3", "Goals4"), ("Goals4", "Reversal")]
+                decoded_sessions, session_pairs
         ):
 
             decoding_errors[key] = self.find_decoding_error(
@@ -2815,12 +2817,12 @@ class RecentReversal:
                 show_plot=False,
                 predictors=predictors,
             )[0]
-        time_bins = range(len(decoding_errors["Training"]))
+        time_bins = np.linspace(0, 1, len(decoding_errors[decoded_sessions[0]]))
 
         if axs is None:
             fig, axs = plt.subplots(1, 2, sharey=True, sharex=True)
         for errors, ax in zip(
-            [decoding_errors["Training"], decoding_errors["Reversal"]],
+            [decoding_errors[decoded_session] for decoded_session in decoded_sessions],
             axs,
         ):
             means = [np.nanmean(error) for error in errors]
@@ -2829,12 +2831,14 @@ class RecentReversal:
 
         return decoding_errors
 
-    def spatial_decoding_anova_binned(
+    def plot_spatial_decoder(
         self,
-        classifier=BernoulliNB(),
-        n_spatial_bins=36,
+        classifier=RandomForestClassifier(),
+        session_pairs=(("Goals4", "Goals3"), ("Goals4", "Reversal")),
+        n_spatial_bins=125,
         error_time_bin_size=300 * 15,
         predictors="cells",
+        ages_to_plot=None,
     ):
         """
         Do ANOVA on spatial decoding error across ages.
@@ -2851,9 +2855,13 @@ class RecentReversal:
             Results from ANOVAs, calculated separately for each age.
 
         """
-        fig, axs = plt.subplots(2, 2, sharex=True, sharey=True)
-        fig.subplots_adjust(wspace=0)
-        sessions = ["Training", "Reversal"]
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+
+        fig, axs = plt.subplots(n_ages_to_plot, 2, sharex=True, sharey=True,
+                                figsize=(9, 7*n_ages_to_plot))
+        if n_ages_to_plot == 1:
+            axs = [axs]
+        sessions = [session_pair[1] for session_pair in session_pairs]
         decoding_errors = dict()
         errors_, sessions_, mice_, ages_, time_bins_, = (
             [],
@@ -2862,7 +2870,7 @@ class RecentReversal:
             [],
             [],
         )
-        for age, cohort_axs, color in zip(ages, axs, age_colors):
+        for age, cohort_axs, color in zip(ages_to_plot, axs, plot_colors):
             decoding_errors[age] = {key: [] for key in sessions}
             for mouse in self.meta["grouped_mice"][age]:
                 errors = self.plot_reversal_decoding_error(
@@ -2885,14 +2893,15 @@ class RecentReversal:
                     ages_.extend([age for i in range(n_bins)])
                     time_bins_.extend(np.arange(n_bins))
 
-            for session, session_ax in zip(["Training", "Reversal"], cohort_axs):
+            for session, session_ax in zip(sessions, cohort_axs):
                 errors_arr = np.vstack(decoding_errors[age][session])
                 m = np.nanmean(errors_arr, axis=0)
                 se = sem(errors_arr, axis=0)
-                session_ax.errorbar(range(len(m)), m, yerr=se, color=color, capsize=1)
+                session_ax.errorbar(np.linspace(0, 1, len(m)),
+                                    m, yerr=se, color=color, capsize=2)
 
-        fig.supylabel("Mean decoding error (spatial bins)")
-        fig.supxlabel("Time bins")
+                [session_ax.spines[side].set_visible(False) for side in ['top', 'right']]
+
         df = pd.DataFrame(
             {
                 "mice": mice_,
@@ -2902,6 +2911,25 @@ class RecentReversal:
                 "decoding_errors": errors_,
             }
         )
+        fig.supylabel("Mean decoding error (cm)")
+        fig.supxlabel("Time in session (normalized)")
+        fig.tight_layout()
+
+        return decoding_errors, df
+
+    def spatial_decoder_anova(self,
+                              classifier=RandomForestClassifier(),
+                              session_pairs=(("Goals4", "Goals3"), ("Goals4", "Reversal")),
+                              n_spatial_bins=125,
+                              error_time_bin_size=300 * 15,
+                              predictors="cells",
+                              ):
+        decoding_errors, df = self.plot_spatial_decoder(classifier=classifier,
+                                                        session_pairs=session_pairs,
+                                                        n_spatial_bins=n_spatial_bins,
+                                                        error_time_bin_size=error_time_bin_size,
+                                                        predictors=predictors,
+                                                        ages_to_plot=None)
 
         anova_dfs = {
             age: pg.rm_anova(
@@ -2913,7 +2941,25 @@ class RecentReversal:
             for age in ages
         }
 
-        return decoding_errors, df, anova_dfs
+        pairwise_dfs = {
+            age: {
+                session: pg.pairwise_ttests(
+                    dv="decoding_errors",
+                    within="time_bins",
+                    subject="mice",
+                    data=df[
+                        np.logical_and(
+                            df["age"] == age, df["session_pairs"] == session
+                        )
+                    ],
+                    padjust="fdr_bh",
+                )
+                for session in np.unique(df["session_pairs"].values)
+            }
+            for age in ages
+        }
+
+        return anova_dfs, pairwise_dfs, df
 
     def find_decoding_error(
         self,
@@ -2947,11 +2993,12 @@ class RecentReversal:
             show_plot=False,
             predictors=predictors,
         )
-
         d = get_circular_error(
             y_predicted, outcome_data["test"], n_spatial_bins=n_spatial_bins
         )
-        d = d.astype(float)
+        nbins_to_cm = 2*np.pi / n_spatial_bins * 38.1 #radius of maze in cm
+
+        d = d.astype(float) * nbins_to_cm
         d[~running[1]] = np.nan
 
         bins = make_bins(d, error_time_bin_size, axis=0)
