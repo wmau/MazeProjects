@@ -364,6 +364,64 @@ class RecentReversal:
 
         return ax
 
+    def behavior_over_trials(self,
+                             session_type,
+                             window=6,
+                             strides=2,
+                             performance_metric='CRs',
+                             trial_limit=None):
+        dv, mice, sessions, groups, trial_blocks = [], [], [], [], []
+        for age in ages:
+            for mouse in self.meta['grouped_mice'][age]:
+                session = self.data[mouse][session_type].behavior
+                session.sdt_trials(
+                    rolling_window=window,
+                    trial_interval=strides,
+                    plot=False,
+                    trial_limit=trial_limit,
+                )
+
+                n = range(len(session.sdt[performance_metric]))
+                dv.extend(session.sdt[performance_metric])
+                mice.extend([mouse for i in n])
+                sessions.extend([session_type for i in n])
+                groups.extend([age for i in n])
+                trial_blocks.extend([i for i in n])
+
+        df = pd.DataFrame(
+            {
+                't': trial_blocks,
+                'dv': dv,
+                'mice': mice,
+                'session': sessions,
+                'age': groups,
+            }
+        )
+
+        # cols = ['mice', 'session', 'group']
+        # df[cols] = df[cols].mask(df[cols]=='nan', None).ffill(axis=0)
+        # df['t'] = df['t'].isna().cumsum() + df['t'].ffill()
+        #df = df.dropna(axis=0)
+
+        return df
+
+    def plot_trial_behavior(self, ages_to_plot=None, session_types=None, **kwargs):
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(
+            ages_to_plot
+        )
+        if session_types is None:
+            
+
+        for
+
+    def trial_behavior_anova(self, session_type, performance_metric='d_prime', **kwargs):
+        df = self.behavior_over_trials(session_type, performance_metric=performance_metric,
+                                           **kwargs)
+
+        anova_df = pg.anova(df, dv='dv', between=['t', 'age'])
+
+        return anova_df, df
+
     def plot_behavior(self, mouse, window=8, strides=2, show_plot=True, ax=None):
         """
         Plot behavioral performance (hits, correct rejections, d') for
@@ -4833,7 +4891,7 @@ class RecentReversal:
         self,
         session_types=None,
         x="trial",
-        x_bin_size=6,
+        x_bin_size=1,
         z_threshold=None,
         data_type="ensembles",
         show_plot=True,
@@ -5634,6 +5692,29 @@ class RecentReversal:
         fig.tight_layout()
 
         return percent_matches
+
+    # def matched_ensemble_fading_prop(self, session_pair=['Reversal', 'Goals4']):
+    #     registered_ensembles, fading_that_got_matched, \
+    #     p_of_matched_that_is_fading, rising_that_did_not_match, \
+    #     p_of_unmatched_that_is_rising = dict(), dict(), dict(), dict(), dict()
+    #     ensemble_trends, ensemble_counts = self.plot_assembly_trends(session_pair, show_plot=False)
+    #
+    #     for age in ages:
+    #         for mouse in self.meta['grouped_mice'][age]:
+    #             registered_ensembles[mouse] = self.match_ensembles(mouse, session_pair)
+    #
+    #             matched = np.where(~registered_ensembles[mouse]['poor_matches'])[0]
+    #             unmatched = np.where(registered_ensembles[mouse]['poor_matches'])[0]
+    #
+    #             fading = ensemble_trends.sel(mouse=mouse, trend='decreasing', session='Reversal').values.tolist()
+    #             rising = ensemble_trends.sel(mouse=mouse, trend='increasing', session='Reversal').values.tolist()
+    #
+    #             fading_that_got_matched[mouse] = np.sum([f in matched for f in fading])/len(fading)
+    #             p_of_matched_that_is_fading[mouse] = np.sum([m in fading for m in matched])/len(matched)
+    #             rising_that_did_not_match[mouse] = np.sum([r in unmatched for r in rising])/len(rising)
+    #             p_of_unmatched_that_is_rising[mouse] = np.sum([u in rising for u in unmatched])/len(unmatched)
+    #
+    #     return fading_that_got_matched, p_of_matched_that_is_fading, rising_that_did_not_match, p_of_unmatched_that_is_rising
 
     def plot_pattern_cosine_similarity_comparisons(
         self, session_pair1=("Goals3", "Goals4"), session_pair2=("Goals4", "Reversal")

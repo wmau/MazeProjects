@@ -4,7 +4,7 @@ from CircleTrack.BehaviorFunctions import BehaviorSession
 import matplotlib.pyplot as plt
 import xarray as xr
 from scipy.stats import ttest_ind
-from CaImaging.util import nan_array, sem
+from CaImaging.util import nan_array, sem, stack_padding
 import pandas as pd
 from CaImaging.plotting import errorfill, beautify_ax, jitter_x
 import matplotlib.patches as mpatches
@@ -72,7 +72,7 @@ colors = {"PSAM": ["silver", "mediumpurple"],
 
 class Chemogenetics:
     def __init__(self, mice, actuator='DREADDs', save_figs=True, ext='pdf',
-                 save_path=r'Z:\Will\Manuscripts\Memory flexibility\Figures'):
+                 save_path=r'Z:\Will\Manuscripts\memory_flexibility\Figures'):
         project_name = project_names[actuator]
         self.data = MultiAnimal(
             mice, project_name=project_name,
@@ -122,6 +122,54 @@ class Chemogenetics:
             for c, label in zip(colors, groups)
         ]
         fig.legend(handles=patches, loc="lower right")
+
+    def behavior_over_trials(self,
+                             session_type,
+                             window=6,
+                             strides=2,
+                             performance_metric='CRs',
+                             trial_limit=None):
+        dv, mice, sessions, groups, trial_blocks = [], [], [], [], []
+        for group in self.meta['groups']:
+            for mouse in self.meta['grouped_mice'][group]:
+                session = self.data[mouse][session_type]
+                session.sdt_trials(
+                    rolling_window=window,
+                    trial_interval=strides,
+                    plot=False,
+                    trial_limit=trial_limit,
+                )
+
+                n = range(len(session.sdt[performance_metric]))
+                dv.append(session.sdt[performance_metric])
+                mice.append([mouse for i in n])
+                sessions.append([session_type for i in n])
+                groups.append([group for i in n])
+                trial_blocks.append([i for i in n])
+
+        dv = stack_padding(dv)
+
+        mice = stack_padding(mice)
+        sessions = stack_padding(sessions)
+        groups = stack_padding(groups)
+        trial_blocks = stack_padding(trial_blocks)
+
+        df = pd.DataFrame(
+            {
+                't': trial_blocks.flatten(),
+                'dv': dv.flatten(),
+                'mice': mice.flatten(),
+                'session': sessions.flatten(),
+                'group': groups.flatten(),
+            }
+        )
+
+        # cols = ['mice', 'session', 'group']
+        # df[cols] = df[cols].mask(df[cols]=='nan', None).ffill(axis=0)
+        # df['t'] = df['t'].isna().cumsum() + df['t'].ffill()
+        df.dropna(axis=0)
+
+        return dv, df
 
     def plot_all_behavior(
         self,
@@ -239,7 +287,8 @@ class Chemogenetics:
                         linewidth=3,
                     )
             ax.set_ylabel(ylabels[performance_metric])
-            fig.legend()
+            fig.legend(loc='upper left')
+            fig.tight_layout()
 
         if window is None:
             mice_ = np.hstack(
