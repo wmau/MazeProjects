@@ -1079,7 +1079,7 @@ class BehaviorSession:
                 window centered around the arrival to each port.
 
             sdt_trials(): Gets the hit/miss/false alarm/correct rejection rate
-                for each port. Currently in beta.
+                for each port.
 
         """
         # If folder is not specified, open a dialog box.

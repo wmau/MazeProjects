@@ -4,12 +4,13 @@ from CircleTrack.BehaviorFunctions import BehaviorSession
 import matplotlib.pyplot as plt
 import xarray as xr
 from scipy.stats import ttest_ind
-from CaImaging.util import nan_array, sem, stack_padding
+from CaImaging.util import nan_array, sem, stack_padding, group_consecutives
 import pandas as pd
 from CaImaging.plotting import errorfill, beautify_ax, jitter_x
 import matplotlib.patches as mpatches
 import os
 import pingouin as pg
+from statsmodels.stats.multitest import multipletests
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -66,7 +67,7 @@ grouped_mice = {
 groups = {"DREADDs": ["fluorophore", "hM4di"],
           "PSAM": ["vehicle", "PSEM"]}
 age_colors = ["cornflowerblue", "r"]
-colors = {"PSAM": ["silver", "mediumpurple"],
+colors = {"PSAM": ["cornflowerblue", "mediumpurple"],
           "DREADDs": ["silver", "coral"]}
 
 
@@ -141,43 +142,180 @@ class Chemogenetics:
                 )
 
                 n = range(len(session.sdt[performance_metric]))
-                dv.append(session.sdt[performance_metric])
-                mice.append([mouse for i in n])
-                sessions.append([session_type for i in n])
-                groups.append([group for i in n])
-                trial_blocks.append([i for i in n])
-
-        dv = stack_padding(dv)
-
-        mice = stack_padding(mice)
-        sessions = stack_padding(sessions)
-        groups = stack_padding(groups)
-        trial_blocks = stack_padding(trial_blocks)
+                dv.extend(session.sdt[performance_metric])
+                mice.extend([mouse for i in n])
+                sessions.extend([session_type for i in n])
+                groups.extend([group for i in n])
+                trial_blocks.extend([i for i in n])
 
         df = pd.DataFrame(
             {
-                't': trial_blocks.flatten(),
-                'dv': dv.flatten(),
-                'mice': mice.flatten(),
-                'session': sessions.flatten(),
-                'group': groups.flatten(),
+                't': trial_blocks,
+                'dv': dv,
+                'mice': mice,
+                'session': sessions,
+                'group': groups,
             }
         )
 
         # cols = ['mice', 'session', 'group']
         # df[cols] = df[cols].mask(df[cols]=='nan', None).ffill(axis=0)
         # df['t'] = df['t'].isna().cumsum() + df['t'].ffill()
-        df.dropna(axis=0)
+        #df = df.dropna(axis=0)
 
-        return dv, df
+        return df
 
-    def plot_all_behavior(
+    def stack_behavior_dv(self, df):
+        dv = dict()
+
+        for group in self.meta['groups']:
+            dv_temp = []
+
+            for mouse in self.meta['grouped_mice'][group]:
+                dv_temp.append(df.loc[df['mice']==mouse, 'dv'])
+                dv[group] = stack_padding(dv_temp)
+
+        return dv
+
+    def plot_trial_behavior(self, session_types=None, performance_metric='d_prime',
+                            **kwargs):
+        if session_types is None:
+            session_types = self.meta['session_types']
+        elif type(session_types) is str:
+            session_types = [session_types]
+        n_sessions = len(session_types)
+
+        dv, pvals = dict(), dict()
+        for session_type in session_types:
+            anova_df, df, pvals_temp = self.trial_behavior_anova(session_type, performance_metric=performance_metric,
+                                                            **kwargs)
+            dv[session_type] = self.stack_behavior_dv(df)
+            pvals[session_type] = pvals_temp
+
+        ylabel = {
+            'd_prime': "d'",
+            'CRs': "Correct rejection rate",
+            'hits': "Hit rate",
+        }
+        if n_sessions == 1:
+            fig, axs = plt.subplots(1,n_sessions, figsize=(4,5.7))
+            axs = [axs]
+        else:
+            fig, axs = plt.subplots(1, n_sessions, figsize=(2.5*n_sessions, 5.7),
+                                    sharey=True)
+        for i, (ax, session_type) in enumerate(zip(axs, session_types)):
+            for group, color in zip(self.meta['groups'], self.meta['colors']):
+                y = dv[session_type][group]
+                xrange = y.shape[1]
+                ax.plot(range(xrange), y.T, color=color, alpha=0.3)
+                errorfill(
+                    range(xrange),
+                    np.nanmean(y, axis=0),
+                    sem(y, axis=0),
+                    ax=ax,
+                    color=color,
+                    label=group
+                )
+            xlims = [int(x) for x in ax.get_xlim()]
+            ax.set_xticks(xlims)
+            ax.set_title(session_type.replace('Goals', 'Training'))
+            if i > 0:
+                ax.set_xticklabels(["", xlims[-1]])
+            else:
+                ax.set_xticklabels([1, xlims[-1]])
+                ax.set_ylabel(ylabel[performance_metric])
+
+            sig = np.where(pvals[session_type] < 0.05)[0]
+            if len(sig):
+                sig_regions = group_consecutives(sig, step=1)
+                ylims = ax.get_ylim()
+                for region in sig_regions:
+                    ax.fill_between(np.arange(region[0], region[-1]), ylims[-1], ylims[0], alpha=0.4, color='gray')
+
+        if n_sessions==1:
+            axs[0].set_xlabel('Trial blocks')
+        else:
+            fig.supxlabel("Trial blocks")
+        fig.tight_layout()
+        fig.subplots_adjust(wspace=0)
+
+        return dv
+
+    def trial_behavior_anova(self, session_type, performance_metric='d_prime', **kwargs):
+        df = self.behavior_over_trials(session_type, performance_metric=performance_metric,
+                                       **kwargs)
+
+        anova_df = pg.anova(df, dv='dv', between=['t', 'group'])
+
+        pvals = []
+        for i in range(np.max(df['t'])):
+            x = df.loc[np.logical_and(df['group']==self.meta['groups'][0], df['t']==i), 'dv']
+            y = df.loc[np.logical_and(df['group']==self.meta['groups'][1], df['t']==i), 'dv']
+
+            pval = ttest_ind(x,y, nan_policy='omit').pvalue
+            if ~np.isnan(pval):
+                pvals.append(pval)
+
+        pvals = multipletests(pvals, method='fdr_bh')[1]
+
+        return anova_df, df, pvals
+
+    def plot_reversal_vs_training4_trial_behavior(self, age, performance_metric='d_prime',
+                                                      **kwargs):
+        dv, pvals = dict(), dict()
+        session_types = ('Goals4', 'Reversal')
+        for session_type in session_types:
+            df = self.trial_behavior_anova(session_type, performance_metric=performance_metric,
+                                           **kwargs)[1]
+            dv[session_type] = self.stack_behavior_dv(df)
+
+        # For significance markers.
+        pvals = []
+        for x, y in zip(dv[session_types[0]][age].T, dv[session_types[1]][age].T):
+            pval = ttest_ind(x,y, nan_policy='omit').pvalue
+
+            if np.isfinite(pval) and ((len(x) + len(y)) > 5):
+                pvals.append(pval)
+        pvals = multipletests(pvals, method='fdr_bh')[1]
+
+        ylabel = {
+            'd_prime': "d'",
+            'CRs': "Correct rejection rate",
+            'hits': "Hit rate",
+        }
+        fig, ax = plt.subplots()
+        for session_type, color in zip(session_types, ['cornflowerblue', 'orange']):
+            y = dv[session_type][age]
+            x = y.shape[1]
+            ax.plot(range(x), y.T, color=color, alpha=0.3)
+            errorfill(range(x),
+                      np.nanmean(y, axis=0),
+                      sem(y, axis=0),
+                      ax=ax,
+                      color=color,
+                      label=session_type.replace('Goals', 'Training'))
+
+        sig = np.where(pvals < 0.05)[0]
+        if len(sig):
+            sig_regions = group_consecutives(sig, step=1)
+            ylims = ax.get_ylim()
+            for region in sig_regions:
+                ax.fill_between(np.arange(region[0], region[-1]), ylims[-1], ylims[0],
+                                alpha=0.4, color='gray')
+
+        ax.legend(loc='lower right')
+        ax.set_ylabel(ylabel[performance_metric])
+        ax.set_xlabel('Trial blocks')
+        [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+        fig.tight_layout()
+
+        return dv
+
+    def aggregate_behavior_over_trials(
         self,
         window=6,
         strides=2,
-        ax=None,
         performance_metric="d_prime",
-        show_plot=True,
         trial_limit=None,
     ):
         # Preallocate array.
@@ -245,51 +383,6 @@ class Chemogenetics:
                     length = len(metric_this_session)
                     metrics[group][row, border : border + length] = metric_this_session
 
-        if show_plot:
-            ylabels = {
-                "d_prime": "d'",
-                "CRs": "Correct rejection rate",
-                "hits": "Hit rate",
-            }
-            if ax is None:
-                fig, ax = plt.subplots(figsize=(7.4, 5.7))
-            else:
-                fig = ax.figure
-
-            if window is not None:
-                for group, c in zip(self.meta['groups'], self.meta['colors']):
-                    ax.plot(metrics[group].T, color=c, alpha=0.3)
-                    errorfill(
-                        range(metrics[group].shape[1]),
-                        np.nanmean(metrics[group], axis=0),
-                        sem(metrics[group], axis=0),
-                        ax=ax,
-                        color=c,
-                        label=group,
-                    )
-
-                for session in borders[1:]:
-                    ax.axvline(x=session, color="k")
-                ax.set_xticks(borders)
-                ax.set_xticklabels(np.insert(longest_sessions, 0, 0))
-                ax.set_xlabel("Trial blocks")
-                _ = beautify_ax(ax)
-            else:
-                for group, c in zip(self.meta['groups'], self.meta['colors']):
-                    ax.plot(metrics[group].T, color=c, alpha=0.3)
-                    ax.errorbar(
-                        self.meta["session_labels"],
-                        np.nanmean(metrics[group], axis=0),
-                        sem(metrics[group], axis=0),
-                        color=c,
-                        label=group,
-                        capsize=5,
-                        linewidth=3,
-                    )
-            ax.set_ylabel(ylabels[performance_metric])
-            fig.legend(loc='upper left')
-            fig.tight_layout()
-
         if window is None:
             mice_ = np.hstack(
                 [
@@ -344,8 +437,7 @@ class Chemogenetics:
         else:
             trial_limit = None
 
-        behavioral_performance = self.plot_all_behavior(
-            show_plot=False,
+        behavioral_performance = self.aggregate_behavior_over_trials(
             window=window,
             performance_metric=performance_metric,
             trial_limit=trial_limit,
@@ -467,13 +559,13 @@ class Chemogenetics:
 
         ylabel = {"CRs": "Correct rejection rate", "hits": "Hit rate", "d_prime": "d'"}
         fig, ax = plt.subplots(figsize=(5, 6))
-        ax.plot(performance_all.T, color="gray", alpha=0.5)
+        ax.plot(performance_all.T, color="cornflowerblue", alpha=0.5)
         errorfill(
             session_labels,
             np.mean(performance_all, axis=0),
             sem(performance_all, axis=0),
             ax=ax,
-            color="k",
+            color="cornflowerblue",
         )
         [tick.set_rotation(45) for tick in ax.get_xticklabels()]
         [ax.spines[side].set_visible(False) for side in ['top', 'right']]
@@ -563,6 +655,97 @@ class Chemogenetics:
             self.set_legend(fig)
 
         return perseverative_errors, unforgiveable_errors
+
+    def plot_perseverative_licking_over_session(
+                self,
+                session_type="Reversal",
+                window_size=6,
+                trial_interval=2,
+                show_plot=True,
+                binarize_licks=True,
+        ):
+        """
+        Plot perseverative and unforgiveable errors averaged across trial windows
+
+
+        """
+        perseverative_errors = dict()
+        unforgiveable_errors = dict()
+        for group in self.meta['groups']:
+            perseverative_errors[group] = [[] for mouse in self.meta["grouped_mice"][group]]
+            unforgiveable_errors[group] = [[] for mouse in self.meta["grouped_mice"][group]]
+
+            for i, mouse in enumerate(self.meta["grouped_mice"][group]):
+                behavior = self.data[mouse][session_type]
+                behavior_data = behavior.data
+
+                licks = behavior.rolling_window_licks(window_size, trial_interval)
+                if binarize_licks:
+                    licks = licks > 0
+
+                # Find previously rewarded, currently rewarded, and never
+                # rewarded ports.
+                previous_reward_ports = self.data[mouse]["Goals4"].data[
+                    "rewarded_ports"
+                ]
+                current_rewarded_ports = behavior_data["rewarded_ports"]
+                other_ports = ~(previous_reward_ports + current_rewarded_ports)
+                n_previous = np.sum(previous_reward_ports)
+                n_other = np.sum(other_ports)
+
+                for licks_this_window in licks:
+                    # Get perserverative errors.
+                    perseverative_errors[group][i].append(
+                        np.sum(licks_this_window[:, previous_reward_ports])
+                        / (n_previous * licks_this_window.shape[0])
+                    )
+
+                    # Get unforgiveable errors.
+                    unforgiveable_errors[group][i].append(
+                        np.sum(licks_this_window[:, other_ports])
+                        / (n_other * licks_this_window.shape[0])
+                    )
+
+        perseverative_errors = {
+            group: stack_padding(perseverative_errors[group]) for group in self.meta['groups']
+        }
+        unforgiveable_errors = {
+            group: stack_padding(unforgiveable_errors[group]) for group in self.meta['groups']
+        }
+
+        if show_plot:
+            ylabel = "Error rate" if binarize_licks else "Average number of licks"
+            if session_type == "Reversal":
+                fig, axs = plt.subplots(1, 2, sharey=True, sharex=True)
+                fig.subplots_adjust(wspace=0)
+
+                for ax, rate, title in zip(
+                        axs,
+                        [perseverative_errors, unforgiveable_errors],
+                        ["Perseverative errors", "Unforgiveable errors"],
+                ):
+                    se = {group: sem(rate[group], axis=0) for group in self.meta['groups']}
+                    m = {group: np.nanmean(rate[group], axis=0) for group in self.meta['groups']}
+                    for c, group in zip(self.meta['colors'], self.meta['groups']):
+                        ax.plot(rate[group].T, color=c, alpha=0.1)
+                        errorfill(
+                            range(m[group].shape[0]), m[group], se[group], color=c, ax=ax
+                        )
+                        ax.set_title(title)
+                    fig.supxlabel("Trial blocks")
+                    fig.supylabel(ylabel)
+            else:
+                fig, ax = plt.subplots()
+                se = {group: sem(unforgiveable_errors[group], axis=0) for group in self.meta['groups']}
+                m = {group: np.nanmean(unforgiveable_errors[group], axis=0) for group in self.meta['groups']}
+                for c, group in zip(self.meta['colors'], self.meta['groups']):
+                    ax.plot(unforgiveable_errors[group].T, color=c, alpha=0.1)
+                    errorfill(range(m[group].shape[0]), m[group], se[group], color=c, ax=ax)
+                ax.set_xlabel("Trial blocks")
+                ax.set_ylabel(ylabel)
+
+        return perseverative_errors, unforgiveable_errors
+
 
     def scatter_box(self, data, ylabel="", ax=None):
         if ax is None:

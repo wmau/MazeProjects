@@ -9,6 +9,7 @@ from CaImaging.util import (
     contiguous_regions,
     stack_padding,
     distinct_colors,
+    group_consecutives
 )
 import ruptures as rpt
 from CaImaging.plotting import errorfill, beautify_ax, jitter_x, shiftedColorMap, plot_xy_line
@@ -425,22 +426,25 @@ class RecentReversal:
         if session_types is None:
             session_types = self.meta['session_types']
         n_sessions = len(session_types)
-        
-        dv = dict()
+
+        dv, pvals = dict(), dict()
         for session_type in session_types:
-            df = self.behavior_over_trials(session_type, performance_metric=performance_metric,
-                                           **kwargs)
+            anova_df, df, pvals_temp = self.trial_behavior_anova(session_type, performance_metric=performance_metric,
+                                                                 **kwargs)
             dv[session_type] = self.stack_behavior_dv(df)
+            pvals[session_type] = pvals_temp
 
         ylabel = {
             'd_prime': "d'",
             'CRs': "Correct rejection rate",
             'hits': "Hit rate",
         }
-        fig, axs = plt.subplots(1, n_sessions, figsize=(2.5*n_sessions, 5.7),
-                                sharey=True)
-        if n_sessions==1:
+        if n_sessions == 1:
+            fig, axs = plt.subplots(1,n_sessions, figsize=(4,5.7))
             axs = [axs]
+        else:
+            fig, axs = plt.subplots(1, n_sessions, figsize=(2.5*n_sessions, 5.7),
+                                    sharey=True)
         for i, (ax, session_type) in enumerate(zip(axs, session_types)):
             for age, color in zip(ages_to_plot, plot_colors):
                 y = dv[session_type][age]
@@ -463,7 +467,17 @@ class RecentReversal:
                 ax.set_xticklabels([1, xlims[-1]])
                 ax.set_ylabel(ylabel[performance_metric])
 
-        fig.supxlabel("Trial blocks")
+            sig = np.where(pvals[session_type] < 0.05)[0]
+            if len(sig):
+                sig_regions = group_consecutives(sig, step=1)
+                ylims = ax.get_ylim()
+                for region in sig_regions:
+                    ax.fill_between(np.arange(region[0], region[-1]), ylims[-1], ylims[0], alpha=0.4, color='gray')
+
+        if n_sessions==1:
+            axs[0].set_xlabel('Trial blocks')
+        else:
+            fig.supxlabel("Trial blocks")
         fig.tight_layout()
         fig.subplots_adjust(wspace=0)
 
@@ -487,6 +501,57 @@ class RecentReversal:
         pvals = multipletests(pvals, method='fdr_bh')[1]
 
         return anova_df, df, pvals
+
+    def plot_reversal_vs_training4_trial_behavior(self, age, performance_metric='d_prime',
+                                                  **kwargs):
+        dv, pvals = dict(), dict()
+        session_types = ('Goals4', 'Reversal')
+        for session_type in session_types:
+            df = self.trial_behavior_anova(session_type, performance_metric=performance_metric,
+                                                                 **kwargs)[1]
+            dv[session_type] = self.stack_behavior_dv(df)
+
+        # For significance markers.
+        pvals = []
+        for x, y in zip(dv[session_types[0]][age].T, dv[session_types[1]][age].T):
+            pval = ttest_ind(x,y, nan_policy='omit').pvalue
+
+            if np.isfinite(pval) and ((len(x) + len(y)) > 5):
+                pvals.append(pval)
+        pvals = multipletests(pvals, method='fdr_bh')[1]
+
+        ylabel = {
+            'd_prime': "d'",
+            'CRs': "Correct rejection rate",
+            'hits': "Hit rate",
+        }
+        fig, ax = plt.subplots()
+        for session_type, color in zip(session_types, ['cornflowerblue', 'orange']):
+            y = dv[session_type][age]
+            x = y.shape[1]
+            ax.plot(range(x), y.T, color=color, alpha=0.3)
+            errorfill(range(x),
+                      np.nanmean(y, axis=0),
+                      sem(y, axis=0),
+                      ax=ax,
+                      color=color,
+                      label=session_type.replace('Goals', 'Training'))
+
+        sig = np.where(pvals < 0.05)[0]
+        if len(sig):
+            sig_regions = group_consecutives(sig, step=1)
+            ylims = ax.get_ylim()
+            for region in sig_regions:
+                ax.fill_between(np.arange(region[0], region[-1]), ylims[-1], ylims[0],
+                                alpha=0.4, color='gray')
+
+        ax.legend(loc='lower right')
+        ax.set_ylabel(ylabel[performance_metric])
+        ax.set_xlabel('Trial blocks')
+        [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+        fig.tight_layout()
+
+        return dv
 
     def plot_behavior(self, mouse, window=8, strides=2, show_plot=True, ax=None):
         """
@@ -555,25 +620,17 @@ class RecentReversal:
 
         return sdt, ax
 
-    def plot_all_behavior(
+    def aggregate_behavior_over_trials(
         self,
         window=6,
         strides=2,
-        ax=None,
         performance_metric="d_prime",
-        show_plot=True,
         trial_limit=None,
-        ages_to_plot=None,
     ):
         """
         Plot behavior metrics for all mice, separated by aged versus young.
 
         """
-        if type(ages_to_plot) is str:
-            ages_to_plot = [ages_to_plot]
-        elif ages_to_plot is None:
-            ages_to_plot = ages
-
         # Preallocate array.
         behavioral_performance_arr = np.zeros(
             (3, len(self.meta["mice"]), len(self.meta["session_types"])),
@@ -639,51 +696,6 @@ class RecentReversal:
                     length = len(metric_this_session)
                     metrics[age][row, border : border + length] = metric_this_session
 
-        if show_plot:
-            ylabels = {
-                "d_prime": "d'",
-                "CRs": "Correct rejection rate",
-                "hits": "Hit rate",
-            }
-            if ax is None:
-                fig, ax = plt.subplots(figsize=(7.4, 5.7))
-            else:
-                fig = ax.figure
-
-            colors = [age_colors[ages.index(age)] for age in ages_to_plot]
-            if window is not None:
-                for age, c in zip(ages_to_plot, colors):
-                    ax.plot(metrics[age].T, color=c, alpha=0.3)
-                    errorfill(
-                        range(metrics[age].shape[1]),
-                        np.nanmean(metrics[age], axis=0),
-                        sem(metrics[age], axis=0),
-                        ax=ax,
-                        color=c,
-                        label=age,
-                    )
-
-                for session in borders[1:]:
-                    ax.axvline(x=session, color="k")
-                ax.set_xticks(borders)
-                ax.set_xticklabels(np.insert(longest_sessions, 0, 0))
-                ax.set_xlabel("Trial blocks")
-                _ = beautify_ax(ax)
-            else:
-                for age, c in zip(ages_to_plot, colors):
-                    ax.plot(metrics[age].T, color=c, alpha=0.3)
-                    ax.errorbar(
-                        self.meta["session_labels"],
-                        np.nanmean(metrics[age], axis=0),
-                        sem(metrics[age], axis=0),
-                        color=c,
-                        label=age,
-                        capsize=5,
-                        linewidth=3,
-                    )
-            ax.set_ylabel(ylabels[performance_metric])
-            fig.legend()
-
         if window is None:
             mice_ = np.hstack(
                 [
@@ -735,7 +747,7 @@ class RecentReversal:
         pairwise_df: DataFrame
             Results from pairwise t-tests.
         """
-        df = self.plot_all_behavior(
+        df = self.aggregate_behavior_over_trials(
             performance_metric=performance_metric, window=None, strides=None
         )[2]
 
@@ -785,8 +797,7 @@ class RecentReversal:
         else:
             trial_limit = None
 
-        behavioral_performance = self.plot_all_behavior(
-            show_plot=False,
+        behavioral_performance = self.aggregate_behavior_over_trials(
             window=window,
             strides=strides,
             performance_metric=performance_metric,
@@ -1050,8 +1061,8 @@ class RecentReversal:
     def plot_perseverative_licking_over_session(
         self,
         session_type="Reversal",
-        window_size=8,
-        trial_interval=3,
+        window_size=6,
+        trial_interval=2,
         show_plot=True,
         binarize_licks=True,
     ):
@@ -2005,10 +2016,9 @@ class RecentReversal:
         p: float
             P-value of the correlation.
         """
-        performance = self.plot_all_behavior(
+        performance = self.aggregate_behavior_over_trials(
             window=None,
             strides=None,
-            show_plot=False,
             performance_metric=performance_metric,
         )[2]
         PV_corrs = {
