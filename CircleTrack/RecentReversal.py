@@ -405,14 +405,69 @@ class RecentReversal:
 
         return df
 
-    def plot_trial_behavior(self, ages_to_plot=None, session_types=None, **kwargs):
+    def stack_behavior_dv(self, df):
+        dv = dict()
+
+        for age in ages:
+            dv_temp = []
+
+            for mouse in self.meta['grouped_mice'][age]:
+                dv_temp.append(df.loc[df['mice']==mouse, 'dv'])
+                dv[age] = stack_padding(dv_temp)
+
+        return dv
+
+    def plot_trial_behavior(self, ages_to_plot=None, session_types=None, performance_metric='d_prime',
+                            **kwargs):
         ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(
             ages_to_plot
         )
         if session_types is None:
-            
+            session_types = self.meta['session_types']
+        n_sessions = len(session_types)
+        
+        dv = dict()
+        for session_type in session_types:
+            df = self.behavior_over_trials(session_type, performance_metric=performance_metric,
+                                           **kwargs)
+            dv[session_type] = self.stack_behavior_dv(df)
 
-        for
+        ylabel = {
+            'd_prime': "d'",
+            'CRs': "Correct rejection rate",
+            'hits': "Hit rate",
+        }
+        fig, axs = plt.subplots(1, n_sessions, figsize=(2.5*n_sessions, 5.7),
+                                sharey=True)
+        if n_sessions==1:
+            axs = [axs]
+        for i, (ax, session_type) in enumerate(zip(axs, session_types)):
+            for age, color in zip(ages_to_plot, plot_colors):
+                y = dv[session_type][age]
+                xrange = y.shape[1]
+                ax.plot(range(xrange), y.T, color=color, alpha=0.3)
+                errorfill(
+                    range(xrange),
+                    np.nanmean(y, axis=0),
+                    sem(y, axis=0),
+                    ax=ax,
+                    color=color,
+                    label=age
+                )
+            xlims = [int(x) for x in ax.get_xlim()]
+            ax.set_xticks(xlims)
+            ax.set_title(session_type.replace('Goals', 'Training'))
+            if i > 0:
+                ax.set_xticklabels(["", xlims[-1]])
+            else:
+                ax.set_xticklabels([1, xlims[-1]])
+                ax.set_ylabel(ylabel[performance_metric])
+
+        fig.supxlabel("Trial blocks")
+        fig.tight_layout()
+        fig.subplots_adjust(wspace=0)
+
+        return dv
 
     def trial_behavior_anova(self, session_type, performance_metric='d_prime', **kwargs):
         df = self.behavior_over_trials(session_type, performance_metric=performance_metric,
@@ -420,7 +475,18 @@ class RecentReversal:
 
         anova_df = pg.anova(df, dv='dv', between=['t', 'age'])
 
-        return anova_df, df
+        pvals = []
+        for i in range(np.max(df['t'])):
+            x = df.loc[np.logical_and(df['age']=='young', df['t']==i), 'dv']
+            y = df.loc[np.logical_and(df['age']=='aged', df['t']==i), 'dv']
+
+            pval = ttest_ind(x,y, nan_policy='omit').pvalue
+            if ~np.isnan(pval):
+                pvals.append(pval)
+
+        pvals = multipletests(pvals, method='fdr_bh')[1]
+
+        return anova_df, df, pvals
 
     def plot_behavior(self, mouse, window=8, strides=2, show_plot=True, ax=None):
         """
