@@ -427,10 +427,11 @@ class RecentReversal:
             session_types = self.meta['session_types']
         n_sessions = len(session_types)
 
-        dv, pvals = dict(), dict()
+        dv, pvals, anova_dfs = dict(), dict(), dict()
         for session_type in session_types:
-            anova_df, df, pvals_temp = self.trial_behavior_anova(session_type, performance_metric=performance_metric,
-                                                                 **kwargs)
+            anova_dfs[session_type], df, pvals_temp = \
+                self.trial_behavior_anova(session_type, performance_metric=performance_metric,
+                                          **kwargs)
             dv[session_type] = self.stack_behavior_dv(df)
             pvals[session_type] = pvals_temp
 
@@ -443,7 +444,7 @@ class RecentReversal:
             fig, axs = plt.subplots(1,n_sessions, figsize=(4,5.7))
             axs = [axs]
         else:
-            fig, axs = plt.subplots(1, n_sessions, figsize=(2.5*n_sessions, 5.7),
+            fig, axs = plt.subplots(1, n_sessions, figsize=(3*n_sessions, 5.7),
                                     sharey=True)
         for i, (ax, session_type) in enumerate(zip(axs, session_types)):
             for age, color in zip(ages_to_plot, plot_colors):
@@ -466,6 +467,7 @@ class RecentReversal:
             else:
                 ax.set_xticklabels([1, xlims[-1]])
                 ax.set_ylabel(ylabel[performance_metric])
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
             sig = np.where(pvals[session_type] < 0.05)[0]
             if len(sig):
@@ -481,13 +483,13 @@ class RecentReversal:
         fig.tight_layout()
         fig.subplots_adjust(wspace=0)
 
-        return dv
+        return dv, anova_dfs
 
     def trial_behavior_anova(self, session_type, performance_metric='d_prime', **kwargs):
         df = self.behavior_over_trials(session_type, performance_metric=performance_metric,
                                            **kwargs)
 
-        anova_df = pg.anova(df, dv='dv', between=['t', 'age'])
+        anova_df = pg.anova(df, dv='dv', between=['t', 'age'], ss_type=1)
 
         pvals = []
         for i in range(np.max(df['t'])):
@@ -525,7 +527,7 @@ class RecentReversal:
             'CRs': "Correct rejection rate",
             'hits': "Hit rate",
         }
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(5,5))
         for session_type, color in zip(session_types, ['cornflowerblue', 'orange']):
             y = dv[session_type][age]
             x = y.shape[1]
@@ -545,13 +547,13 @@ class RecentReversal:
                 ax.fill_between(np.arange(region[0], region[-1]), ylims[-1], ylims[0],
                                 alpha=0.4, color='gray')
 
-        ax.legend(loc='lower right')
+        ax.legend(loc='lower right', fontsize=14)
         ax.set_ylabel(ylabel[performance_metric])
         ax.set_xlabel('Trial blocks')
         [ax.spines[side].set_visible(False) for side in ['top', 'right']]
         fig.tight_layout()
 
-        return dv
+        return dv, fig
 
     def plot_behavior(self, mouse, window=8, strides=2, show_plot=True, ax=None):
         """
@@ -6938,18 +6940,26 @@ class RecentReversal:
         with open(r'Z:\Will\RemoteReversal\Data\PV_corr_matrices.pkl', 'rb') as file:
             corr_matrices = pkl.load(file)
         if panels is None:
-            panels = ['G', 'H', 'I', 'J']
-
-        if 'G' in panels:
-            _ = self.scrollplot_rasters_by_day('Miranda', self.meta['session_types'])
+            panels = ['G', 'H', 'I', 'J', 'K', 'L']
 
         if 'H' in panels:
-            self.snakeplot_matched_placefields('Miranda', ['Goals3', 'Goals4', 'Reversal'], 1)
+            age = 'young'
+            performance_metric='CRs'
+            dv, fig = self.plot_reversal_vs_training4_trial_behavior(age,
+                                                                     performance_metric=performance_metric)
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f'Training4 vs Reversal_{age}_{performance_metric}', 1)
 
         if 'I' in panels:
-            self.plot_corr_matrix(corr_matrices, ages_to_plot=['young'])
+            _ = self.scrollplot_rasters_by_day('Miranda', self.meta['session_types'])
 
         if 'J' in panels:
+            self.snakeplot_matched_placefields('Miranda', ['Goals3', 'Goals4', 'Reversal'], 1)
+
+        if 'K' in panels:
+            self.plot_corr_matrix(corr_matrices, ages_to_plot=['young'])
+
+        if 'L' in panels:
             data = self.plot_session_PV_corr_comparisons(corr_matrices, ages_to_plot='young')[0]
             x = data[('Goals3', 'Goals4')]['young']
             y = data[('Goals4', 'Reversal')]['young']

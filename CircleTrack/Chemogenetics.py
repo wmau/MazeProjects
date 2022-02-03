@@ -122,7 +122,7 @@ class Chemogenetics:
             mpatches.Patch(facecolor=c, label=label, edgecolor="k")
             for c, label in zip(colors, groups)
         ]
-        fig.legend(handles=patches, loc="lower right")
+        fig.legend(handles=patches, loc="lower right", fontsize=14)
 
     def behavior_over_trials(self,
                              session_type,
@@ -178,19 +178,19 @@ class Chemogenetics:
         return dv
 
     def plot_trial_behavior(self, session_types=None, performance_metric='d_prime',
-                            **kwargs):
+                            plot_sig=False, **kwargs):
         if session_types is None:
             session_types = self.meta['session_types']
         elif type(session_types) is str:
             session_types = [session_types]
         n_sessions = len(session_types)
 
-        dv, pvals = dict(), dict()
+        dv, pvals, anova_dfs = dict(), dict(), dict()
         for session_type in session_types:
-            anova_df, df, pvals_temp = self.trial_behavior_anova(session_type, performance_metric=performance_metric,
-                                                            **kwargs)
+            anova_dfs[session_type], df, pvals[session_type] =\
+                self.trial_behavior_anova(session_type, performance_metric=performance_metric,
+                                          **kwargs)
             dv[session_type] = self.stack_behavior_dv(df)
-            pvals[session_type] = pvals_temp
 
         ylabel = {
             'd_prime': "d'",
@@ -201,7 +201,7 @@ class Chemogenetics:
             fig, axs = plt.subplots(1,n_sessions, figsize=(4,5.7))
             axs = [axs]
         else:
-            fig, axs = plt.subplots(1, n_sessions, figsize=(2.5*n_sessions, 5.7),
+            fig, axs = plt.subplots(1, n_sessions, figsize=(3*n_sessions, 7),
                                     sharey=True)
         for i, (ax, session_type) in enumerate(zip(axs, session_types)):
             for group, color in zip(self.meta['groups'], self.meta['colors']):
@@ -224,13 +224,15 @@ class Chemogenetics:
             else:
                 ax.set_xticklabels([1, xlims[-1]])
                 ax.set_ylabel(ylabel[performance_metric])
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
-            sig = np.where(pvals[session_type] < 0.05)[0]
-            if len(sig):
-                sig_regions = group_consecutives(sig, step=1)
-                ylims = ax.get_ylim()
-                for region in sig_regions:
-                    ax.fill_between(np.arange(region[0], region[-1]), ylims[-1], ylims[0], alpha=0.4, color='gray')
+            if plot_sig:
+                sig = np.where(pvals[session_type] < 0.05)[0]
+                if len(sig):
+                    sig_regions = group_consecutives(sig, step=1)
+                    ylims = ax.get_ylim()
+                    for region in sig_regions:
+                        ax.fill_between(np.arange(region[0], region[-1]), ylims[-1], ylims[0], alpha=0.4, color='gray')
 
         if n_sessions==1:
             axs[0].set_xlabel('Trial blocks')
@@ -238,14 +240,15 @@ class Chemogenetics:
             fig.supxlabel("Trial blocks")
         fig.tight_layout()
         fig.subplots_adjust(wspace=0)
+        self.set_legend(fig)
 
-        return dv
+        return dv, anova_dfs, fig
 
     def trial_behavior_anova(self, session_type, performance_metric='d_prime', **kwargs):
         df = self.behavior_over_trials(session_type, performance_metric=performance_metric,
                                        **kwargs)
 
-        anova_df = pg.anova(df, dv='dv', between=['t', 'group'])
+        anova_df = pg.anova(df, dv='dv', between=['t', 'group'], ss_type=1)
 
         pvals = []
         for i in range(np.max(df['t'])):
@@ -253,16 +256,20 @@ class Chemogenetics:
             y = df.loc[np.logical_and(df['group']==self.meta['groups'][1], df['t']==i), 'dv']
 
             pval = ttest_ind(x,y, nan_policy='omit').pvalue
-            if ~np.isnan(pval):
+            if np.isfinite(pval) and ((len(x) + len(y)) > 5):
                 pvals.append(pval)
 
         pvals = multipletests(pvals, method='fdr_bh')[1]
 
         return anova_df, df, pvals
 
-    def plot_reversal_vs_training4_trial_behavior(self, age, performance_metric='d_prime',
-                                                      **kwargs):
+    def plot_reversal_vs_training4_trial_behavior(self, group, performance_metric='d_prime',
+                                                  **kwargs):
         dv, pvals = dict(), dict()
+        reversal_color = {
+            'vehicle': 'orange',
+            'PSEM': self.meta['colors'][self.meta['groups'].index(group)],
+        }
         session_types = ('Goals4', 'Reversal')
         for session_type in session_types:
             df = self.trial_behavior_anova(session_type, performance_metric=performance_metric,
@@ -271,7 +278,7 @@ class Chemogenetics:
 
         # For significance markers.
         pvals = []
-        for x, y in zip(dv[session_types[0]][age].T, dv[session_types[1]][age].T):
+        for x, y in zip(dv[session_types[0]][group].T, dv[session_types[1]][group].T):
             pval = ttest_ind(x,y, nan_policy='omit').pvalue
 
             if np.isfinite(pval) and ((len(x) + len(y)) > 5):
@@ -283,9 +290,9 @@ class Chemogenetics:
             'CRs': "Correct rejection rate",
             'hits': "Hit rate",
         }
-        fig, ax = plt.subplots()
-        for session_type, color in zip(session_types, ['cornflowerblue', 'orange']):
-            y = dv[session_type][age]
+        fig, ax = plt.subplots(figsize=(5,5))
+        for session_type, color in zip(session_types, ['cornflowerblue', reversal_color[group]]):
+            y = dv[session_type][group]
             x = y.shape[1]
             ax.plot(range(x), y.T, color=color, alpha=0.3)
             errorfill(range(x),
@@ -302,14 +309,14 @@ class Chemogenetics:
             for region in sig_regions:
                 ax.fill_between(np.arange(region[0], region[-1]), ylims[-1], ylims[0],
                                 alpha=0.4, color='gray')
-
-        ax.legend(loc='lower right')
+        ax.set_title(group)
+        ax.legend(loc='lower right', fontsize=14)
         ax.set_ylabel(ylabel[performance_metric])
         ax.set_xlabel('Trial blocks')
         [ax.spines[side].set_visible(False) for side in ['top', 'right']]
         fig.tight_layout()
 
-        return dv
+        return dv, fig
 
     def aggregate_behavior_over_trials(
         self,
@@ -558,7 +565,7 @@ class Chemogenetics:
             performance_all[:, i] = performance[self.meta['groups'][0]]
 
         ylabel = {"CRs": "Correct rejection rate", "hits": "Hit rate", "d_prime": "d'"}
-        fig, ax = plt.subplots(figsize=(5, 6))
+        fig, ax = plt.subplots(figsize=(5, 5))
         ax.plot(performance_all.T, color="cornflowerblue", alpha=0.5)
         errorfill(
             session_labels,
@@ -810,7 +817,7 @@ class Chemogenetics:
 
     def make_fig1(self, panels=None):
         if panels is None:
-            panels = ['C', 'D']
+            panels = ['C', 'D', 'E']
 
         if 'C' in panels:
             d_prime = self.plot_behavior_grouped(performance_metric='d_prime',
@@ -819,18 +826,23 @@ class Chemogenetics:
             print(anova_results)
 
         if 'D' in panels:
-            performance_metric = 'hits'
-            perf = self.plot_best_performance_all_sessions(performance_metric=performance_metric,
-                                                        sessions=['Goals4', 'Reversal'])[0]
+            group = 'vehicle'
+            performance_metric = 'CRs'
+            dv, fig = self.plot_reversal_vs_training4_trial_behavior(group, performance_metric=performance_metric)
 
-            sessions_ = ['Goals4', 'Reversal']
-            for session in sessions_:
-                x = perf[session]['vehicle']
-                y = perf[session]['PSEM']
-                h = ttest_ind(x,y)
-                dof = len(x) + len(y) - 2
-                print(f"{performance_metric} on {session}, vehicle vs PSEM:, t({dof})={round(h.statistic, 3)},"
-                      f" p={round(h.pvalue, 3)}")
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f'Training4 vs Reversal_{group}_{performance_metric}', 1)
+
+        if 'E' in panels:
+            performance_metric = 'CRs'
+            dv, anova_dfs, fig = \
+                self.plot_trial_behavior(session_types=['Goals4', 'Reversal'], performance_metric=performance_metric)
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f'Vehicle vs PSEM Reversal_{performance_metric}', 1)
+
+            for df in anova_dfs.values():
+                print(df)
 
 
 if __name__ == "__main__":
