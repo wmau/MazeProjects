@@ -219,10 +219,9 @@ class Chemogenetics:
             xlims = [int(x) for x in ax.get_xlim()]
             ax.set_xticks(xlims)
             ax.set_title(session_type.replace('Goals', 'Training'))
-            if i > 0:
-                ax.set_xticklabels(["", xlims[-1]])
-            else:
-                ax.set_xticklabels([1, xlims[-1]])
+            ax.set_xticklabels([1, xlims[-1]])
+
+            if i == 0:
                 ax.set_ylabel(ylabel[performance_metric])
             [ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
@@ -235,11 +234,11 @@ class Chemogenetics:
                         ax.fill_between(np.arange(region[0], region[-1]), ylims[-1], ylims[0], alpha=0.4, color='gray')
 
         if n_sessions==1:
-            axs[0].set_xlabel('Trial blocks')
+            axs[0].set_xlabel('Trials (sliding windows)')
         else:
-            fig.supxlabel("Trial blocks")
+            fig.supxlabel("Trials (sliding windows)")
         fig.tight_layout()
-        fig.subplots_adjust(wspace=0)
+        fig.subplots_adjust(wspace=0.2)
         self.set_legend(fig)
 
         return dv, anova_dfs, fig
@@ -312,7 +311,7 @@ class Chemogenetics:
         ax.set_title(group)
         ax.legend(loc='lower right', fontsize=14)
         ax.set_ylabel(ylabel[performance_metric])
-        ax.set_xlabel('Trial blocks')
+        ax.set_xlabel('Sliding trial windows')
         [ax.spines[side].set_visible(False) for side in ['top', 'right']]
         fig.tight_layout()
 

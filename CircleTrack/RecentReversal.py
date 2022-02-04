@@ -418,7 +418,8 @@ class RecentReversal:
 
         return dv
 
-    def plot_trial_behavior(self, ages_to_plot=None, session_types=None, performance_metric='d_prime',
+    def plot_trial_behavior(self, ages_to_plot=None, session_types=None,
+                            performance_metric='d_prime', plot_sig=False,
                             **kwargs):
         ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(
             ages_to_plot
@@ -462,28 +463,29 @@ class RecentReversal:
             xlims = [int(x) for x in ax.get_xlim()]
             ax.set_xticks(xlims)
             ax.set_title(session_type.replace('Goals', 'Training'))
-            if i > 0:
-                ax.set_xticklabels(["", xlims[-1]])
-            else:
-                ax.set_xticklabels([1, xlims[-1]])
+            ax.set_xticklabels([1, xlims[-1]])
+
+            if i == 0:
                 ax.set_ylabel(ylabel[performance_metric])
             [ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
-            sig = np.where(pvals[session_type] < 0.05)[0]
-            if len(sig):
-                sig_regions = group_consecutives(sig, step=1)
-                ylims = ax.get_ylim()
-                for region in sig_regions:
-                    ax.fill_between(np.arange(region[0], region[-1]), ylims[-1], ylims[0], alpha=0.4, color='gray')
+            if plot_sig:
+                sig = np.where(pvals[session_type] < 0.05)[0]
+                if len(sig):
+                    sig_regions = group_consecutives(sig, step=1)
+                    ylims = ax.get_ylim()
+                    for region in sig_regions:
+                        ax.fill_between(np.arange(region[0], region[-1]), ylims[-1], ylims[0], alpha=0.4, color='gray')
 
         if n_sessions==1:
-            axs[0].set_xlabel('Trial blocks')
+            axs[0].set_xlabel('Sliding trial windows')
         else:
-            fig.supxlabel("Trial blocks")
+            fig.supxlabel("Sliding trial windows")
         fig.tight_layout()
-        fig.subplots_adjust(wspace=0)
+        fig.subplots_adjust(wspace=0.2)
+        self.set_age_legend(fig)
 
-        return dv, anova_dfs
+        return dv, anova_dfs, fig
 
     def trial_behavior_anova(self, session_type, performance_metric='d_prime', **kwargs):
         df = self.behavior_over_trials(session_type, performance_metric=performance_metric,
@@ -7057,13 +7059,23 @@ class RecentReversal:
 
     def make_fig4(self, panels=None):
         if panels is None:
-            panels = ['A', 'B', 'C', 'D', 'E', 'F']
+            panels = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
 
         if 'A' in panels:
             anova_df = self.aged_performance_anova()
             print(anova_df)
 
         if 'B' in panels:
+            performance_metric = 'CRs'
+            dv, anova_dfs, fig = self.plot_trial_behavior(session_types=['Goals4', 'Reversal'],
+                                                          performance_metric=performance_metric)
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f'Aged vs young Reversal_{performance_metric}', 4)
+
+            for df in anova_dfs.values():
+                print(df)
+
+        if 'C' in panels:
             performance_metric = 'CRs'
             performance = self.plot_performance_session_type('Reversal',
                                                                   window=None,
@@ -7092,7 +7104,7 @@ class RecentReversal:
         #     print(r)
         #     print(pvalue)
 
-        if 'C' in panels:
+        if 'D' in panels:
             p_changing_split_by_age = self.plot_proportion_changing_ensembles(ages_to_plot='aged')
 
             stats = wilcoxon(p_changing_split_by_age['aged'][1],
@@ -7106,15 +7118,15 @@ class RecentReversal:
                 msg += '*'
             print(msg)
 
-        if 'D' in panels:
+        if 'E' in panels:
             self.correlate_prop_changing_ensembles_to_behavior(performance_metric='CRs',
                                                                ages_to_plot='aged')
 
-        if 'E' in panels:
+        if 'F' in panels:
             self.plot_lick_decoder(licks_to_include='first', ages_to_plot='aged', class_weight='balanced',
                                    random_state=7, n_jobs=6)
 
-        if 'F' in panels:
+        if 'G' in panels:
             self.plot_lick_decoder(licks_to_include='first', lag=-1, ages_to_plot='aged', class_weight='balanced',
                                    random_state=7, n_jobs=6)
 
