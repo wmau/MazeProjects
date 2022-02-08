@@ -447,7 +447,7 @@ class CalciumSession:
         """
         raster = spatial_data['rasters'][neuron]
         field_bins = define_field_bins(spatial_data[tuning_curve][neuron], field_threshold=field_threshold)
-        fired_in_field = np.any(raster[:, field_bins], axis=1)
+        fired_in_field = np.any(raster[:, field_bins] > 0, axis=1)
 
         if not even_split:
             split = np.arange(split, len(fired_in_field), split)
@@ -461,18 +461,24 @@ class CalciumSession:
         else:
             reliability = [np.sum(fired_in_field) / len(fired_in_field) for fired_in_field in split_fired_in_field]
 
-        if show_plot and split != 1:
-            fig, axs = plt.subplots(1,2)
+        if show_plot:
+            if split > 1:
+                fig, axs = plt.subplots(1,2)
+                axs[1].plot(reliability, range(len(reliability)))
+                axs[1].set_xlim([0, 1])
+                axs[1].invert_yaxis()
+                axs[1].set_ylabel(f'Trial block #, {len(split_fired_in_field[0])} trials per block')
+                axs[1].set_xlabel('Proportion of trials with '
+                                  '\n in-field calcium transient')
+            else:
+                fig, axs = plt.subplots()
+                axs = [axs]
+                axs[0].set_title(f'Reliability: {reliability}')
+
             axs[0].imshow(raster > 0, aspect='auto')
             axs[0].set_xlabel('Position')
             axs[0].set_ylabel('Trials')
 
-            axs[1].plot(reliability, range(len(reliability)))
-            axs[1].set_xlim([0, 1])
-            axs[1].invert_yaxis()
-            axs[1].set_ylabel(f'Trial block #, {len(split_fired_in_field[0])} trials per block')
-            axs[1].set_xlabel('Proportion of trials with '
-                              '\n in-field calcium transient')
             fig.tight_layout()
 
         return reliability
