@@ -11,6 +11,7 @@ import matplotlib.patches as mpatches
 import os
 import pingouin as pg
 from statsmodels.stats.multitest import multipletests
+from scipy.integrate import simps
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["svg.fonttype"] = "none"
@@ -262,6 +263,18 @@ class Chemogenetics:
 
         return anova_df, df, pvals
 
+    # def get_learning_rates(self, dv):
+    #     learning_rates = dict()
+    #     for group in self.meta['groups']:
+    #         learning_rates[group] = []
+    #
+    #         for performance in dv[group]:
+    #             performance = performance[np.isfinite(performance)]
+    #             learning_rates[group].append(spearmanr(np.arange(len(performance)),
+    #                                                              performance).correlation)
+    #
+    #     return learning_rates
+
     def plot_reversal_vs_training4_trial_behavior(self, group, performance_metric='d_prime',
                                                   **kwargs):
         dv, pvals = dict(), dict()
@@ -429,6 +442,7 @@ class Chemogenetics:
         session_type,
         ax=None,
         window=None,
+        strides=None,
         performance_metric="d_prime",
         show_plot=True,
         downsample_trials=False,
@@ -445,6 +459,7 @@ class Chemogenetics:
 
         behavioral_performance = self.aggregate_behavior_over_trials(
             window=window,
+            strides=strides,
             performance_metric=performance_metric,
             trial_limit=trial_limit,
         )[0]
@@ -487,6 +502,7 @@ class Chemogenetics:
     def plot_best_performance_all_sessions(
         self,
         window=None,
+        strides=None,
         performance_metric="CRs",
         downsample_trials=False,
         sessions=None,
@@ -511,11 +527,12 @@ class Chemogenetics:
                 session_type=session,
                 ax=ax,
                 window=window,
+                strides=strides,
                 performance_metric=performance_metric,
                 downsample_trials=downsample_trials,
             )
             ax.set_xticks([])
-            ax.set_title(title)
+            ax.set_title(title, fontsize=16)
 
             [ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
@@ -835,7 +852,9 @@ class Chemogenetics:
         if 'E' in panels:
             performance_metric = 'CRs'
             dv, anova_dfs, fig = \
-                self.plot_trial_behavior(session_types=['Goals4', 'Reversal'], performance_metric=performance_metric)
+                self.plot_trial_behavior(session_types=['Goals4', 'Reversal'],
+                                         performance_metric=performance_metric,
+                                         window=6, strides=2)
 
             if self.save_configs['save_figs']:
                 self.save_fig(fig, f'Vehicle vs PSEM Reversal_{performance_metric}', 1)
