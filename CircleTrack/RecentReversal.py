@@ -9,7 +9,8 @@ from CaImaging.util import (
     contiguous_regions,
     stack_padding,
     distinct_colors,
-    group_consecutives
+    group_consecutives,
+    open_minian
 )
 import ruptures as rpt
 from CaImaging.plotting import errorfill, beautify_ax, jitter_x, shiftedColorMap, plot_xy_line
@@ -1373,6 +1374,22 @@ class RecentReversal:
 
         return overlaps, overlaps_grouped
 
+    def plot_max_projs(self, mouse, session_types=None):
+        if session_types is None:
+            session_types = self.meta['session_types']
+        n_sessions = len(session_types)
+
+        fig, axs = plt.subplots(1, n_sessions, figsize=(2*n_sessions, 3))
+        for ax, session_type in zip(axs, session_types):
+            session_folder = self.data[mouse][session_type].meta['folder']
+            max_proj = open_minian(os.path.join(session_folder, 'Miniscope'))['max_proj']
+
+            ax.imshow(max_proj, cmap='gray')
+            ax.axis('off')
+        fig.tight_layout()
+
+        return fig
+
     ############################ PLACE FIELD FUNCTIONS ############################
     def get_placefields(self, mouse, session_type, nbins=125, velocity_threshold=7):
         """
@@ -2690,7 +2707,7 @@ class RecentReversal:
         return reliabilities
 
     def plot_reliabilities_comparisons(
-        self, session_types=("Goals4", "Reversal"), field_threshold=0.9, show_plot=True,
+        self, session_types=("Goals4", "Reversal"), field_threshold=0.5, show_plot=True,
             data_type='ensembles', ages_to_plot=None, bin_size=0.05,
     ):
         """
@@ -2716,7 +2733,7 @@ class RecentReversal:
             )
             for age in ages:
                 mean_reliabilities[session_type][age] = [
-                    np.nanmedian(r) for r in reliabilities[session_type][age]
+                    np.nanmean(r) for r in reliabilities[session_type][age]
                 ]
 
         if show_plot:
@@ -2799,11 +2816,10 @@ class RecentReversal:
                 axs[0].set_ylabel(f"{ylabel_data_type[data_type]}\nspatial stability", fontsize=22)
                 fig.tight_layout()
                 fig.subplots_adjust(wspace=0)
+        else:
+            fig = None
 
-                if self.save_configs['save_figs']:
-                    self.save_fig(fig, f'Mean {data_type} stability during Reversal_{ages_to_plot}', 2)
-
-        return reliabilities, mean_reliabilities
+        return reliabilities, mean_reliabilities, fig
 
     def correlate_field_reliability_to_performance(
         self,
@@ -2813,6 +2829,7 @@ class RecentReversal:
         window=5,
         data_type='ensembles',
         ages_to_plot=None,
+        show_plot=True,
     ):
         """
         It's in the name. Spearman correlation.
@@ -2825,7 +2842,7 @@ class RecentReversal:
         pvalue: float
             P-value of correlation.
         """
-        reliabilities, mean_reliabilities = self.plot_reliabilities_comparisons(
+        reliabilities, mean_reliabilities, _ = self.plot_reliabilities_comparisons(
             session_types=session_types,
             field_threshold=field_threshold,
             show_plot=False,
@@ -2848,23 +2865,26 @@ class RecentReversal:
             "cells": "All cells",
         }
 
-        fig, ax = plt.subplots()
-        for age, color in zip(ages_to_plot, plot_colors):
-            x = mean_reliabilities["Reversal"][age]
-            y = performance[age]
-            ax.scatter(x, y, color=color, edgecolors="k", s=100)
+        if show_plot:
+            fig, ax = plt.subplots()
+            for age, color in zip(ages_to_plot, plot_colors):
+                x = mean_reliabilities["Reversal"][age]
+                y = performance[age]
+                ax.scatter(x, y, color=color, edgecolors="k", s=100)
 
-            # Plot fit line.
-            z = np.polyfit(x, y, 1)
-            y_hat = np.poly1d(z)(x)
-            ax.plot(x, y_hat, color=color)
+                # Plot fit line.
+                z = np.polyfit(x, y, 1)
+                y_hat = np.poly1d(z)(x)
+                ax.plot(x, y_hat, color=color)
 
-            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+                [ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
-        ylabel = {"CRs": "correct rejection rate", "hits": "hit rate", "d_prime": "d'"}
-        ax.set_ylabel(f"Peak {ylabel[performance_metric]}", fontsize=22)
-        ax.set_xlabel(f"{ylabel_data_type[data_type]} stability", fontsize=22)
-        fig.tight_layout()
+            ylabel = {"CRs": "correct rejection rate", "hits": "hit rate", "d_prime": "d'"}
+            ax.set_ylabel(f"Peak {ylabel[performance_metric]}", fontsize=22)
+            ax.set_xlabel(f"{ylabel_data_type[data_type]} stability", fontsize=22)
+            fig.tight_layout()
+        else:
+            fig = None
 
         r, pvalue = dict(), dict()
         for age in ages:
@@ -2876,10 +2896,7 @@ class RecentReversal:
             np.hstack([performance[age] for age in ages]),
         )
 
-        if self.save_configs['save_figs']:
-            self.save_fig(fig, f'{data_type} stability correlated with {performance_metric}_{ages_to_plot}', 2)
-
-        return r, pvalue
+        return r, pvalue, fig
 
     def snakeplot_placefields(
         self,
@@ -3656,7 +3673,7 @@ class RecentReversal:
         session.assemblies['fields'].meta["raster_running_only"] = running_only
 
     def plot_ensemble_raster(
-        self, mouse, session_type, ensemble_number, bin_size=0.6, running_only=False
+        self, mouse, session_type, ensemble_number, bin_size=0.05, running_only=False
     ):
         session = self.data[mouse][session_type]
         try:
@@ -3702,10 +3719,10 @@ class RecentReversal:
         ax.set_xlabel("Linearized position (cm)", fontsize=22)
         fig.tight_layout()
 
-        if self.save_configs["save_figs"]:
-            self.save_fig(
-                fig, f"{mouse}_{session_type}_ensemble{ensemble_number}_raster", 2
-            )
+        # if self.save_configs["save_figs"]:
+        #     self.save_fig(
+        #         fig, f"{mouse}_{session_type}_ensemble{ensemble_number}_raster", 2
+        #     )
 
     def scrollplot_ensemble_rasters(
         self, mouse, session_type, bin_size=0.6, running_only=False, subset=None
@@ -7119,7 +7136,14 @@ class RecentReversal:
         with open(r'Z:\Will\RemoteReversal\Data\PV_corr_matrices.pkl', 'rb') as file:
             corr_matrices = pkl.load(file)
         if panels is None:
-            panels = ['G', 'H', 'I', 'J', 'K', 'L', 'M']
+            panels = ['A', 'G', 'H', 'I', 'J', 'K', 'L', 'M']
+
+        if 'A' in panels:
+            mouse = 'Naiad'
+            fig = self.plot_max_projs(mouse)
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f'{mouse} max projections', 1)
 
         if 'H' in panels:
             age = 'young'
@@ -7136,8 +7160,8 @@ class RecentReversal:
             self.snakeplot_matched_placefields('Miranda', ['Goals3', 'Goals4', 'Reversal'], 1)
 
         if 'K' in panels:
-            field_threshold=0.9
-            remap_score_df, fig = self.plot_remap_score_means(place_cells_only=True,
+            field_threshold=0.5
+            remap_score_df, fig = self.plot_remap_score_means(place_cells_only=False,
                                                               field_threshold=field_threshold)
             self.test_rate_remap_sig(remap_score_df)
 
@@ -7175,16 +7199,30 @@ class RecentReversal:
         #     print(pairwise_df.to_string())
 
         if 'C' in panels:
-            mean_reliabilities = self.plot_reliabilities_comparisons(ages_to_plot='young')[1]
+            data_type = 'ensembles'
+            ages_to_plot = 'young'
+            mean_reliabilities, fig = self.plot_reliabilities_comparisons(ages_to_plot=ages_to_plot,
+                                                                          data_type=data_type)[1:]
             w = wilcoxon(mean_reliabilities['Goals4']['young'], mean_reliabilities['Reversal']['young'])
             print(f'Stability on Training4 vs Reversal, {w.statistic}, p={w.pvalue}')
 
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f'Mean {data_type} stability during Reversal_{ages_to_plot}', 2)
+
         if 'D' in panels:
-            r, pvalue = self.correlate_field_reliability_to_performance(performance_metric='CRs',
-                                                            data_type='ensembles',
-                                                            ages_to_plot='young')
+            performance_metric = 'CRs'
+            data_type = 'ensembles'
+            ages_to_plot = 'young'
+            r, pvalue, fig = self.correlate_field_reliability_to_performance(
+                performance_metric=performance_metric,
+                data_type=data_type,
+                ages_to_plot=ages_to_plot)
             print(r)
             print(pvalue)
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f'{data_type} stability correlated with '
+                                   f'{performance_metric}_{ages_to_plot}', 2)
 
         if 'E' in panels:
             for i in [27, 56]:
