@@ -8,7 +8,7 @@ from CaImaging.Miniscope import get_transient_timestamps, \
 from util import Session_Metadata, find_timestamp_file
 from CircleTrack.BehaviorFunctions import linearize_trajectory, make_tracking_video
 from CircleTrack.plotting import plot_spiral, plot_raster, spiral_plot
-from CaImaging.PlaceFields import PlaceFields
+from CaImaging.PlaceFields import PlaceFields, define_field_bins
 from CaImaging.Behavior import spatial_bin
 import holoviews as hv
 import os
@@ -446,9 +446,7 @@ class CalciumSession:
 
         """
         raster = spatial_data['rasters'][neuron]
-        placefield = spatial_data[tuning_curve][neuron]
-
-        field_bins = np.where(placefield > max(placefield) * field_threshold)[0]
+        field_bins = define_field_bins(spatial_data[tuning_curve][neuron], field_threshold=field_threshold)
         fired_in_field = np.any(raster[:, field_bins], axis=1)
 
         if not even_split:

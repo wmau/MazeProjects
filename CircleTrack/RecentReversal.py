@@ -60,7 +60,7 @@ import xarray as xr
 import pymannkendall as mk
 from sklearn.metrics.pairwise import cosine_similarity
 from itertools import product, cycle, islice
-from CaImaging.PlaceFields import spatial_bin, PlaceFields
+from CaImaging.PlaceFields import spatial_bin, PlaceFields, define_field_bins
 from tqdm import tqdm
 import matplotlib.patches as mpatches
 import matplotlib.gridspec as gridspec
@@ -1193,8 +1193,8 @@ class RecentReversal:
         session_pair=("Goals4", "Reversal"),
         x="trial",
         z_threshold=None,
-        x_bin_size=6,
-        alpha=0.01,
+        x_bin_size=1,
+        alpha='sidak',
     ):
         """
         Plot the percentage of fading neurons on two sessions, usually Goals4 and Reversal.
@@ -1593,6 +1593,183 @@ class RecentReversal:
                 )
 
         return rhos
+
+    def rate_remap_scores(self, mouse, session_type, place_cells_only=False, field_threshold=0.9,
+                          ports=None, spatial_bin_window=5):
+        # Grab session data.
+        session = self.data[mouse][session_type]
+        spatial_data = session.spatial.data
+        age = 'aged' if mouse in self.meta['grouped_mice']['aged'] else 'young'
+        nbins = spatial_data['placefields_normalized'].shape[1]
+
+        if place_cells_only:
+            neurons = session.spatial.data["place_cells"]
+        else:
+            neurons = np.arange(session.imaging['n_neurons'])
+
+        # Define list of valid field bins.
+        if ports is None:
+            bin_range = np.arange(0, nbins)
+
+        else:
+            if ports == 'previously rewarded':
+                assert session_type =='Reversal', \
+                    'Session type must be Reversal to look at previously rewarded bins'
+
+                reward_session = self.data[mouse]['Goals4'].behavior.data
+
+            elif ports == 'newly rewarded':
+                assert session_type =='Reversal', \
+                    'Session type must be Reversal to look at newly rewarded bins'
+
+                reward_session = self.data[mouse]['Reversal'].behavior.data
+
+            elif ports == 'original rewards':
+                assert 'Goals' in session_type, \
+                    'Session type must be a Goals session to look at original reward bins'
+
+                reward_session = self.data[mouse]['Goals4'].behavior.data
+
+            else:
+                raise NotImplementedError
+
+            reward_bins, bins = find_reward_spatial_bins(
+                reward_session['df']['lin_position'],
+                np.asarray(reward_session['lin_ports'])[reward_session['rewarded_ports']],
+                spatial_bin_size_radians=0.05,
+            )
+
+            bin_range = []
+            for bin in reward_bins:
+                temp = [i % len(bins) for i in range(bin - spatial_bin_window,
+                                                     bin + spatial_bin_window + 1)]
+
+                bin_range.extend(temp)
+
+        remap_scores = []
+        for field, raster in zip(
+                spatial_data['placefields_normalized'][neurons],
+                spatial_data['rasters'][neurons]):
+
+            if field_threshold is not None:
+                field_bins = define_field_bins(field, field_threshold=field_threshold)
+            else:
+                field_bins = np.arange(0, nbins)
+
+            if ports is not None:
+                field_bins = field_bins[[bin in bin_range for bin in field_bins]]
+
+            split_raster = np.array_split(raster, 2, axis=0)
+
+            rates = [np.nanmean(half[:,field_bins]) for half in split_raster]
+            remap_scores.append(np.abs(np.diff(rates)[0]) / np.sum(rates))
+
+        remap_score_df = pd.DataFrame(
+            {'mice': mouse,
+             'age': age,
+             'session_type': session_type,
+             'neuron_id': neurons,
+             'remap_scores': remap_scores,}
+        )
+
+        return remap_score_df
+
+    def compile_remap_scores(self, place_cells_only=True, session_types=['Goals4', 'Reversal'],
+                             field_threshold=0.9, ports=None, spatial_bin_window=5):
+        remap_score_df = pd.DataFrame()
+        if ports is None:
+            ports = [None, None]
+
+        for mouse in self.meta['mice']:
+            for session_type, p in zip(session_types, ports):
+                remap_scores = self.rate_remap_scores(mouse, session_type,
+                                                      place_cells_only=place_cells_only,
+                                                      field_threshold=field_threshold,
+                                                      ports=p, spatial_bin_window=spatial_bin_window)
+                remap_score_df = pd.concat((remap_score_df, remap_scores))
+
+        return remap_score_df.dropna()
+
+    def plot_remap_score_by_mouse(self, **kwargs):
+        remap_score_df = self.compile_remap_scores(*kwargs)
+
+        fig, axs = plt.subplots(1,2,sharey=True)
+        fig.subplots_adjust(wspace=0.1)
+        for age, ax, color in zip(ages, axs, age_colors):
+            mice = self.meta["grouped_mice"][age]
+            positions = [
+                np.arange(start, start + 3 * len(mice), 3) for start in [-0.5, 0.5]
+            ]
+            label_positions = np.arange(0, 3 * len(mice), 3)
+
+            for session_type, position in zip(session_types, positions):
+                y = [remap_score_df.loc[np.logical_and(remap_score_df['mice'] == mouse,
+                                                      remap_score_df['session_type'] == session_type),
+                'remap_scores'] for mouse in mice]
+                boxes = ax.boxplot(y, positions=position, patch_artist=True)
+                color_boxes(boxes, color)
+
+            ax.set_xticks(label_positions)
+            ax.set_xticklabels(mice, rotation=45)
+        axs[0].set_ylabel('Remap scores')
+        plt.setp(axs[1].get_yticklabels(), visible=False)
+
+        return remap_score_df
+
+    def plot_remap_score_means(self, ages_to_plot=None, session_types=['Goals4', 'Reversal'],
+                               **kwargs):
+        remap_score_df = self.compile_remap_scores(session_types=session_types, **kwargs)
+
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+        fig, axs = plt.subplots(1, n_ages_to_plot, sharey=True)
+
+        mean_df = remap_score_df.groupby(['mice', 'session_type']).mean()['remap_scores']
+        if n_ages_to_plot == 1:
+            axs = [axs]
+
+        for ax, age, color in zip(axs, ages_to_plot, plot_colors):
+            mice = self.meta['grouped_mice'][age]
+
+            y = [mean_df.loc[mice, session_type] for session_type in session_types]
+            boxes = ax.boxplot(
+                y,
+                widths=0.75,
+                showfliers=False,
+                zorder=0,
+                patch_artist=True,
+            )
+            color_boxes(boxes, color)
+
+            y = np.vstack(y).T
+            for mouse_data in y:
+                ax.plot(
+                    jitter_x([1,2], 0.05),
+                    mouse_data,
+                    "o-",
+                    color='k',
+                    markerfacecolor=color,
+                    zorder=1,
+                    markersize=10,
+                )
+            ax.set_xticklabels([session_type.replace('Goals', 'Training')
+                                for session_type in session_types])
+        axs[0].set_ylabel('Rate remap scores')
+        fig.tight_layout()
+
+        return remap_score_df, fig
+
+    def test_rate_remap_sig(self, remap_score_df, session_types=['Goals4', 'Reversal']):
+        mean_df = remap_score_df.groupby(['mice', 'session_type']).mean()['remap_scores']
+
+        for age in ages:
+            mice = self.meta['grouped_mice'][age]
+
+            data = [mean_df.loc[mice, session_type] for session_type in session_types]
+
+            stat, pval = wilcoxon(data[0], data[1])
+
+            print(f'{age} mice: {session_types[0]} vs {session_types[1]}, '
+                  f'W={stat} p={np.round(pval, 3)}')
 
     def plot_reward_PV_corrs_v1(self, mice):
         """
@@ -6942,7 +7119,7 @@ class RecentReversal:
         with open(r'Z:\Will\RemoteReversal\Data\PV_corr_matrices.pkl', 'rb') as file:
             corr_matrices = pkl.load(file)
         if panels is None:
-            panels = ['G', 'H', 'I', 'J', 'K', 'L']
+            panels = ['G', 'H', 'I', 'J', 'K', 'L', 'M']
 
         if 'H' in panels:
             age = 'young'
@@ -6959,9 +7136,18 @@ class RecentReversal:
             self.snakeplot_matched_placefields('Miranda', ['Goals3', 'Goals4', 'Reversal'], 1)
 
         if 'K' in panels:
-            self.plot_corr_matrix(corr_matrices, ages_to_plot=['young'])
+            field_threshold=0.9
+            remap_score_df, fig = self.plot_remap_score_means(place_cells_only=True,
+                                                              field_threshold=field_threshold)
+            self.test_rate_remap_sig(remap_score_df)
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f'Rate remap scores_thresh={field_threshold}', 1)
 
         if 'L' in panels:
+            self.plot_corr_matrix(corr_matrices, ages_to_plot=['young'])
+
+        if 'M' in panels:
             data = self.plot_session_PV_corr_comparisons(corr_matrices, ages_to_plot='young')[0]
             x = data[('Goals3', 'Goals4')]['young']
             y = data[('Goals4', 'Reversal')]['young']
