@@ -199,10 +199,10 @@ class Chemogenetics:
             'hits': "Hit rate",
         }
         if n_sessions == 1:
-            fig, axs = plt.subplots(1,n_sessions, figsize=(4,5.7))
+            fig, axs = plt.subplots(1,n_sessions, figsize=(5,5))
             axs = [axs]
         else:
-            fig, axs = plt.subplots(1, n_sessions, figsize=(3*n_sessions, 7),
+            fig, axs = plt.subplots(1, n_sessions, figsize=(3*n_sessions, 5),
                                     sharey=True)
         for i, (ax, session_type) in enumerate(zip(axs, session_types)):
             for group, color in zip(self.meta['groups'], self.meta['colors']):
@@ -235,12 +235,12 @@ class Chemogenetics:
                         ax.fill_between(np.arange(region[0], region[-1]), ylims[-1], ylims[0], alpha=0.4, color='gray')
 
         if n_sessions==1:
-            axs[0].set_xlabel('Trials (sliding windows)')
+            axs[0].set_xlabel('Sliding trial windows')
         else:
-            fig.supxlabel("Trials (sliding windows)")
+            fig.supxlabel("Sliding trial windows")
         fig.tight_layout()
         fig.subplots_adjust(wspace=0.2)
-        self.set_legend(fig)
+        axs[-1].legend(loc='lower right', fontsize=14)
 
         return dv, anova_dfs, fig
 
@@ -279,7 +279,7 @@ class Chemogenetics:
                                                   **kwargs):
         dv, pvals = dict(), dict()
         reversal_color = {
-            'vehicle': 'orange',
+            'vehicle': 'cornflowerblue',
             'PSEM': self.meta['colors'][self.meta['groups'].index(group)],
         }
         session_types = ('Goals4', 'Reversal')
@@ -303,7 +303,7 @@ class Chemogenetics:
             'hits': "Hit rate",
         }
         fig, ax = plt.subplots(figsize=(5,5))
-        for session_type, color in zip(session_types, ['cornflowerblue', reversal_color[group]]):
+        for session_type, color in zip(session_types, ['k', reversal_color[group]]):
             y = dv[session_type][group]
             x = y.shape[1]
             ax.plot(range(x), y.T, color=color, alpha=0.3)
@@ -321,7 +321,7 @@ class Chemogenetics:
             for region in sig_regions:
                 ax.fill_between(np.arange(region[0], region[-1]), ylims[-1], ylims[0],
                                 alpha=0.4, color='gray')
-        ax.set_title(group)
+        ax.set_title(group, color=reversal_color[group])
         ax.legend(loc='lower right', fontsize=14)
         ax.set_ylabel(ylabel[performance_metric])
         ax.set_xlabel('Sliding trial windows')
@@ -582,13 +582,13 @@ class Chemogenetics:
 
         ylabel = {"CRs": "Correct rejection rate", "hits": "Hit rate", "d_prime": "d'"}
         fig, ax = plt.subplots(figsize=(5, 5))
-        ax.plot(performance_all.T, color="cornflowerblue", alpha=0.5)
+        ax.plot(performance_all.T, color="k", alpha=0.5)
         errorfill(
             session_labels,
             np.mean(performance_all, axis=0),
             sem(performance_all, axis=0),
             ax=ax,
-            color="cornflowerblue",
+            color="k",
         )
         [tick.set_rotation(45) for tick in ax.get_xticklabels()]
         [ax.spines[side].set_visible(False) for side in ['top', 'right']]
@@ -833,7 +833,7 @@ class Chemogenetics:
 
     def make_fig1(self, panels=None):
         if panels is None:
-            panels = ['C', 'D', 'E']
+            panels = ['C', 'D', 'E', 'F']
 
         if 'C' in panels:
             d_prime = self.plot_behavior_grouped(performance_metric='d_prime',
@@ -850,9 +850,17 @@ class Chemogenetics:
                 self.save_fig(fig, f'Training4 vs Reversal_{group}_{performance_metric}', 1)
 
         if 'E' in panels:
+            group = 'PSEM'
+            performance_metric = 'CRs'
+            dv, fig = self.plot_reversal_vs_training4_trial_behavior(group, performance_metric=performance_metric)
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f'Training4 vs Reversal_{group}_{performance_metric}', 1)
+
+        if 'F' in panels:
             performance_metric = 'CRs'
             dv, anova_dfs, fig = \
-                self.plot_trial_behavior(session_types=['Goals4', 'Reversal'],
+                self.plot_trial_behavior(session_types=['Reversal'],
                                          performance_metric=performance_metric,
                                          window=6, strides=2)
 

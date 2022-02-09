@@ -531,7 +531,7 @@ class RecentReversal:
             'hits': "Hit rate",
         }
         fig, ax = plt.subplots(figsize=(5,5))
-        for session_type, color in zip(session_types, ['cornflowerblue', 'orange']):
+        for session_type, color in zip(session_types, ['k', 'cornflowerblue']):
             y = dv[session_type][age]
             x = y.shape[1]
             ax.plot(range(x), y.T, color=color, alpha=0.3)
@@ -1738,7 +1738,7 @@ class RecentReversal:
         remap_score_df = self.compile_remap_scores(session_types=session_types, **kwargs)
 
         ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
-        fig, axs = plt.subplots(1, n_ages_to_plot, sharey=True)
+        fig, axs = plt.subplots(1, n_ages_to_plot, sharey=True, figsize=(4.8 * n_ages_to_plot, 4.8))
 
         mean_df = remap_score_df.groupby(['mice', 'session_type']).mean()['remap_scores']
         if n_ages_to_plot == 1:
@@ -1770,7 +1770,8 @@ class RecentReversal:
                 )
             ax.set_xticklabels([session_type.replace('Goals', 'Training')
                                 for session_type in session_types])
-        axs[0].set_ylabel('Rate remap scores')
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+        axs[0].set_ylabel('Rate remap scores', fontsize=22)
         fig.tight_layout()
 
         return remap_score_df, fig
@@ -2017,7 +2018,7 @@ class RecentReversal:
         cbar = fig.colorbar(im, cax=cbar_ax)
         cbar.set_label("Spatial PV correlation (Spearman rho)")
 
-        self.save_fig(fig, f"PVCorr", 1)
+        return fig
 
     def get_diagonals(self, corr_matrices):
         """
@@ -2104,17 +2105,15 @@ class RecentReversal:
                 patch_artist=True,
             )
 
-            [
-                ax.scatter(
-                    jitter_x(np.ones_like(data[session_pair][age]) * (i + 1), 0.05),
-                    data[session_pair][age],
-                    color=color,
-                    edgecolor="k",
-                    zorder=1,
-                    s=100,
-                )
-                for i, session_pair in enumerate(session_pairs)
-            ]
+            y = np.vstack([data[session_pair][age] for session_pair in session_pairs]).T
+            for y_ in y:
+                ax.plot(jitter_x([1, 2], 0.05),
+                        y_,
+                        "o-",
+                        color="k",
+                        markerfacecolor=color,
+                        zorder=1,
+                        markersize=10,)
 
             color_boxes(boxes, color)
             ax.set_xticklabels(
@@ -2135,9 +2134,6 @@ class RecentReversal:
         axs[0].set_ylabel("Spatial PV\ncorrelation coefficients", fontsize=22)
         fig.tight_layout()
 
-        if self.save_configs["save_figs"]:
-            self.save_fig(fig, f"PVCorr_scatterbox", 1)
-
         df = pd.concat(
             [
                 pd.concat({k: pd.Series(v) for k, v in data[pair].items()})
@@ -2147,7 +2143,7 @@ class RecentReversal:
             keys=session_pairs,
         )
 
-        return data, df
+        return data, df, fig
 
     def get_drift_rate(self, corr_matrices):
         """
@@ -2471,12 +2467,14 @@ class RecentReversal:
                 titles=ax_titles,
                 figsize=(5, 9),
             )
-            if self.save_configs['save_figs']:
-                self.save_fig(ScrollObj.fig, f'{mouse}_longitudinal_cell', 1)
+
+            fig = ScrollObj.fig
+        else:
+            fig = None
 
         # List of dictionaries. Do HoloMap(daily_rasters) in a
         # jupyter notebook.
-        return daily_rasters
+        return daily_rasters, fig
 
     def plot_spatial_info(
         self,
@@ -3008,7 +3006,7 @@ class RecentReversal:
         fig.supxlabel("Linearized position (cm)", fontsize=22)
         fig.tight_layout()
 
-        self.save_fig(fig, f"{mouse}_snakeplot", 1)
+        return fig
 
     ############################ DECODER FUNCTIONS ############################
     def decode_place(
@@ -4475,12 +4473,12 @@ class RecentReversal:
 
         for age, row_ax, color in zip(ages_to_plot, axs, plot_colors):
             for session_pair, ax in zip(session_types, row_ax):
-                ax.errorbar(
+                errorfill(
                     np.linspace(0, 1, n_splits),
-                    means.loc[age].loc[session_pair[1]].to_numpy(),
-                    yerr=np.squeeze(sem.loc[age].loc[session_pair[1]].to_numpy()),
-                    capsize=2,
+                    np.squeeze(means.loc[age].loc[session_pair[1]].values),
+                    yerr=np.squeeze(sem.loc[age].loc[session_pair[1]].values),
                     color=color,
+                    ax=ax,
                 )
                 ax.set_title(
                     f"trained on {session_pair[0].replace('Goals', 'Training')}"
@@ -4493,14 +4491,7 @@ class RecentReversal:
         fig.supylabel("Lick decoding accuracy")
         fig.tight_layout()
 
-        if self.save_configs["save_figs"]:
-            if ages_to_plot == 'young':
-                folder = 3
-            else:
-                folder = 4
-            self.save_fig(fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", folder)
-
-        return df
+        return df, fig
 
     def ensemble_lick_anova(
         self,
@@ -4530,7 +4521,7 @@ class RecentReversal:
             lag=lag,
             ages_to_plot=None,
             **classifier_kwargs,
-        )
+        )[0]
 
         anova_dfs = {
             age: pg.rm_anova(
@@ -5815,8 +5806,7 @@ class RecentReversal:
                 frames=frames,
             )
 
-            if self.save_configs['save_figs']:
-                self.save_fig(fig, f'{mouse}_Ensemble{subset[i]}_matched', 3)
+        return fig
 
     def spiralplot_matched_ensembles(
         self, mouse, session_pair: tuple, thresh=1, subset="all"
@@ -6821,10 +6811,10 @@ class RecentReversal:
             fig.suptitle(mouse)
             fig.supxlabel("Linearized position (cm)")
 
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"{mouse}_ensemble_snakeplot", 3)
+        else:
+            fig = None
 
-        return ensemble_fields
+        return ensemble_fields, fig
 
     def snakeplot_matched_fading_ensembles(self):
         for mouse in self.meta["mice"]:
@@ -7132,56 +7122,73 @@ class RecentReversal:
                         axis=0))
         return changepoints, binned_activations
 
-    def make_fig1(self, panels=None):
+    def make_fig2(self, panels=None):
         with open(r'Z:\Will\RemoteReversal\Data\PV_corr_matrices.pkl', 'rb') as file:
             corr_matrices = pkl.load(file)
         if panels is None:
-            panels = ['A', 'G', 'H', 'I', 'J', 'K', 'L', 'M']
+            panels = ['A', 'C', 'D', 'E', 'F', 'G', 'H']
 
         if 'A' in panels:
             mouse = 'Naiad'
             fig = self.plot_max_projs(mouse)
 
             if self.save_configs['save_figs']:
-                self.save_fig(fig, f'{mouse} max projections', 1)
+                self.save_fig(fig, f'{mouse} max projections', 2)
 
-        if 'H' in panels:
+        if 'C' in panels:
             age = 'young'
             performance_metric='CRs'
             dv, fig = self.plot_reversal_vs_training4_trial_behavior(age,
                                                                      performance_metric=performance_metric)
             if self.save_configs['save_figs']:
-                self.save_fig(fig, f'Training4 vs Reversal_{age}_{performance_metric}', 1)
+                self.save_fig(fig, f'Training4 vs Reversal_{age}_{performance_metric}', 2)
 
-        if 'I' in panels:
-            _ = self.scrollplot_rasters_by_day('Miranda', self.meta['session_types'])
+        if 'D' in panels:
+            mouse = "Miranda"
+            _, fig = self.scrollplot_rasters_by_day(mouse, self.meta['session_types'])
 
-        if 'J' in panels:
-            self.snakeplot_matched_placefields('Miranda', ['Goals3', 'Goals4', 'Reversal'], 1)
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f'{mouse}_longitudinal_cell', 2)
 
-        if 'K' in panels:
+        if 'E' in panels:
+            mouse = 'Miranda'
+            fig = self.snakeplot_matched_placefields(mouse, ['Goals3', 'Goals4', 'Reversal'], 1)
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f"{mouse}_snakeplot", 2)
+
+        if 'F' in panels:
+            fig = self.plot_corr_matrix(corr_matrices, ages_to_plot=['young'])
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f"PVCorr", 2)
+
+        if 'G' in panels:
+            data, _, fig = self.plot_session_PV_corr_comparisons(corr_matrices,
+                                                                 ages_to_plot='young')
+            x = data[('Goals3', 'Goals4')]['young']
+            y = data[('Goals4', 'Reversal')]['young']
+            h = wilcoxon(x,y)
+            dof = len(x) + len(y) - 2
+            print(f"Training vs Reversal correlation coefficients:, W({dof})={round(h.statistic, 3)},"
+                  f" p={round(h.pvalue, 3)}")
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"PVCorr_scatterbox", 2)
+
+        if 'H' in panels:
             field_threshold=0.5
+            ages_to_plot = 'young'
             remap_score_df, fig = self.plot_remap_score_means(place_cells_only=False,
-                                                              field_threshold=field_threshold)
+                                                              field_threshold=field_threshold,
+                                                              ages_to_plot=ages_to_plot)
             self.test_rate_remap_sig(remap_score_df)
 
             if self.save_configs['save_figs']:
-                self.save_fig(fig, f'Rate remap scores_thresh={field_threshold}', 1)
-
-        if 'L' in panels:
-            self.plot_corr_matrix(corr_matrices, ages_to_plot=['young'])
-
-        if 'M' in panels:
-            data = self.plot_session_PV_corr_comparisons(corr_matrices, ages_to_plot='young')[0]
-            x = data[('Goals3', 'Goals4')]['young']
-            y = data[('Goals4', 'Reversal')]['young']
-            h = ttest_ind(x,y)
-            dof = len(x) + len(y) - 2
-            print(f"Training vs Reversal correlation coefficients:, t({dof})={round(h.statistic, 3)},"
-                  f" p={round(h.pvalue, 3)}")
+                self.save_fig(fig, f'Rate remap scores_thresh={field_threshold}_{ages_to_plot}', 2)
 
 
-    def make_fig2(self, panels=None):
+    def make_fig3(self, panels=None):
         if panels is None:
             panels = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
         if 'A' in panels:
@@ -7257,7 +7264,7 @@ class RecentReversal:
             self.correlate_prop_changing_ensembles_to_behavior(performance_metric='CRs',
                                                                ages_to_plot='young')
 
-    def make_fig3(self, panels=None):
+    def make_fig4(self, panels=None):
         if panels is None:
             panels = ['A', 'B', 'C', 'D', 'E', 'F']
 
@@ -7265,23 +7272,43 @@ class RecentReversal:
             self.plot_ensemble_registration_ex()
 
         if 'B' in panels:
-            self.plot_matched_ensembles('Miranda',('Goals3','Goals4'), subset=[11])
+            mouse = 'Miranda'
+            subset = [11]
+            fig = self.plot_matched_ensembles(mouse, ('Goals3','Goals4'), subset=[11])
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f'{mouse}_Ensemble{subset}_matched', 3)
 
         if 'C' in panels:
             _ = self.spiralplot_matched_ensembles('Miranda', ('Goals3', 'Goals4'), subset=[11])
 
         if 'D' in panels:
-            ensemble_fields = self.snakeplot_matched_ensembles('Miranda', ('Goals3', 'Goals4'))
+            mouse = 'Miranda'
+            ensemble_fields, fig = self.snakeplot_matched_ensembles(mouse, ('Goals3', 'Goals4'))
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"{mouse}_ensemble_snakeplot", 4)
 
         if 'E' in panels:
-            self.plot_lick_decoder(licks_to_include='first', ages_to_plot='young', class_weight='balanced',
-                                   random_state=7, n_jobs=6)
+            ages_to_plot = 'young'
+            lag = 0
+            fig = self.plot_lick_decoder(licks_to_include='first', lag=lag, ages_to_plot=ages_to_plot,
+                                         class_weight='balanced', random_state=7, n_jobs=6)[1]
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", 4)
 
         if 'F' in panels:
-            self.plot_lick_decoder(licks_to_include='first', lag=-1, ages_to_plot='young', class_weight='balanced',
-                                   random_state=7, n_jobs=6)
+            ages_to_plot = 'young'
+            lag = -1
+            fig = self.plot_lick_decoder(licks_to_include='first', lag=-lag,
+                                         ages_to_plot=ages_to_plot, class_weight='balanced',
+                                         random_state=7, n_jobs=6)[1]
 
-    def make_fig4(self, panels=None):
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", 4)
+
+    def make_fig5(self, panels=None):
         if panels is None:
             panels = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
 
@@ -7347,12 +7374,24 @@ class RecentReversal:
                                                                ages_to_plot='aged')
 
         if 'F' in panels:
-            self.plot_lick_decoder(licks_to_include='first', ages_to_plot='aged', class_weight='balanced',
-                                   random_state=7, n_jobs=6)
+            ages_to_plot = 'aged'
+            lag = 0
+            fig = self.plot_lick_decoder(licks_to_include='first', ages_to_plot=ages_to_plot,
+                                         class_weight='balanced', lag=lag, random_state=7,
+                                         n_jobs=6)[1]
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", 5)
 
         if 'G' in panels:
-            self.plot_lick_decoder(licks_to_include='first', lag=-1, ages_to_plot='aged', class_weight='balanced',
-                                   random_state=7, n_jobs=6)
+            ages_to_plot = 'aged'
+            lag = -1
+            fig = self.plot_lick_decoder(licks_to_include='first', ages_to_plot=ages_to_plot,
+                                         class_weight='balanced', lag=lag, random_state=7,
+                                         n_jobs=6)[1]
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", 5)
 
 
     # def correlate_stability_to_reversal(
