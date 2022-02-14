@@ -317,9 +317,13 @@ class CalciumSession:
             titles=titles,
         )
 
-    def spiralplot_assembly(self, assembly_number, threshold=2, ax=None):
+    def spiralplot_assembly(self, assemblies, threshold=2, ax=None):
+        if type(assemblies) is not list:
+            assembly_number = [assemblies]
+
         behavior_data = self.behavior.data
-        above_threshold = zscore(self.assemblies['activations'][assembly_number]) > threshold
+        above_threshold = np.vstack([zscore(self.assemblies['activations'][assembly]) > threshold
+                                    for assembly in assemblies])
 
         if ax is None:
             fig = plt.figure()
@@ -329,12 +333,15 @@ class CalciumSession:
                          markers=above_threshold,
                          ax=ax,
                          marker_legend='Ensemble activation')
-        ax.set_title(f"Ensemble {assembly_number}")
+        #ax.set_title(f"Ensemble {assemblies}")
         for rewarded, port in zip(behavior_data['rewarded_ports'], behavior_data['lin_ports']):
             color = 'g' if rewarded else 'gray'
             ax.axvline(x=port, color=color)
 
         return ax
+
+    def spiralplot_assemblies(self, ensembles, threshold=2, ax=None):
+        pass
 
     def get_ensemble_field_COM(self, ensemble_number):
         COM = np.average(self.behavior.data['df']['lin_position'],
@@ -419,7 +426,7 @@ class CalciumSession:
 
         return place_cells
 
-    def placefield_reliability(self, spatial_data, neuron: int, field_threshold=0.15,
+    def placefield_reliability(self, spatial_data, neuron: int, field_threshold=0.5,
                                tuning_curve='placefields_normalized', even_split=True,
                                split=4, show_plot=True):
         """
@@ -669,6 +676,7 @@ class CalciumSession:
 
         pattern_ax.invert_yaxis()
         pattern_ax.axis("off")
+        fig.tight_layout()
 
         return fig, activation_ax, spikes_ax
 

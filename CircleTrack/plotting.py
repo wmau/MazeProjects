@@ -197,11 +197,15 @@ def spiral_plot(t, lin_position, markers, ax=None, marker_legend="Licks",
     marker_legend: str
         Label for whatever you are highlighting
     """
+    if markers.ndim == 1:
+        markers = markers[np.newaxis, :]
+
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection="polar")
     ax.plot(lin_position, t)
-    ax.plot(lin_position[markers], t[markers], "ro", markersize=2)
+    for marker in markers:
+        ax.plot(lin_position[marker], t[marker], "o", markersize=2)
 
     if plot_legend:
         ax.legend(["Trajectory", marker_legend])

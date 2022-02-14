@@ -443,10 +443,10 @@ class RecentReversal:
             'hits': "Hit rate",
         }
         if n_sessions == 1:
-            fig, axs = plt.subplots(1,n_sessions, figsize=(4,5.7))
+            fig, axs = plt.subplots(1,n_sessions, figsize=(5,5))
             axs = [axs]
         else:
-            fig, axs = plt.subplots(1, n_sessions, figsize=(3*n_sessions, 5.7),
+            fig, axs = plt.subplots(1, n_sessions, figsize=(3*n_sessions, 5),
                                     sharey=True)
         for i, (ax, session_type) in enumerate(zip(axs, session_types)):
             for age, color in zip(ages_to_plot, plot_colors):
@@ -484,7 +484,7 @@ class RecentReversal:
             fig.supxlabel("Sliding trial windows")
         fig.tight_layout()
         fig.subplots_adjust(wspace=0.2)
-        self.set_age_legend(fig)
+        axs[-1].legend(loc='lower right')
 
         return dv, anova_dfs, fig
 
@@ -552,7 +552,7 @@ class RecentReversal:
 
         ax.legend(loc='lower right', fontsize=14)
         ax.set_ylabel(ylabel[performance_metric])
-        ax.set_xlabel('Trial blocks')
+        ax.set_xlabel('Sliding trial windows')
         [ax.spines[side].set_visible(False) for side in ['top', 'right']]
         fig.tight_layout()
 
@@ -1826,14 +1826,16 @@ class RecentReversal:
 
         return rhos
 
-    def plot_reward_PV_corrs_v2(self, mice):
+    def plot_reward_PV_corrs_v2(self, age_to_plot):
         """
         Plot PV correlations around reward locations for each mouse, split into currently/never/previously
-        rewarded for each subplot, then into session pair  within each subplot.
+        rewarded for each subplot, then into session pair within each subplot.
 
         :param mice:
         :return:
         """
+        mice = self.meta['grouped_mice'][age_to_plot]
+        color = self.ages_to_plot_parser(age_to_plot)[1][0]
         session_pairs = [("Goals3", "Goals4"), ("Goals4", "Reversal")]
         rhos = {mouse: self.compare_reward_PV_corrs(mouse) for mouse in mice}
         xticks = [
@@ -1849,16 +1851,22 @@ class RecentReversal:
             for session_pair in session_pairs:
                 data.append([rhos[mouse][session_pair][reward_type] for mouse in mice])
 
-            ax.boxplot(data)
+            boxes = ax.boxplot(data, widths=0.75, showfliers=False, zorder=0, patch_artist=True)
+            color_boxes(boxes, color)
             ax.set_xticklabels(xticks, rotation=45)
             ax.set_xlabel(reward_type.replace("_", " \n"))
+            [ax.spines[side].set_visible(False) for side in ['top','right']]
 
-        axs[-1].boxplot(
-            [rhos[mouse][session_pairs[1]]["previously_rewarded"] for mouse in mice]
+        boxes = axs[-1].boxplot(
+            [rhos[mouse][session_pairs[1]]["previously_rewarded"] for mouse in mice],
+            widths=0.75, showfliers=False, zorder=0, patch_artist=True
         )
+        color_boxes(boxes, color)
+
         axs[-1].set_xticklabels([xticks[-1]], rotation=45)
         axs[-1].set_xlabel("previously \nrewarded")
         axs[0].set_ylabel("PV correlation coefficient")
+        [axs[-1].spines[side].set_visible(False) for side in ['top', 'right']]
 
         fig.tight_layout()
 
@@ -2629,7 +2637,7 @@ class RecentReversal:
         return anova_df, pairwise_df, df
 
     def plot_reliabilities(self, session_type, field_threshold=0.5, show_plot=True,
-                           data_type='ensembles', bin_size=0.6):
+                           data_type='ensembles', bin_size=0.05):
         """
         Plot the reliability for each mouse, split by young and aged. Reliability is defined as the fraction
         of trials where there was a calcium transient inside the field. The field is every spatial bin where
@@ -3227,8 +3235,8 @@ class RecentReversal:
                 errors_arr = np.vstack(decoding_errors[age][session])
                 m = np.nanmean(errors_arr, axis=0)
                 se = sem(errors_arr, axis=0)
-                session_ax.errorbar(np.linspace(0, 1, len(m)),
-                                    m, yerr=se, color=color, capsize=2)
+                errorfill(np.linspace(0, 1, len(m)),
+                          m, yerr=se, color=color, ax=session_ax)
 
                 [session_ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
@@ -3249,23 +3257,22 @@ class RecentReversal:
 
     def spatial_decoder_anova(self,
                               classifier=RandomForestClassifier(),
-                              session_pairs=(("Goals4", "Goals3"), ("Goals4", "Reversal")),
+                              session_pairs=(("Goals3", "Goals4"), ("Goals4", "Reversal")),
                               n_spatial_bins=125,
                               error_time_bin_size=300 * 15,
-                              predictors="cells",
+                              predictors="cells"
                               ):
         decoding_errors, df = self.plot_spatial_decoder(classifier=classifier,
                                                         session_pairs=session_pairs,
                                                         n_spatial_bins=n_spatial_bins,
                                                         error_time_bin_size=error_time_bin_size,
-                                                        predictors=predictors,
-                                                        ages_to_plot=None)
+                                                        predictors=predictors,)
 
         anova_dfs = {
             age: pg.rm_anova(
                 df.loc[df["age"] == age],
                 dv="decoding_errors",
-                within=["time_bins", "session_pairs"],
+                within=["session_pairs", "time_bins"],
                 subject="mice",
             )
             for age in ages
@@ -3616,8 +3623,7 @@ class RecentReversal:
             ensemble_number, get_members=False
         )[0]
 
-        if self.save_configs["save_figs"]:
-            self.save_fig(fig, f"{mouse}_{session_type}_ensemble{ensemble_number}", 2)
+        return fig
 
     def make_ensemble_raster(
         self, mouse, session_type, bin_size=0.6, running_only=False
@@ -3694,7 +3700,7 @@ class RecentReversal:
         )[0]
 
         fig, ax = plt.subplots()
-        ax.imshow(rasters[ensemble_number], cmap="viridis", interpolation="hanning")
+        ax.imshow(rasters[ensemble_number], cmap="viridis")
         #axs[1].plot(np.mean(rasters[ensemble_number], axis=0))
         port_colors = {
             True: "g",
@@ -3711,16 +3717,13 @@ class RecentReversal:
         ax.set_xticks(ax.get_xlim())
         ax.set_xticklabels([0, 220])
 
-        ax.set_yticks([1, rasters[ensemble_number].shape[0]])
+        ax.set_yticks([1, rasters[ensemble_number].shape[0]-1])
         ax.axis("tight")
         ax.set_ylabel("Trial", fontsize=22)
         ax.set_xlabel("Linearized position (cm)", fontsize=22)
         fig.tight_layout()
 
-        # if self.save_configs["save_figs"]:
-        #     self.save_fig(
-        #         fig, f"{mouse}_{session_type}_ensemble{ensemble_number}_raster", 2
-        #     )
+        return fig
 
     def scrollplot_ensemble_rasters(
         self, mouse, session_type, bin_size=0.6, running_only=False, subset=None
@@ -4249,7 +4252,7 @@ class RecentReversal:
 
     def compare_lick_decoding_accuracy(
         self,
-        session_pairs=(("Goals3", "Goals4"), ("Goals4", "Reversal")),
+        session_pairs=(("Goals4", "Goals3"), ("Goals4", "Reversal")),
         classifier=RandomForestClassifier,
         data_type="S",
         do_zscore=False,
@@ -4303,7 +4306,7 @@ class RecentReversal:
 
         return accuracy
 
-    def registered_ensemble_lick_decoder(
+    def lick_decoder(
         self,
         mouse,
         session_types,
@@ -4313,6 +4316,7 @@ class RecentReversal:
         lag=0,
         show_plot=True,
         ax=None,
+        data_type='ensembles',
         **classifier_kwargs,
     ):
         X, y, classifier = self.fit_lick_decoder(
@@ -4321,7 +4325,7 @@ class RecentReversal:
             classifier=classifier,
             lag=lag,
             licks_to_include=licks_to_include,
-            data_type="ensembles",
+            data_type=data_type,
             **classifier_kwargs,
         )
 
@@ -4417,6 +4421,7 @@ class RecentReversal:
         session_types=(("Goals4", "Goals3"), ("Goals4", "Reversal")),
         lag=0,
         ages_to_plot=None,
+        data_type='ensembles',
         **classifier_kwargs,
     ):
         ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(
@@ -4441,7 +4446,7 @@ class RecentReversal:
             scores[age] = []
             for mouse in self.meta["grouped_mice"][age]:
                 for ax, session_pair in zip(cohort_ax, session_types):
-                    scores_ = self.registered_ensemble_lick_decoder(
+                    scores_ = self.lick_decoder(
                         mouse,
                         session_pair,
                         classifier=classifier,
@@ -4450,6 +4455,7 @@ class RecentReversal:
                         show_plot=True,
                         lag=lag,
                         ax=ax,
+                        data_type=data_type,
                         **classifier_kwargs,
                     )
 
@@ -4485,6 +4491,7 @@ class RecentReversal:
                     f"\n tested on {session_pair[1].replace('Goals', 'Training')}"
                 )
                 ax.axhline(y=1 / 8, color="darkred")
+                ax.set_ylim([0, 1])
 
                 [ax.spines[side].set_visible(False) for side in ["top", "right"]]
         fig.supxlabel("Time in session (normalized)")
@@ -4493,13 +4500,14 @@ class RecentReversal:
 
         return df, fig
 
-    def ensemble_lick_anova(
+    def lick_anova(
         self,
         classifier=RandomForestClassifier,
         licks_to_include="first",
         n_splits=6,
         session_types=(("Goals4", "Goals3"), ("Goals4", "Reversal")),
         lag=0,
+        data_type='ensembles',
         **classifier_kwargs,
     ):
         """
@@ -4520,6 +4528,7 @@ class RecentReversal:
             session_types=session_types,
             lag=lag,
             ages_to_plot=None,
+            data_type=data_type,
             **classifier_kwargs,
         )[0]
 
@@ -5081,76 +5090,76 @@ class RecentReversal:
 
         return prop_changing_cells
 
-    # def plot_proportion_fading_cells_in_ensembles(
-    #     self,
-    #     session_type="Reversal",
-    #     x="trial",
-    #     x_bin_size=6,
-    #     z_threshold=None,
-    #     alpha=0.01,
-    # ):
-    #
-    #     prop_fading_cells = dict()
-    #     for age in ages:
-    #         prop_fading_cells[age] = {"trendless ensembles": [], "fading ensembles": []}
-    #         for mouse in self.meta["grouped_mice"][age]:
-    #             ensemble_trends = self.find_activity_trends(
-    #                 mouse,
-    #                 session_type,
-    #                 x=x,
-    #                 x_bin_size=x_bin_size,
-    #                 z_threshold=z_threshold,
-    #                 alpha=alpha,
-    #             )[0]
-    #
-    #             for key, trend in zip(
-    #                 prop_fading_cells[age].keys(), ["no trend", "decreasing"]
-    #             ):
-    #                 prop_fading_cells[age][key].append(
-    #                     self.find_proportion_changing_cells(
-    #                         mouse,
-    #                         session_type,
-    #                         ensemble_trends=ensemble_trends,
-    #                         x=x,
-    #                         x_bin_size=x_bin_size,
-    #                         z_threshold=z_threshold,
-    #                         ensemble_trend=trend,
-    #                     )
-    #                 )
-    #     n_mice = len(self.meta["mice"])
-    #     colors = distinct_colors(n_mice)
-    #     i = 0
-    #     mean0 = lambda x: np.nanmean(x) if x else 0
-    #     fig, axs = plt.subplots(1, 2, sharey=True)
-    #     for age, ax in zip(ages, axs):
-    #         for trendless, fading in zip(
-    #             prop_fading_cells[age]["trendless ensembles"],
-    #             prop_fading_cells[age]["fading ensembles"],
-    #         ):
-    #             x = np.hstack((np.ones_like(trendless), np.ones_like(fading) * 2))
-    #             ax.scatter(
-    #                 jitter_x(x, 0.05),
-    #                 np.hstack((trendless, fading)),
-    #                 alpha=0.2,
-    #                 color=colors[i],
-    #             )
-    #             ax.plot(
-    #                 jitter_x([1, 2]),
-    #                 np.hstack((mean0(trendless), mean0(fading))),
-    #                 "o-",
-    #                 color=colors[i],
-    #             )
-    #             ax.set_xticks([1, 2])
-    #             ax.set_xticklabels(
-    #                 ["Trendless \nensembles", "Fading \nensembles"], rotation=45
-    #             )
-    #             i += 1
-    #             ax.set_title(age)
-    #
-    #     axs[0].set_ylabel("Proportion fading cells")
-    #     fig.tight_layout()
-    #
-    #     return prop_fading_cells
+    def plot_proportion_fading_cells_in_ensembles(
+        self,
+        session_type="Reversal",
+        x="trial",
+        x_bin_size=1,
+        z_threshold=None,
+        alpha='sidak',
+    ):
+
+        prop_fading_cells = dict()
+        for age in ages:
+            prop_fading_cells[age] = {"trendless ensembles": [], "fading ensembles": []}
+            for mouse in self.meta["grouped_mice"][age]:
+                ensemble_trends = self.find_activity_trends(
+                    mouse,
+                    session_type,
+                    x=x,
+                    x_bin_size=x_bin_size,
+                    z_threshold=z_threshold,
+                    alpha=alpha,
+                )[0]
+
+                for key, trend in zip(
+                    prop_fading_cells[age].keys(), ["no trend", "decreasing"]
+                ):
+                    prop_fading_cells[age][key].append(
+                        self.find_proportion_changing_cells(
+                            mouse,
+                            session_type,
+                            ensemble_trends=ensemble_trends,
+                            x=x,
+                            x_bin_size=x_bin_size,
+                            z_threshold=z_threshold,
+                            ensemble_trend=trend,
+                        )
+                    )
+        n_mice = len(self.meta["mice"])
+        colors = distinct_colors(n_mice)
+        i = 0
+        mean0 = lambda x: np.nanmean(x) if x else 0
+        fig, axs = plt.subplots(1, 2, sharey=True)
+        for age, ax in zip(ages, axs):
+            for trendless, fading in zip(
+                prop_fading_cells[age]["trendless ensembles"],
+                prop_fading_cells[age]["fading ensembles"],
+            ):
+                x = np.hstack((np.ones_like(trendless), np.ones_like(fading) * 2))
+                ax.scatter(
+                    jitter_x(x, 0.05),
+                    np.hstack((trendless, fading)),
+                    alpha=0.2,
+                    color=colors[i],
+                )
+                ax.plot(
+                    jitter_x([1, 2]),
+                    np.hstack((mean0(trendless), mean0(fading))),
+                    "o-",
+                    color=colors[i],
+                )
+                ax.set_xticks([1, 2])
+                ax.set_xticklabels(
+                    ["Trendless \nensembles", "Fading \nensembles"], rotation=45
+                )
+                i += 1
+                ax.set_title(age)
+
+        axs[0].set_ylabel("Proportion fading cells")
+        fig.tight_layout()
+
+        return prop_fading_cells
 
     def plot_assembly_trends(
         self,
@@ -6805,7 +6814,7 @@ class RecentReversal:
                 ax.set_xticklabels([0, 220])
 
                 for port in ports:
-                    ax.axvline(port, c="g", alpha=0.5)
+                    ax.axvline(port, c="g")
 
             axs[0].set_ylabel("Ensemble #")
             fig.suptitle(mouse)
@@ -7232,12 +7241,24 @@ class RecentReversal:
                                    f'{performance_metric}_{ages_to_plot}', 2)
 
         if 'E' in panels:
+            mouse = 'Lyra'
+            session_type = 'Reversal'
             for i in [27, 56]:
-                self.plot_ensemble('Lyra', 'Reversal', i)
+                fig = self.plot_ensemble(mouse, session_type, i)
+
+                if self.save_configs["save_figs"]:
+                    self.save_fig(fig, f"{mouse}_{session_type}_ensemble{i}", 2)
 
         if 'F' in panels:
+            mouse = 'Lyra'
+            session_type = 'Reversal'
             for i in [27,56]:
-                self.plot_ensemble_raster('Lyra', 'Reversal', i, bin_size=0.05)
+                fig = self.plot_ensemble_raster(mouse, session_type, i, bin_size=0.05)
+
+                if self.save_configs["save_figs"]:
+                    self.save_fig(
+                        fig, f"{mouse}_{session_type}_ensemble{i}_raster", 2
+                    )
 
         if 'G' in panels:
             mouse = 'Lyra'
@@ -7318,10 +7339,10 @@ class RecentReversal:
 
         if 'B' in panels:
             performance_metric = 'CRs'
-            dv, anova_dfs, fig = self.plot_trial_behavior(session_types=['Goals4', 'Reversal'],
+            dv, anova_dfs, fig = self.plot_trial_behavior(session_types=['Reversal'],
                                                           performance_metric=performance_metric)
             if self.save_configs['save_figs']:
-                self.save_fig(fig, f'Aged vs young Reversal_{performance_metric}', 4)
+                self.save_fig(fig, f'Aged vs young Reversal_{performance_metric}', 5)
 
             for df in anova_dfs.values():
                 print(df)
