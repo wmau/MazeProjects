@@ -4949,7 +4949,7 @@ class RecentReversal:
 
         if type(alpha) is str:
             pvals = []
-            pval_thresh = 0.01
+            pval_thresh = 0.05
             for i, unit in enumerate(binned_activations):
                 mk_test = mk.original_test(unit, alpha=0.05)
                 pvals.append(mk_test.p)
@@ -5324,12 +5324,11 @@ class RecentReversal:
                     rotation=45, fontsize=16
                 )
                 [ax.spines[side].set_visible(False) for side in ["top", "right"]]
-
             fig.tight_layout()
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"Percent_fading_{ages_to_plot}", 2)
+        else:
+            fig = None
 
-        return p_changing_split_by_age
+        return p_changing_split_by_age, fig
 
     def hist_ensemble_taus(self, mouse, session_type, ax=None):
         tau = self.find_activity_trends(mouse, session_type)[3]
@@ -5449,16 +5448,7 @@ class RecentReversal:
                 msg += "*"
             print(msg)
 
-        if self.save_configs["save_figs"]:
-            if ages_to_plot == 'young':
-                folder = 3
-            else:
-                folder = 4
-            self.save_fig(
-                fig, f"FadingEnsembleCorr_{performance_metric}_{ages_to_plot}", folder
-            )
-
-        return p_changing_split_by_age, performance
+        return p_changing_split_by_age, performance, fig
 
     def make_corr_df(self, p_changing_split_by_age, performance):
         p = p_changing_split_by_age
@@ -7200,6 +7190,7 @@ class RecentReversal:
     def make_fig3(self, panels=None):
         if panels is None:
             panels = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+        folder = 3
         if 'A' in panels:
             self.plot_ensemble('Lyra', 'Reversal', 9)
 
@@ -7223,7 +7214,7 @@ class RecentReversal:
             print(f'Stability on Training4 vs Reversal, {w.statistic}, p={w.pvalue}')
 
             if self.save_configs['save_figs']:
-                self.save_fig(fig, f'Mean {data_type} stability during Reversal_{ages_to_plot}', 2)
+                self.save_fig(fig, f'Mean {data_type} stability during Reversal_{ages_to_plot}', folder)
 
         if 'D' in panels:
             performance_metric = 'CRs'
@@ -7238,7 +7229,7 @@ class RecentReversal:
 
             if self.save_configs['save_figs']:
                 self.save_fig(fig, f'{data_type} stability correlated with '
-                                   f'{performance_metric}_{ages_to_plot}', 2)
+                                   f'{performance_metric}_{ages_to_plot}', folder)
 
         if 'E' in panels:
             mouse = 'Lyra'
@@ -7247,17 +7238,17 @@ class RecentReversal:
                 fig = self.plot_ensemble(mouse, session_type, i)
 
                 if self.save_configs["save_figs"]:
-                    self.save_fig(fig, f"{mouse}_{session_type}_ensemble{i}", 2)
+                    self.save_fig(fig, f"{mouse}_{session_type}_ensemble{i}", folder)
 
         if 'F' in panels:
             mouse = 'Lyra'
             session_type = 'Reversal'
             for i in [27,56]:
-                fig = self.plot_ensemble_raster(mouse, session_type, i, bin_size=0.05)
+                fig = self.plot_ensemble_raster(mouse, session_type, i, bin_size=0.1)
 
                 if self.save_configs["save_figs"]:
                     self.save_fig(
-                        fig, f"{mouse}_{session_type}_ensemble{i}_raster", 2
+                        fig, f"{mouse}_{session_type}_ensemble{i}_raster", folder
                     )
 
         if 'G' in panels:
@@ -7266,12 +7257,18 @@ class RecentReversal:
                 fig = self.plot_activation_trend(mouse, 'Reversal', i)
 
                 if self.save_configs['save_figs']:
-                    self.save_fig(fig, f'{mouse}_max_activity_per_trial_ensemble_{i}', 2)
+                    self.save_fig(fig, f'{mouse}_max_activity_per_trial_ensemble_{i}', folder)
 
         if 'H' in panels:
-            p_changing_split_by_age = self.plot_proportion_changing_ensembles(ages_to_plot='young')
+            ages_to_plot = 'young'
+            z_threshold=2
+            p_changing_split_by_age, fig = self.plot_proportion_changing_ensembles(
+                ages_to_plot=ages_to_plot, z_threshold=z_threshold)
 
-            stats = wilcoxon(p_changing_split_by_age['young'][1], p_changing_split_by_age['young'][0], alternative='greater',
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"Percent_fading_{ages_to_plot}", folder)
+
+            stats = wilcoxon(p_changing_split_by_age['young'][1], p_changing_split_by_age['young'][0],
                              zero_method='zsplit')
             W = np.round(stats.statistic, 3)
             p = np.round(stats.pvalue, 3)
@@ -7282,8 +7279,17 @@ class RecentReversal:
             print(msg)
 
         if 'I' in panels:
-            self.correlate_prop_changing_ensembles_to_behavior(performance_metric='CRs',
-                                                               ages_to_plot='young')
+            z_threshold=2
+            performance_metric='CRs'
+            fig = self.correlate_prop_changing_ensembles_to_behavior(performance_metric=performance_metric,
+                                                               ages_to_plot='young',
+                                                               z_threshold=z_threshold)[-1]
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(
+                    fig, f"FadingEnsembleCorr_{performance_metric}_young", folder
+                )
+
 
     def make_fig4(self, panels=None):
         if panels is None:
@@ -7333,6 +7339,8 @@ class RecentReversal:
         if panels is None:
             panels = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
 
+        folder = 5
+
         if 'A' in panels:
             anova_df = self.aged_performance_anova()
             print(anova_df)
@@ -7342,7 +7350,7 @@ class RecentReversal:
             dv, anova_dfs, fig = self.plot_trial_behavior(session_types=['Reversal'],
                                                           performance_metric=performance_metric)
             if self.save_configs['save_figs']:
-                self.save_fig(fig, f'Aged vs young Reversal_{performance_metric}', 5)
+                self.save_fig(fig, f'Aged vs young Reversal_{performance_metric}', folder)
 
             for df in anova_dfs.values():
                 print(df)
@@ -7354,7 +7362,7 @@ class RecentReversal:
                                                                   performance_metric=performance_metric,
                                                                   show_plot=True)
             if self.save_configs["save_figs"]:
-                self.save_fig(plt.gcf(), f"Reversal_aged_vs_young_{performance_metric}", 4)
+                self.save_fig(plt.gcf(), f"Reversal_aged_vs_young_{performance_metric}", folder)
 
             stats = ttest_ind(performance['young'], performance['aged'])
             p = np.round(stats.pvalue, 3)
@@ -7377,10 +7385,15 @@ class RecentReversal:
         #     print(pvalue)
 
         if 'D' in panels:
-            p_changing_split_by_age = self.plot_proportion_changing_ensembles(ages_to_plot='aged')
+            ages_to_plot = 'aged'
+            p_changing_split_by_age, fig = self.plot_proportion_changing_ensembles(
+                ages_to_plot=ages_to_plot)
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"Percent_fading_{ages_to_plot}", 5)
 
             stats = wilcoxon(p_changing_split_by_age['aged'][1],
-                             p_changing_split_by_age['aged'][0], alternative='greater',
+                             p_changing_split_by_age['aged'][0],
                              zero_method='zsplit')
             W = np.round(stats.statistic, 3)
             p = np.round(stats.pvalue, 3)
@@ -7391,8 +7404,16 @@ class RecentReversal:
             print(msg)
 
         if 'E' in panels:
-            self.correlate_prop_changing_ensembles_to_behavior(performance_metric='CRs',
-                                                               ages_to_plot='aged')
+            z_threshold=2
+            performance_metric='CRs'
+            fig = self.correlate_prop_changing_ensembles_to_behavior(performance_metric=performance_metric,
+                                                                     ages_to_plot='aged',
+                                                                     z_threshold=z_threshold)[-1]
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(
+                    fig, f"FadingEnsembleCorr_{performance_metric}_aged", folder
+                )
 
         if 'F' in panels:
             ages_to_plot = 'aged'
@@ -7402,7 +7423,7 @@ class RecentReversal:
                                          n_jobs=6)[1]
 
             if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", 5)
+                self.save_fig(fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", folder)
 
         if 'G' in panels:
             ages_to_plot = 'aged'
@@ -7412,7 +7433,7 @@ class RecentReversal:
                                          n_jobs=6)[1]
 
             if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", 5)
+                self.save_fig(fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", folder)
 
 
     # def correlate_stability_to_reversal(
