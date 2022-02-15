@@ -10,7 +10,8 @@ from CaImaging.util import (
     stack_padding,
     distinct_colors,
     group_consecutives,
-    open_minian
+    open_minian,
+    cluster_corr
 )
 import ruptures as rpt
 from CaImaging.plotting import errorfill, beautify_ax, jitter_x, shiftedColorMap, plot_xy_line
@@ -22,9 +23,12 @@ from scipy.stats import (
     wilcoxon,
     mannwhitneyu,
     pearsonr,
-    ttest_ind
+    ttest_ind,
+    chisquare,
+    ttest_rel
 )
 from scipy.spatial import distance
+from scipy.cluster.hierarchy import cut_tree
 from CircleTrack.SessionCollation import MultiAnimal
 from CircleTrack.MiniscopeFunctions import CalciumSession
 from CaImaging.CellReg import rearrange_neurons, trim_map, scrollplot_footprints
@@ -1172,7 +1176,7 @@ class RecentReversal:
     ############################ ACTIVITY FUNCTIONS ##########################
 
     def percent_fading_neurons(
-        self, mouse, session_type, x="trial", z_threshold=None, x_bin_size=6, alpha=0.01
+        self, mouse, session_type, x="trial", z_threshold=None, x_bin_size=1, alpha='sidak'
     ):
         trends, binned_activations, slopes, _ = self.find_activity_trends(
             mouse,
@@ -3959,19 +3963,21 @@ class RecentReversal:
         axs[0].set_ylabel("Proportion of ensembles active near Reversal goals")
 
     def plot_proportion_fading_ensembles_near_important_ports(
-        self, show_plot=True, alpha="sidak", decompose_relevant_ports=False
+        self, show_plot=True, z_threshold=None, alpha="sidak", ages_to_plot=None,
     ):
-        p_near = dict()
+        p_near, n_near = dict(), dict()
         port_types = ["rewarded", "previously_rewarded", "other", "relevant"]
 
         for age in ages:
             p_near[age] = {key: [] for key in port_types}
+            n_near[age] = {key: [] for key in port_types}
             for mouse in self.meta["grouped_mice"][age]:
                 # Find the closest ports for each ensemble.
                 closest_ports = self.find_ensemble_port_locations(mouse, "Reversal")[1]
 
                 trends = self.find_activity_trends(
-                    mouse, "Reversal", data_type="ensembles", alpha=alpha
+                    mouse, "Reversal", data_type="ensembles", z_threshold=z_threshold,
+                    alpha=alpha
                 )[0]
 
                 port_locations = {
@@ -3993,65 +3999,65 @@ class RecentReversal:
 
                 try:
                     for port_type in port_types:
-                        p_near[age][port_type].append(
-                            np.sum(
-                                i in port_locations[port_type]
-                                for i in closest_ports[trends["decreasing"]]
-                            )
+                        n = np.sum(
+                            i in port_locations[port_type]
+                            for i in closest_ports[trends["decreasing"]]
+                        )
+                        p_near[age][port_type].append(n
                             / len(trends["decreasing"])
                         )
+
+                        n_near[age][port_type].append(n)
 
                 except ZeroDivisionError:
                     for port_type in port_types:
                         p_near[age][port_type].append(0)
+                        n_near[age][port_type].append(0)
 
         if show_plot:
-            ports_to_plot = (
-                ["rewarded", "previously_rewarded", "other"]
-                if decompose_relevant_ports
-                else ["relevant", "other"]
+            ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+            fig, axs = plt.subplots(1, n_ages_to_plot, sharey=True,
+                                    figsize=(6*n_ages_to_plot,6))
+            if n_ages_to_plot == 1:
+                axs = [axs]
+
+            for ax, age in zip(axs, ages_to_plot):
+                bottom = np.zeros_like(n_near[age]['rewarded'])
+
+                mice = self.meta["grouped_mice"][age]
+                for p, label, c in zip(
+                        [n_near[age][key] for key in ['rewarded', 'previously_rewarded', 'other']],
+                        ["Currently rewarded", "Previously rewarded", "Never rewarded"],
+                        ["steelblue", "dimgray", "w"],
+                ):
+                    ax.bar(mice, p, bottom=bottom, label=label, color=c, edgecolor='k')
+                    bottom += p
+
+                ax.set_xticklabels(mice, rotation=90)
+                ax.set_xlabel('Mice', fontsize=22)
+                [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+
+            axs[0].set_ylabel("# fading ensembles", fontsize=22)
+            axs[-1].legend(bbox_to_anchor=(1.05, 1), loc='center', fontsize=14)
+            fig.tight_layout()
+
+        obs_freq = dict()
+        exp_freq = dict()
+        chi_result = dict()
+        for age in ages:
+            obs_freq[age] = np.vstack(
+                (n_near[age]['rewarded'],
+                 n_near[age]['previously_rewarded'],
+                 n_near[age]['other'])
             )
-            fig, axs = plt.subplots(
-                1, len(ports_to_plot), sharey=True, figsize=(7.6, 6.75)
-            )
-            fig.subplots_adjust(wspace=0)
 
-            if decompose_relevant_ports:
-                titles = [
-                    "near rewarded ports",
-                    "near previously \nrewarded ports",
-                    "near other ports",
-                ]
-            else:
-                titles = ["near relevant ports", "near other ports"]
+            exp_freq[age] = np.sum(obs_freq[age], axis=0) * \
+                            np.repeat(np.asarray([0.25, 0.25, 0.5])[:, np.newaxis],
+                                      obs_freq[age].shape[1], axis=1)
 
-            for ax, port, title in zip(axs, ports_to_plot, titles):
-                box = ax.boxplot(
-                    [p_near[age][port] for age in ages],
-                    labels=ages,
-                    widths=0.75,
-                    patch_artist=True,
-                    zorder=0,
-                    showfliers=False,
-                )
-                color_boxes(box, age_colors)
+            chi_result[age] = chisquare(obs_freq[age], exp_freq[age], axis=0)
 
-                for i, (age, color) in enumerate(zip(ages, age_colors)):
-                    ax.scatter(
-                        jitter_x(np.ones_like(p_near[age][port]) * (i + 1), 0.1),
-                        p_near[age][port],
-                        color=color,
-                        zorder=1,
-                        edgecolor="k",
-                        s=70,
-                    )
-
-                ax.set_title(title)
-
-            fig.suptitle("Fading ensembles")
-            axs[0].set_ylabel("Proportion")
-
-        return p_near
+        return p_near, n_near, chi_result
 
     def plot_ensemble_port_locations(self, session_type, show_plot=True):
         near_currently_rewarded = dict()
@@ -4904,8 +4910,9 @@ class RecentReversal:
         activations = np.zeros_like(data)
         if z_threshold is not None:
             for i, unit in enumerate(data):
-                on_frames = contiguous_regions(unit > z_threshold)[:, 0]
-                activations[i, on_frames] = 1
+                # on_frames = contiguous_regions(unit > z_threshold)[:, 0]
+                # activations[i, on_frames] = 1
+                activations[i, unit > z_threshold] = unit[unit > z_threshold]
         else:
             activations = data
 
@@ -4942,14 +4949,12 @@ class RecentReversal:
 
         # Group cells/ensembles into either increasing, decreasing, or no trend in occurrence rate.
         trends = {
-            "no trend": [],
-            "decreasing": [],
-            "increasing": [],
+            key: [] for key in ['no trend', 'decreasing', 'increasing']
         }
 
         if type(alpha) is str:
             pvals = []
-            pval_thresh = 0.05
+            pval_thresh = 0.005
             for i, unit in enumerate(binned_activations):
                 mk_test = mk.original_test(unit, alpha=0.05)
                 pvals.append(mk_test.p)
@@ -6729,6 +6734,146 @@ class RecentReversal:
 
         return rhos
 
+    def xcorr_ensemble_cells(self, mouse, session_type, ensemble_number, data_type='S',
+                             n_splits=6, show_plot=True, mat_to_cluster=-1, n_clusters=4):
+        """
+        Do pairwise correlations between ensemble cells.
+
+        """
+        session = self.data[mouse][session_type]
+        pattern = session.assemblies['patterns'][ensemble_number]
+
+        # Find ensemble members
+        members = find_members(pattern, filter_method='sd', thresh=2)[1]
+
+        # Split the activity into n equal parts.
+        traces = np.array_split(session.imaging[data_type][members], n_splits, axis=1)
+        imp = SimpleImputer(
+            missing_values=np.nan, strategy="constant", fill_value=0
+        )
+        traces = [imp.fit_transform(t) for t in traces]
+
+        # Do correlation, nan the diagonal, find min/max.
+        corr_mats = []
+        n_neurons = len(members)
+
+        corr_mats, pval_mats = [], []
+        for t in traces:
+            R = nan_array((n_neurons, n_neurons))
+            pval_mat = nan_array((n_neurons, n_neurons))
+            for combination in product(range(n_neurons), repeat=2):
+                if combination[0] != combination[1]:
+                    x = t[combination[0]]
+                    y = t[combination[1]]
+
+                    r, p = pearsonr(x,y)
+                    R[combination[0], combination[1]] = r
+                    pval_mat[combination[0], combination[1]] = p
+            corr_mats.append(R)
+            pval_mats.append(pval_mat)
+
+        # kmeans = KMeans(n_clusters=3)
+        # labels = kmeans.fit_predict(corr_mats[mat_to_cluster])
+        # idx = np.argsort(labels)
+        labels, idx, linkage = cluster_corr(corr_mats[mat_to_cluster])
+        cluster_labels = cut_tree(linkage, n_clusters=n_clusters).flatten()
+        idx = np.argsort(cluster_labels)
+        [np.fill_diagonal(c, np.nan) for c in corr_mats]
+
+        if show_plot:
+            fig, axs = plt.subplots(1, n_splits, figsize=(2*n_splits,2), sharex=True,
+                                    sharey=True)
+            vmax = np.nanmax([np.nanmax(c) for c in corr_mats])
+            vmin = np.nanmin([np.nanmin(c) for c in corr_mats])
+
+            # Center color bar on 0.
+            midpoint = 1 - vmax / (vmax + abs(vmin))
+            cmap = shiftedColorMap(matplotlib.cm.bwr, midpoint=midpoint)
+
+            for ax, mat in zip(axs.flatten(), corr_mats):
+                ax.imshow(mat[idx,:][:,idx], vmin=vmin, vmax=vmax, cmap=cmap, origin='lower')
+                ax.set_xticks([0, len(members)])
+                ax.set_yticks([0, len(members)])
+
+            fig.tight_layout()
+
+        data = {
+            "neurons": members,
+            "correlations": corr_mats,
+            "pvals": pval_mats,
+            "traces": traces,
+            "labels": labels,
+            "linkage": linkage,
+            "cluster_labels": cluster_labels,
+        }
+
+        return data
+
+    def find_fading_cluster(self, data, time_bin=-1):
+        cluster_labels = data["cluster_labels"]
+        cluster_ids = np.unique(cluster_labels)
+
+        corr_mat = data["correlations"][time_bin]
+        mean_corrs = [np.nanmean(corr_mat[np.where(cluster_labels==cluster)[0]])
+                      for cluster in cluster_ids]
+
+        least_correlated_cluster = np.argmin(mean_corrs)
+        all_other_clusters = cluster_ids[cluster_ids != least_correlated_cluster]
+
+        return least_correlated_cluster, all_other_clusters
+
+    def compare_connectedness(self, mouse, session_type, n_splits=6):
+        ensemble_trends = self.find_activity_trends(mouse, session_type)[0]
+
+        if not ensemble_trends['decreasing']:
+            return
+
+        data_dict = {
+            "ensemble": [],
+            "fading_coeff": [],
+            "nonfading_coeff": [],
+        }
+        for i, ensemble in enumerate(ensemble_trends['decreasing']):
+            data_dict["ensemble"].append(ensemble)
+            data = self.xcorr_ensemble_cells(mouse, session_type, ensemble, n_splits=n_splits,
+                                             show_plot=False)
+
+            fading, nonfading = self.find_fading_cluster(data)
+            corr_mat = data["correlations"][0]
+            cluster_labels = data["cluster_labels"]
+
+            data_dict["fading_coeff"].append(np.nanmean(corr_mat[cluster_labels==fading]))
+            data_dict["nonfading_coeff"].append(np.nanmean(corr_mat[cluster_labels!=fading]))
+
+        fig, ax = plt.subplots()
+        ax.plot([1,2], [data_dict['fading_coeff'], data_dict['nonfading_coeff']])
+
+        print(ttest_rel(data_dict['fading_coeff'], data_dict['nonfading_coeff']))
+
+        return data_dict
+
+
+    def interensemble_corrs(self, mouse, session_type, n_splits=6):
+        ensemble_trends = self.find_activity_trends(mouse, session_type)[0]
+
+        if not ensemble_trends['decreasing']:
+            return
+
+        corr_mats, traces = [], []
+        mean_corrs = nan_array((n_splits, len(ensemble_trends['decreasing'])))
+        for i, ensemble in enumerate(ensemble_trends['decreasing']):
+            data = self.xcorr_ensemble_cells(mouse, session_type, ensemble, n_splits=n_splits,
+                                             show_plot=True)
+            corr_mats.append(data['correlations'])
+            traces.append(data['traces'])
+            mean_corrs[:, i] = [np.nanmean(c) for c in data['correlations']]
+
+        fig, ax = plt.subplots()
+        ax.plot(mean_corrs, 'k', alpha=0.2)
+        ax.plot(np.nanmean(mean_corrs, axis=1), 'k', linewidth=2)
+
+        return mean_corrs
+
     def snakeplot_matched_ensembles(
         self,
         mouse,
@@ -7261,7 +7406,7 @@ class RecentReversal:
 
         if 'H' in panels:
             ages_to_plot = 'young'
-            z_threshold=2
+            z_threshold = None
             p_changing_split_by_age, fig = self.plot_proportion_changing_ensembles(
                 ages_to_plot=ages_to_plot, z_threshold=z_threshold)
 
@@ -7279,7 +7424,7 @@ class RecentReversal:
             print(msg)
 
         if 'I' in panels:
-            z_threshold=2
+            z_threshold=None
             performance_metric='CRs'
             fig = self.correlate_prop_changing_ensembles_to_behavior(performance_metric=performance_metric,
                                                                ages_to_plot='young',
@@ -7386,8 +7531,9 @@ class RecentReversal:
 
         if 'D' in panels:
             ages_to_plot = 'aged'
+            z_threshold=None
             p_changing_split_by_age, fig = self.plot_proportion_changing_ensembles(
-                ages_to_plot=ages_to_plot)
+                ages_to_plot=ages_to_plot, z_threshold=z_threshold)
 
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, f"Percent_fading_{ages_to_plot}", 5)
@@ -7404,7 +7550,7 @@ class RecentReversal:
             print(msg)
 
         if 'E' in panels:
-            z_threshold=2
+            z_threshold=None
             performance_metric='CRs'
             fig = self.correlate_prop_changing_ensembles_to_behavior(performance_metric=performance_metric,
                                                                      ages_to_plot='aged',
