@@ -202,7 +202,7 @@ class Chemogenetics:
             fig, axs = plt.subplots(1,n_sessions, figsize=(5,5))
             axs = [axs]
         else:
-            fig, axs = plt.subplots(1, n_sessions, figsize=(3*n_sessions, 5),
+            fig, axs = plt.subplots(1, n_sessions, figsize=(5*n_sessions, 5),
                                     sharey=True)
         for i, (ax, session_type) in enumerate(zip(axs, session_types)):
             for group, color in zip(self.meta['groups'], self.meta['colors']):
@@ -842,25 +842,9 @@ class Chemogenetics:
             print(anova_results)
 
         if 'D' in panels:
-            group = 'vehicle'
-            performance_metric = 'CRs'
-            dv, fig = self.plot_reversal_vs_training4_trial_behavior(group, performance_metric=performance_metric)
-
-            if self.save_configs['save_figs']:
-                self.save_fig(fig, f'Training4 vs Reversal_{group}_{performance_metric}', 1)
-
-        if 'E' in panels:
-            group = 'PSEM'
-            performance_metric = 'CRs'
-            dv, fig = self.plot_reversal_vs_training4_trial_behavior(group, performance_metric=performance_metric)
-
-            if self.save_configs['save_figs']:
-                self.save_fig(fig, f'Training4 vs Reversal_{group}_{performance_metric}', 1)
-
-        if 'F' in panels:
             performance_metric = 'CRs'
             dv, anova_dfs, fig = \
-                self.plot_trial_behavior(session_types=['Reversal'],
+                self.plot_trial_behavior(session_types=['Goals4','Reversal'],
                                          performance_metric=performance_metric,
                                          window=6, strides=2)
 

@@ -13,7 +13,7 @@ from CaImaging.util import (
     open_minian,
     cluster_corr,
 )
-from mpl_toolkits.axes_grid1 import make_axes_locatable
+import multiprocessing as mp
 import ruptures as rpt
 import networkx as nx
 from networkx.algorithms.approximation.clustering_coefficient import average_clustering
@@ -37,13 +37,13 @@ from scipy.stats import (
     ttest_rel,
 )
 from scipy.spatial import distance
-from scipy.cluster.hierarchy import cut_tree
+from joblib import Parallel, delayed
 from CircleTrack.SessionCollation import MultiAnimal
 from CircleTrack.MiniscopeFunctions import CalciumSession
 from CaImaging.CellReg import rearrange_neurons, trim_map, scrollplot_footprints
 from sklearn.naive_bayes import BernoulliNB, GaussianNB
 from sklearn.model_selection import (
-    StratifiedKFold,
+    StratifiedKFold, KFold
 )
 from statsmodels.stats.multitest import multipletests
 from sklearn.impute import SimpleImputer
@@ -913,6 +913,8 @@ class RecentReversal:
         performance_metric="CRs",
         downsample_trials=False,
         sessions=None,
+        plot_line=False,
+        ages_to_plot=None
     ):
         """
         Plot the peak performance for each session, either when smoothing across trial windows, or when
@@ -933,19 +935,22 @@ class RecentReversal:
         if sessions is None:
             sessions = self.meta["session_types"]
 
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+
         session_labels = [
             self.meta["session_labels"][self.meta["session_types"].index(session)]
             for session in sessions
         ]
 
-        fig, axs = plt.subplots(1, len(sessions), sharey=True)
-        fig.subplots_adjust(wspace=0)
         ylabels = {
             "d_prime": "d'",
             "CRs": "Correct rejection rate",
             "hits": "Hit rate",
         }
         performance = dict()
+        fig, axs = plt.subplots(1, len(sessions), sharey=True)
+        fig.subplots_adjust(wspace=0)
+
         for ax, session, title in zip(axs, sessions, session_labels):
             performance[session] = self.plot_performance_session_type(
                 session_type=session,
@@ -959,13 +964,31 @@ class RecentReversal:
             ax.set_title(title, fontsize=16)
             [ax.spines[side].set_visible(False) for side in ["top", "right"]]
         axs[0].set_ylabel(ylabels[performance_metric])
-
         self.set_age_legend(fig)
 
-        if self.save_configs["save_figs"]:
-            self.save_fig(fig, "Performance_aged_v_young", 4)
+        if plot_line:
+            line_fig, ax = plt.subplots(figsize=(5,6.5))
+            for age, color in zip(ages_to_plot, plot_colors):
+                data = np.hstack([np.asarray(performance[session][age])[:, np.newaxis]
+                                  for session in sessions])
 
-        return performance
+                ax.plot(session_labels, data.T, color=color, alpha=0.2)
+                errorfill(
+                    session_labels,
+                    np.nanmean(data, axis=0),
+                    yerr=sem(data, axis=0),
+                    color=color,
+                    ax=ax
+                )
+            for tick in ax.get_xticklabels():
+                tick.set_rotation(45)
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+            ax.set_ylabel(ylabels[performance_metric], fontsize=22)
+            line_fig.tight_layout()
+        else:
+            line_fig = None
+
+        return performance, fig, line_fig
 
     def performance_to_df(self, performance):
         """
@@ -1010,14 +1033,35 @@ class RecentReversal:
     ):
         d_prime = self.plot_peak_performance_all_sessions(
             performance_metric=performance_metric, sessions=sessions
-        )
+        )[0]
 
         df = self.performance_to_df(d_prime)[1]
         anova_df = pg.rm_anova(
-            df, dv="metric", subject="mice", within=["age", "session"]
+            df, dv="metric", subject="mice", within=["session", "age"]
         )
 
         return anova_df
+
+    def performance_anova(self, age, performance_metric='d_prime', sessions=None):
+        if sessions is None:
+            sessions = self.meta['session_types']
+
+        behavior, _, fig = self.plot_peak_performance_all_sessions(
+            performance_metric=performance_metric, sessions=sessions, plot_line=True,
+            ages_to_plot=age
+        )
+        df = self.performance_to_df(behavior)[1]
+        df = df.loc[df['age'] == age]
+
+        anova_df = pg.rm_anova(
+            df, dv="metric", subject="mice", within="session",
+        )
+
+        pairwise_df = df.pairwise_ttests(
+            dv="metric", between="session", padjust="fdr_bh"
+        )
+
+        return df, anova_df, pairwise_df, fig
 
     def scatter_box(self, data, ylabel="", ax=None, ages_to_plot=None):
         """
@@ -3329,6 +3373,110 @@ class RecentReversal:
 
         return decoding_errors
 
+    def within_session_spatial_decoder(self,
+                                  mouse, session_type,
+                                  classifier=GaussianNB,
+                                  n_spatial_bins=125, predictors="ensembles",
+                                  kfolds=5, n_shuffles=100,
+                                  **classifier_kwargs
+                                  ):
+        session = self.data[mouse][session_type]
+        running = session.spatial.data["running"]
+        fps=15
+
+        classifier = classifier(**classifier_kwargs)
+
+        if predictors == 'cells':
+            neural_data = session.imaging['S_binary']
+        elif predictors == 'ensembles':
+            neural_data = zscore(session.assemblies['activations'], axis=0)
+        else:
+            raise NotImplementedError
+
+        X = neural_data[:,running].T
+        y = format_spatial_location_for_decoder(
+            session.behavior.data["df"]["lin_position"].values[running],
+            n_spatial_bins=n_spatial_bins,
+            time_bin_size=1/fps,
+            fps=fps,
+            classifier=classifier
+        )
+
+        error = self.test_classifier(X, y, classifier=classifier,
+                                     kfolds=kfolds, n_spatial_bins=n_spatial_bins,
+                                     shuffle=False)
+
+        iterations = tqdm([i for i in np.arange(n_shuffles)])
+
+        errors_shuffled = [self.test_classifier(X, y, kfolds=kfolds, classifier=classifier,
+                                               n_spatial_bins=n_spatial_bins, shuffle=True)
+                           for i in iterations]
+
+        return error, errors_shuffled
+
+    def plot_spatial_decoder_errors(self, session_type, ages_to_plot='young', **kwargs):
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+
+        errors = dict()
+        for age in ages_to_plot:
+            errors[age] = {
+                'error': [],
+                'errors_shuffled': []
+            }
+            for mouse in self.meta['grouped_mice'][age]:
+                error, errors_shuffled = self.within_session_spatial_decoder(mouse,
+                                                                             session_type, **kwargs)
+                errors[age]['error'].append(error)
+                errors[age]['errors_shuffled'].append(errors_shuffled)
+
+        fig, axs = plt.subplots(1, n_ages_to_plot)
+        if n_ages_to_plot == 1:
+            axs = [axs]
+        for ax, age, color in zip(axs, ages_to_plot, plot_colors):
+            boxes = ax.boxplot(
+                errors[age]['errors_shuffled'],
+                patch_artist=True,
+                widths=0.75,
+                zorder=0,
+                showfliers=False,
+            )
+            color_boxes(boxes, 'w')
+            chance = np.nanmean([np.nanmean(e) for e in errors[age]['errors_shuffled']])
+            ax.text(1.1, chance-5, 'Chance', horizontalalignment='center', color='k')
+
+            ax.scatter(np.arange(1, len(errors[age]['error'])+1), errors[age]['error'], c=color,
+                       marker="_", s=100, linewidth=5)
+            ax.set_xticklabels(self.meta['grouped_mice'][age], rotation=90)
+            ax.axhline(y=chance, color='k')
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+            ax.set_xlabel('Mice')
+
+        axs[0].set_ylabel('Decoder error (cm)')
+        fig.tight_layout()
+
+        return errors
+
+    def test_classifier(self, X, y, kfolds=5, classifier=GaussianNB(),
+                        n_spatial_bins=125, shuffle=False):
+        skf = KFold(n_splits=kfolds)
+
+        if shuffle:
+            y = np.roll(y, np.random.randint(300, len(y)))
+
+        errors = []
+        for train, test in skf.split(X,y):
+            classifier.fit(X[train], y[train])
+            y_predicted = classifier.predict(X[test])
+
+            error = np.nanmean(get_circular_error(
+                y_predicted, y[test], n_spatial_bins=n_spatial_bins
+            ))
+
+            nbins_to_cm = 2 * np.pi / n_spatial_bins * 38.1  # radius of maze in cm
+            errors.append(error.astype(float) * nbins_to_cm)
+
+        return np.nanmean(errors)
+
     def plot_spatial_decoder(
         self,
         classifier=RandomForestClassifier(),
@@ -3866,7 +4014,7 @@ class RecentReversal:
         )[0]
 
         fig, ax = plt.subplots()
-        ax.imshow(rasters[ensemble_number], cmap="viridis")
+        ax.imshow(rasters[ensemble_number], cmap="viridis", interpolation='hanning')
         # axs[1].plot(np.mean(rasters[ensemble_number], axis=0))
         port_colors = {
             True: "g",
@@ -6933,7 +7081,7 @@ class RecentReversal:
         data_type="S",
         n_splits=6,
         show_plot=True,
-        mat_to_cluster=-1,
+        mat_to_cluster=0,
         # n_clusters=4,
     ):
         """
@@ -6997,7 +7145,7 @@ class RecentReversal:
 
         return data
 
-    def plot_cell_xcorr_matrices(self, corr_mats, idx, axs=None):
+    def plot_cell_xcorr_matrices(self, corr_mats, idx, axs=None, plot_cbar=False):
         n_splits = len(corr_mats)
         n_neurons = corr_mats[0].shape[0]
         if axs is None:
@@ -7027,8 +7175,11 @@ class RecentReversal:
             ax.set_yticks([0, n_neurons])
             ax.set_title(title)
 
-        cbar_fig, _ = plt.subplots()
-        cbar_fig.colorbar(im, shrink=0.5)
+        if plot_cbar:
+            cbar_fig, _ = plt.subplots()
+            cbar_fig.colorbar(im, shrink=0.5)
+        else:
+            cbar_fig = None
         # fig.suptitle(f'Ensemble #{ensemble_number}')
         fig.tight_layout()
 
@@ -7048,7 +7199,7 @@ class RecentReversal:
         return G
 
     def plot_graph_evolution(
-        self, mouse, session_type, ensemble_number, n_splits=6, method="fdr_bh"
+        self, mouse, session_type, ensemble_number, n_splits=6, method="fdr_bh", plot_cbar=False,
     ):
         data = self.xcorr_ensemble_cells(
             mouse, session_type, ensemble_number, n_splits=n_splits, show_plot=False
@@ -7057,12 +7208,14 @@ class RecentReversal:
 
         fig, axs = plt.subplots(2, n_splits, figsize=(2 * n_splits, 4.5))
         cbar_fig = self.plot_cell_xcorr_matrices(
-            data["correlations"], idx=np.argsort(data["labels"]), axs=axs[0]
+            data["correlations"], idx=np.argsort(data["labels"]), axs=axs[0], plot_cbar=plot_cbar,
         )[1]
         for ax, g in zip(axs[1], G):
             pos = nx.drawing.layout.circular_layout(g)
-            nx.draw(g, pos=pos, ax=ax, node_size=10, width=0.2)
+            cc = average_clustering(g)
+            nx.draw(g, pos=pos, ax=ax, node_size=10, width=0.05)
             ax.axis("square")
+            ax.set_title(f"CC = {cc}", fontsize=14)
         axs[0, 0].set_ylabel("Ensemble\nmember correlations")
         axs[1, 0].set_axis_on()
         [spine.set_visible(False) for spine in axs[1, 0].spines.values()]
@@ -7788,14 +7941,15 @@ class RecentReversal:
 
         if "C" in panels:
             age = "young"
-            performance_metric = "CRs"
-            dv, fig = self.plot_reversal_vs_training4_trial_behavior(
-                age, performance_metric=performance_metric
-            )
+            performance_metric = "d_prime"
+            df, anova_df, pairwise_df, fig = self.performance_anova(age, performance_metric)
+
             if self.save_configs["save_figs"]:
                 self.save_fig(
-                    fig, f"Training4 vs Reversal_{age}_{performance_metric}", 2
+                    fig, f"All sessions_{age}_{performance_metric}", 2
                 )
+
+            return anova_df, pairwise_df
 
         if "D" in panels:
             mouse = "Miranda"
@@ -7945,7 +8099,7 @@ class RecentReversal:
             mouse = "Fornax"
             ensemble_number = 54
             fig, cbar_fig = self.plot_graph_evolution(
-                mouse, "Reversal", ensemble_number
+                mouse, "Reversal", ensemble_number, plot_cbar=True
             )
 
             if self.save_configs["save_figs"]:
@@ -7965,70 +8119,70 @@ class RecentReversal:
                     fig, f"Clustering coefficient of ensemble members_{age}", folder
                 )
 
+    # def make_fig4(self, panels=None):
+    #     if panels is None:
+    #         panels = ["A", "B", "C", "D", "E", "F"]
+    #
+    #     if "A" in panels:
+    #         self.plot_ensemble_registration_ex()
+    #
+    #     if "B" in panels:
+    #         mouse = "Miranda"
+    #         subset = [11]
+    #         fig = self.plot_matched_ensembles(mouse, ("Goals3", "Goals4"), subset=[11])
+    #
+    #         if self.save_configs["save_figs"]:
+    #             self.save_fig(fig, f"{mouse}_Ensemble{subset}_matched", 3)
+    #
+    #     if "C" in panels:
+    #         _ = self.spiralplot_matched_ensembles(
+    #             "Miranda", ("Goals3", "Goals4"), subset=[11]
+    #         )
+    #
+    #     if "D" in panels:
+    #         mouse = "Miranda"
+    #         ensemble_fields, fig = self.snakeplot_matched_ensembles(
+    #             mouse, ("Goals3", "Goals4")
+    #         )
+    #
+    #         if self.save_configs["save_figs"]:
+    #             self.save_fig(fig, f"{mouse}_ensemble_snakeplot", 4)
+    #
+    #     if "E" in panels:
+    #         ages_to_plot = "young"
+    #         lag = 0
+    #         fig = self.plot_lick_decoder(
+    #             licks_to_include="first",
+    #             lag=lag,
+    #             ages_to_plot=ages_to_plot,
+    #             class_weight="balanced",
+    #             random_state=7,
+    #             n_jobs=6,
+    #         )[1]
+    #
+    #         if self.save_configs["save_figs"]:
+    #             self.save_fig(fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", 4)
+    #
+    #     if "F" in panels:
+    #         ages_to_plot = "young"
+    #         lag = -1
+    #         fig = self.plot_lick_decoder(
+    #             licks_to_include="first",
+    #             lag=-lag,
+    #             ages_to_plot=ages_to_plot,
+    #             class_weight="balanced",
+    #             random_state=7,
+    #             n_jobs=6,
+    #         )[1]
+    #
+    #         if self.save_configs["save_figs"]:
+    #             self.save_fig(fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", 4)
+
     def make_fig4(self, panels=None):
-        if panels is None:
-            panels = ["A", "B", "C", "D", "E", "F"]
-
-        if "A" in panels:
-            self.plot_ensemble_registration_ex()
-
-        if "B" in panels:
-            mouse = "Miranda"
-            subset = [11]
-            fig = self.plot_matched_ensembles(mouse, ("Goals3", "Goals4"), subset=[11])
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"{mouse}_Ensemble{subset}_matched", 3)
-
-        if "C" in panels:
-            _ = self.spiralplot_matched_ensembles(
-                "Miranda", ("Goals3", "Goals4"), subset=[11]
-            )
-
-        if "D" in panels:
-            mouse = "Miranda"
-            ensemble_fields, fig = self.snakeplot_matched_ensembles(
-                mouse, ("Goals3", "Goals4")
-            )
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"{mouse}_ensemble_snakeplot", 4)
-
-        if "E" in panels:
-            ages_to_plot = "young"
-            lag = 0
-            fig = self.plot_lick_decoder(
-                licks_to_include="first",
-                lag=lag,
-                ages_to_plot=ages_to_plot,
-                class_weight="balanced",
-                random_state=7,
-                n_jobs=6,
-            )[1]
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", 4)
-
-        if "F" in panels:
-            ages_to_plot = "young"
-            lag = -1
-            fig = self.plot_lick_decoder(
-                licks_to_include="first",
-                lag=-lag,
-                ages_to_plot=ages_to_plot,
-                class_weight="balanced",
-                random_state=7,
-                n_jobs=6,
-            )[1]
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", 4)
-
-    def make_fig5(self, panels=None):
         if panels is None:
             panels = ["A", "B", "C", "D", "E", "F", "G"]
 
-        folder = 5
+        folder = 4
 
         if "A" in panels:
             anova_df = self.aged_performance_anova()
@@ -8047,8 +8201,6 @@ class RecentReversal:
             for df in anova_dfs.values():
                 print(df)
 
-        if "C" in panels:
-            performance_metric = "CRs"
             performance = self.plot_performance_session_type(
                 "Reversal",
                 window=None,
@@ -8080,7 +8232,7 @@ class RecentReversal:
         #     print(r)
         #     print(pvalue)
 
-        if "D" in panels:
+        if "C" in panels:
             ages_to_plot = "aged"
             z_threshold = None
             p_changing_split_by_age, fig = self.plot_proportion_changing_ensembles(
@@ -8103,7 +8255,7 @@ class RecentReversal:
                 msg += "*"
             print(msg)
 
-        if "E" in panels:
+        if "D" in panels:
             z_threshold = None
             performance_metric = "CRs"
             fig = self.correlate_prop_changing_ensembles_to_behavior(
@@ -8117,38 +8269,28 @@ class RecentReversal:
                     fig, f"FadingEnsembleCorr_{performance_metric}_aged", folder
                 )
 
-        if "F" in panels:
-            ages_to_plot = "aged"
-            lag = 0
-            fig = self.plot_lick_decoder(
-                licks_to_include="first",
-                ages_to_plot=ages_to_plot,
-                class_weight="balanced",
-                lag=lag,
-                random_state=7,
-                n_jobs=6,
-            )[1]
+        if "E" in panels:
+            mouse = "Umbriel"
+            ensemble_number = 1
+            fig, cbar_fig = self.plot_graph_evolution(
+                mouse, "Reversal", ensemble_number, plot_cbar=True
+            )
 
             if self.save_configs["save_figs"]:
                 self.save_fig(
-                    fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", folder
+                    fig,
+                    f"Cell correlations for {mouse}, ensemble #{ensemble_number}",
+                    folder,
                 )
+                self.save_fig(cbar_fig, f"cbar", folder)
 
-        if "G" in panels:
-            ages_to_plot = "aged"
-            lag = -1
-            fig = self.plot_lick_decoder(
-                licks_to_include="first",
-                ages_to_plot=ages_to_plot,
-                class_weight="balanced",
-                lag=lag,
-                random_state=7,
-                n_jobs=6,
-            )[1]
+        if "F" in panels:
+            age = "aged"
+            cluster_coeffs, anova_dfs, fig = self.G_clustering_all_mice(age=age)
 
             if self.save_configs["save_figs"]:
                 self.save_fig(
-                    fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", folder
+                    fig, f"Clustering coefficient of ensemble members_{age}", folder
                 )
 
     # def correlate_stability_to_reversal(
