@@ -8086,14 +8086,17 @@ class RecentReversal:
                 )
 
         if "F" in panels:
+            ages_to_plot='young'
             _, _, chi, fig = self.plot_proportion_fading_ensembles_near_important_ports(
-                ages_to_plot="young"
+                ages_to_plot=ages_to_plot
             )
 
             if self.save_configs["save_figs"]:
                 self.save_fig(
                     fig, f"Fading ensemble field location_{ages_to_plot}", folder
                 )
+
+            return chi
 
         if "G" in panels:
             mouse = "Fornax"
@@ -8118,6 +8121,8 @@ class RecentReversal:
                 self.save_fig(
                     fig, f"Clustering coefficient of ensemble members_{age}", folder
                 )
+
+            return anova_dfs
 
     # def make_fig4(self, panels=None):
     #     if panels is None:
@@ -8292,6 +8297,8 @@ class RecentReversal:
                 self.save_fig(
                     fig, f"Clustering coefficient of ensemble members_{age}", folder
                 )
+
+            return anova_dfs
 
     # def correlate_stability_to_reversal(
     #     self,
