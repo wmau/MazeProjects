@@ -7185,7 +7185,7 @@ class RecentReversal:
 
         return fig, cbar_fig
 
-    def make_graph(self, data, method="fdr_bh"):
+    def make_graphs(self, data, method="fdr_bh"):
         A = [np.zeros(pvals.shape) for pvals in data["pvals"]]
         for i, (pvals, R) in enumerate(zip(data["pvals"], data["correlations"])):
             np.fill_diagonal(pvals, 1)
@@ -7204,7 +7204,7 @@ class RecentReversal:
         data = self.xcorr_ensemble_cells(
             mouse, session_type, ensemble_number, n_splits=n_splits, show_plot=False
         )
-        G = self.make_graph(data, method=method)
+        G = self.make_graphs(data, method=method)
 
         fig, axs = plt.subplots(2, n_splits, figsize=(2 * n_splits, 4.5))
         cbar_fig = self.plot_cell_xcorr_matrices(
@@ -7224,6 +7224,107 @@ class RecentReversal:
         fig.tight_layout()
 
         return fig, cbar_fig
+
+    def xcorr_fading_ensembles(self, mouse, session_type, n_splits=6):
+        ensemble_trends = self.find_activity_trends(mouse, session_type)[0]
+
+        if not ensemble_trends["decreasing"]:
+            return None
+
+        xcorrs = dict()
+        for ensemble in ensemble_trends['decreasing']:
+            xcorrs[ensemble] = self.xcorr_ensemble_cells(
+                mouse, session_type, ensemble, n_splits=n_splits, show_plot=False
+            )
+
+        return xcorrs
+
+    def degree_comparison(self, mouse, session_type, n_splits=6, method='fdr_bh', show_plot=False):
+        xcorrs = self.xcorr_fading_ensembles(mouse, session_type, n_splits=n_splits)
+
+        if xcorrs is None:
+            return None, None
+
+        G_seqs = [self.make_graphs(ensemble, method=method) for ensemble in xcorrs.values()]
+
+        degrees = dict()
+        mean_degrees = [[], [], [], []]
+        for G_seq, ensemble in zip(G_seqs, xcorrs.keys()):
+            degrees[ensemble] = []
+            degrees_last = np.asarray([d for n,d in G_seq[-1].degree()])
+            degrees_first = np.asarray([d for n,d in G_seq[0].degree()])
+            percentiles = np.percentile(degrees_last, [0, 25, 50, 75, 100])
+
+            for i, (lower, upper) in enumerate(zip(percentiles[:-1],
+                                                   percentiles[1:])):
+                idx = np.logical_and(degrees_last >= lower,
+                                     degrees_last <= upper)
+                d = {
+                    'first': degrees_first[idx],
+                    'last': degrees_last[idx]
+                }
+                degrees[ensemble].append(d)
+                mean_degrees[i].append([np.nanmean(d['first']),
+                                        np.nanmean(d['last'])])
+
+        mean_degrees = [np.vstack(m).T for m in mean_degrees]
+
+        if show_plot:
+            titles = ['1st quartile', '2nd quartile', '3rd quartile', '4th quartile']
+            fig, axs = plt.subplots(1, 4, sharey=True, figsize=(10,6))
+            for title, d, ax in zip(titles, mean_degrees, axs):
+                boxes = ax.boxplot([y for y in d], patch_artist=True, widths=0.75)
+                color_boxes(boxes, 'w')
+                ax.set_title(title)
+                ax.set_xticklabels(['Beginning\nof session', 'End of\nsession'], rotation=45)
+                [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+
+            axs[0].set_ylabel('Degree')
+            fig.tight_layout()
+            fig.subplots_adjust(wspace=0.3)
+
+        return degrees, mean_degrees
+
+    def degree_comparison_all_mice(self, age):
+        """
+        Compute degrees for all neurons based on the graph from the last 5 min of the
+        session. The neurons with the lowest quartile of degrees are called "dropped",
+        and the neurons with the highest quartile of degrees are called "hubs". At the
+        first 5 min of the session, do the dropped neurons already have lower degrees
+        than hub neurons?
+
+        :param age:
+        :return:
+        """
+        mice = self.meta['grouped_mice'][age]
+        Degrees = dict()
+        Mean_Degrees = dict()
+        for mouse in mice:
+            Degrees[mouse], Mean_Degrees[mouse] = \
+                self.degree_comparison(mouse, 'Reversal', show_plot=False)
+
+            if Degrees[mouse] is None:
+                Degrees.pop(mouse)
+                Mean_Degrees.pop(mouse)
+
+        n_mice = len(Mean_Degrees.values())
+        fig, axs = plt.subplots(1, n_mice, sharey=True, figsize=(2*n_mice, 4.8))
+        for mouse, ax in zip(Degrees.keys(), axs):
+            stable = np.hstack([ensemble[-1]['first'] for ensemble in Degrees[mouse].values()])
+            disconnected = np.hstack([ensemble[0]['first'] for ensemble in Degrees[mouse].values()])
+
+            boxes = ax.boxplot([stable, disconnected], widths=0.75, patch_artist=True)
+            color_boxes(boxes, 'w')
+            ax.set_xticklabels(['Hub\nneurons', 'Dropped\nneurons'], rotation=45, fontsize=14)
+            ax.set_title(mouse)
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+
+            print(ttest_ind(stable, disconnected))
+        axs[0].set_ylabel('Degree')
+        fig.tight_layout()
+        fig.subplots_adjust(wspace=0.3)
+
+        return Degrees, Mean_Degrees
 
     def R_percentile_comparison(self, mouse, session_type, n_splits=6, percentile=33,
                                 plot_all_ensembles=True, plot_means=True):
@@ -7307,6 +7408,31 @@ class RecentReversal:
 
     def R_percentiles_all_mice(self, age='young', session_type='Reversal', percentile=33.33, method='scatter',
                                **kwargs):
+        """
+        Sorts cell pair correlation coefficients into the top p percentile and the bottom
+        1-p percentile based on the correlation matrix computed from the last 5 min of
+        the session. The top percentile are stable cell pairs and the bottom percentile
+        are disconnected cell pairs. Then produces two plots.
+
+        1) In the FIRST 5 min of the session, the correlation coefficients of the
+        disconnected cell pairs against the stable cell pairs, one dot per ensemble,
+        colored by mouse. This shows that within each ensemble, the stable neurons
+        have higher rhos than the disconnected neurons starting from the beginning of the
+        session.
+
+        2) The correlation coefficients of the disconnected cell pairs in the first
+        versus the last 5 min of the session. Also the same thing for the stable cell pairs.
+        This is to show the dynamic range. The disconnected neurons cluster near the bottom
+        left, meaning they had low rhos to begin with and drop to near 0. In contrast,
+        the highly correlated cell pairs are stable across time.
+
+        :param age:
+        :param session_type:
+        :param percentile:
+        :param method:
+        :param kwargs:
+        :return:
+        """
         data = dict()
         for mouse in self.meta['grouped_mice'][age]:
             data[mouse] = self.R_percentile_comparison(mouse, session_type, percentile=percentile,
@@ -7330,8 +7456,8 @@ class RecentReversal:
             for values in data.values():
                 self.plot_upper_lower(values, ax, percentile=percentile, method=method)
             plot_xy_line(ax)
-            ax.set_xlabel(r"Mean $\rho$ of" "\n" "stable cell pairs")
-            ax.set_ylabel(r"Mean $\rho$ of" "\n" "disconnected cell pairs")
+            ax.set_xlabel(r"Mean $\rho$ of" "\n" "hub cell pairs")
+            ax.set_ylabel(r"Mean $\rho$ of" "\n" "dropped cell pairs")
             ax.axis('square')
             fig.tight_layout()
         else:
@@ -7350,9 +7476,9 @@ class RecentReversal:
                 fig.subplots_adjust(wspace=0.3)
 
         elif method == 'scatter':
-            fig, axs = plt.subplots(1, 2, sharey=True, sharex=True)
+            fig, axs = plt.subplots(1, 2, sharey=True, sharex=True, figsize=(9,4.8))
             for p, stability, ax in zip(['lower', 'upper'],
-                                        ["disconnected", "stable"],
+                                        ["dropped", "hub"],
                                         axs):
                 for values in data.values():
                     self.plot_delta_by_percentile(values, ax, percentile=p, method=method)
@@ -7368,22 +7494,15 @@ class RecentReversal:
     def G_clustering(
         self, mouse, session_type, n_splits=6, method="fdr_bh", ax=None, color="k"
     ):
-        ensemble_trends = self.find_activity_trends(mouse, session_type)[0]
-
-        if not ensemble_trends["decreasing"]:
-            return
-
-        G_all_ensembles = []
-        for ensemble in ensemble_trends["decreasing"]:
-            data = self.xcorr_ensemble_cells(
-                mouse, session_type, ensemble, n_splits=n_splits, show_plot=False
-            )
-
-            G_all_ensembles.append(self.make_graph(data, method=method))
+        all_ensembles = self.xcorr_fading_ensembles(
+            mouse, session_type, n_splits=n_splits, show_plot=False
+        )
+        G_all_ensembles = [self.make_graphs(data, method=method)
+                           for data in all_ensembles]
 
         cluster_coeffs = []
         for G in G_all_ensembles:
-            cluster_coeffs.append([average_clustering(g) for g in G])
+            cluster_coeffs = [average_clustering(g) for g in G]
         cluster_coeffs = np.vstack(cluster_coeffs)
 
         if ax is None:
