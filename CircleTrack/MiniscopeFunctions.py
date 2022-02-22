@@ -454,7 +454,7 @@ class CalciumSession:
         """
         raster = spatial_data['rasters'][neuron]
         field_bins = define_field_bins(spatial_data[tuning_curve][neuron], field_threshold=field_threshold)
-        threshold = np.nanmedian(raster[:, field_bins])
+        threshold = np.nanmean(raster[:, field_bins])
         fired_in_field = np.any(raster[:, field_bins] > threshold, axis=1)
 
         if not even_split:

@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib
+from matplotlib.pyplot import cm
 from CaImaging.util import (
     sem,
     nan_array,
@@ -2887,6 +2888,105 @@ class RecentReversal:
 
         return reliabilities
 
+    def reliabilities_df(self, session_type, **kwargs):
+        reliabilities = self.plot_reliabilities(session_type, show_plot=False, **kwargs)
+        reliabilities_df = pd.DataFrame()
+        for age in ages:
+            for mouse, rel_list in zip(self.meta['grouped_mice'][age],
+                                       reliabilities[age]):
+                mouse_dict = {
+                    'age': age,
+                    'mouse': mouse,
+                    'units': np.arange(len(rel_list)),
+                    'reliabilities': rel_list,
+                    'session': session_type,
+                }
+
+                reliabilities_df = pd.concat((reliabilities_df, pd.DataFrame(mouse_dict)))
+
+        return reliabilities_df
+
+    def fading_ensemble_reliabilities_on_other_days(self, other_session='Goals4',
+                                                    origin_session='Reversal',
+                                                    ages_to_plot='young'):
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+        reliabilities_df = pd.DataFrame()
+        session_pair = [origin_session, other_session]
+        for session in session_pair:
+            reliabilities_df = pd.concat((self.reliabilities_df(session), reliabilities_df))
+
+        trends = dict()
+        registered_ensembles = dict()
+        for age in ages_to_plot:
+            for mouse in self.meta['grouped_mice'][age]:
+                trends[mouse] = self.find_activity_trends(mouse, origin_session)[0]
+                registered_ensembles[mouse] = self.match_ensembles(mouse, session_pair)
+
+        fig, axs = plt.subplots(1,2, sharey=True, figsize=(6.4,7))
+        xticklabels = {
+            other_session: ['Fading\n(during Reversal)',
+                            'No trend\n(during Reversal)'],
+            origin_session: ['Fading', 'No trend']
+        }
+        for ax, session in zip(axs, [other_session, origin_session]):
+            for age in ages_to_plot:
+                colors = cm.rainbow(np.linspace(0, 1, len(self.meta['grouped_mice'][age])))
+                edgecolor = 'k' if age == 'aged' else 'face'
+                for mouse, c in zip(self.meta['grouped_mice'][age], colors):
+                    if session == other_session:
+                        poor_matches = np.where(registered_ensembles[mouse]['poor_matches'])[0]
+                    else:
+                        poor_matches = []
+                    fading = [f for f in trends[mouse]['decreasing'] if f not in poor_matches]
+                    no_trend = [n for n in trends[mouse]['no trend'] if n not in poor_matches]
+
+                    if session == other_session:
+                        fading = registered_ensembles[mouse]['matches'][fading]
+                        no_trend = registered_ensembles[mouse]['matches'][no_trend]
+
+                    # Get session data.
+                    mouse_idx = reliabilities_df['mouse'] == mouse
+                    session_idx = reliabilities_df['session'] == session
+                    mouse_data = reliabilities_df.loc[np.logical_and(mouse_idx, session_idx)]
+
+                    #Index fading / no trend ensembles.
+                    fading_rels = mouse_data.loc[mouse_data['units'].isin(fading),
+                                                 'reliabilities']
+                    no_trend_rels = mouse_data.loc[mouse_data['units'].isin(no_trend),
+                                                   'reliabilities']
+
+                    # Plot.
+                    x = np.hstack(
+                        (jitter_x(np.zeros_like(fading_rels), 0.05),
+                         jitter_x(np.ones_like(no_trend_rels), 0.05))
+                    )
+                    ax.scatter(
+                        x,
+                        np.hstack((fading_rels, no_trend_rels)),
+                        c=c, edgecolors=edgecolor, alpha=0.2
+                    )
+                    ax.plot([0, 1], [np.nanmean(fading_rels), np.nanmean(no_trend_rels)],
+                            'o-', c=c, markeredgecolor=c, markersize=10)
+
+                    ax.set_xticks([0, 1])
+                    ax.set_xticklabels(xticklabels[session], rotation=45)
+                    [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+                    ax.set_title(session.replace('Goals', 'Training'))
+
+            axs[0].set_ylabel('Ensemble field reliabilities')
+            fig.tight_layout()
+
+        return reliabilities_df
+
+    def scrollplot_fading_ensembles(self, mouse, session_type="Goals4"):
+        trends = self.find_activity_trends(mouse, 'Reversal')[0]
+        registered_ensembles = self.match_ensembles(mouse, ('Reversal', session_type))
+        poor_matches = np.where(registered_ensembles['poor_matches'])[0]
+        fading = [f for f in trends['decreasing'] if f not in poor_matches]
+        ensemble_numbers = registered_ensembles['matches'][fading]
+
+        self.scrollplot_ensemble_rasters(mouse, session_type, subset=ensemble_numbers)
+
     def plot_reliabilities_comparisons(
         self,
         session_types=("Goals4", "Reversal"),
@@ -3413,6 +3513,63 @@ class RecentReversal:
                            for i in iterations]
 
         return error, errors_shuffled
+
+    def plot_spatial_decoder_errors_over_days(self, session_types=None,
+                                              ages_to_plot='young',
+                                              **kwargs):
+        if session_types is None:
+            session_types = self.meta['session_types']
+
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+        errors = dict()
+        errors_shuffled = dict()
+        for session_type in session_types:
+            errors[session_type] = dict()
+            errors_shuffled[session_type] = dict()
+            for age in ages_to_plot:
+                errors[session_type][age] = []
+                errors_shuffled[session_type][age] = []
+                for mouse in self.meta['grouped_mice'][age]:
+                    e, es = self.within_session_spatial_decoder(mouse, session_type, **kwargs)
+                    errors[session_type][age].append(e)
+                    errors_shuffled[session_type][age].append(es)
+
+        xlabels = [session.replace('Goals', 'Training') for session in session_types]
+        fig, axs = plt.subplots(1, n_ages_to_plot, sharey=True)
+        axs = [axs] if n_ages_to_plot==1 else axs
+        for ax, age, color in zip(axs, ages_to_plot, plot_colors):
+            errors_by_mouse = []
+            shuffles_by_mouse = []
+            for session_type in session_types:
+                errors_by_mouse.append(errors[session_type][age])
+                shuffles_by_mouse.append(np.nanmean(errors_shuffled[session_type][age],
+                                                    axis=1))
+
+            errors_by_mouse = np.vstack(errors_by_mouse)
+            shuffles_by_mouse = np.vstack(shuffles_by_mouse)
+            ax.plot(xlabels, errors_by_mouse, color=color, alpha=0.5)
+            ax.plot(xlabels, shuffles_by_mouse, color='gray', alpha=0.5)
+            errorfill(
+                xlabels,
+                np.nanmean(errors_by_mouse, axis=1),
+                sem(errors_by_mouse, axis=1),
+                ax=ax,
+                color=color
+            )
+
+            errorfill(
+                xlabels,
+                np.nanmean(shuffles_by_mouse, axis=1),
+                sem(shuffles_by_mouse, axis=1),
+                ax=ax,
+                color='gray'
+            )
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+            ax.set_xticklabels(xlabels, rotation=45)
+        axs[0].set_ylabel('Decoding error (cm)', fontsize=22)
+        fig.tight_layout()
+
+        return errors, errors_shuffled
 
     def plot_spatial_decoder_errors(self, session_type, ages_to_plot='young', **kwargs):
         ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
@@ -4040,7 +4197,7 @@ class RecentReversal:
         return fig
 
     def scrollplot_ensemble_rasters(
-        self, mouse, session_type, bin_size=0.6, running_only=False, subset=None
+        self, mouse, session_type, bin_size=0.2, running_only=False, subset=None
     ):
 
         session = self.data[mouse][session_type]
@@ -4906,37 +5063,37 @@ class RecentReversal:
         }
         return anova_dfs, pairwise_dfs, df
 
-    def ensemble_feature_selector(
-        self,
-        mouse,
-        session_type,
-        licks_only=True,
-        feature_selector=RFECV,
-        estimator=GaussianNB(),
-        show_plot=True,
-        **kwargs,
-    ):
-        session = self.data[mouse][session_type]
-        ensemble_activations = zscore(session.assemblies["activations"], axis=0).T
-        licks = np.asarray(session.behavior.data["df"]["lick_port"])
-
-        if licks_only:
-            licking = licks > -1
-            ensemble_activations = ensemble_activations[licking]
-            licks = licks[licking]
-
-        fs = feature_selector(
-            estimator=estimator, cv=StratifiedKFold(3), n_jobs=6, **kwargs
-        )
-        fs.fit(ensemble_activations, licks)
-
-        # if show_plot:
-        #     fig, ax = plt.subplots()
-        #     ax.set_xlabel("Number of features selected")
-        #     ax.set_ylabel("Cross validation score (nb of correct classifications)")
-        #     ax.plot(fs.grid_scores_)
-
-        return fs
+    # def ensemble_feature_selector(
+    #     self,
+    #     mouse,
+    #     session_type,
+    #     licks_only=True,
+    #     feature_selector=RFECV,
+    #     estimator=GaussianNB(),
+    #     show_plot=True,
+    #     **kwargs,
+    # ):
+    #     session = self.data[mouse][session_type]
+    #     ensemble_activations = zscore(session.assemblies["activations"], axis=0).T
+    #     licks = np.asarray(session.behavior.data["df"]["lick_port"])
+    #
+    #     if licks_only:
+    #         licking = licks > -1
+    #         ensemble_activations = ensemble_activations[licking]
+    #         licks = licks[licking]
+    #
+    #     fs = feature_selector(
+    #         estimator=estimator, cv=StratifiedKFold(3), n_jobs=6, **kwargs
+    #     )
+    #     fs.fit(ensemble_activations, licks)
+    #
+    #     # if show_plot:
+    #     #     fig, ax = plt.subplots()
+    #     #     ax.set_xlabel("Number of features selected")
+    #     #     ax.set_ylabel("Cross validation score (nb of correct classifications)")
+    #     #     ax.plot(fs.grid_scores_)
+    #
+    #     return fs
 
     def plot_ensemble_sizes(
         self,
@@ -6961,20 +7118,93 @@ class RecentReversal:
         return ensemble_fields, ensemble_field_data
 
     def correlate_ensemble_fields(
-        self, mouse, session_types, spatial_bin_size_radians=0.05
+        self, mouse, session_types, spatial_bin_size_radians=0.05, subset=None,
+            n_shuffles=None,
     ):
         ensemble_fields = self.map_ensemble_fields(
             mouse, session_types, spatial_bin_size_radians=spatial_bin_size_radians
         )[0]
 
+        if subset is None:
+            subset = range(len(ensemble_fields[0]))
+
         rhos = [
             spearmanr(ensemble_day1, ensemble_day2)[0]
             for ensemble_day1, ensemble_day2 in zip(
-                ensemble_fields[0], ensemble_fields[1]
+                ensemble_fields[0][subset], ensemble_fields[1][subset]
             )
         ]
 
-        return np.asarray(rhos)
+        if n_shuffles is not None:
+            shuffle_rhos = []
+            ensembles_1 = ensemble_fields[0][subset]
+
+            shuffles = tqdm(range(n_shuffles))
+            for i in shuffles:
+                ensembles_2 = np.random.permutation(ensemble_fields[1][subset])
+
+                shuffle_rhos.append(
+                    [spearmanr(a, b)[0] for a, b in zip(ensembles_1, ensembles_2)]
+                )
+        else:
+            shuffle_rhos = None
+
+        return np.asarray(rhos), shuffle_rhos
+
+    def fading_ensemble_spatial_corr(self, session_type='Goals4', ages_to_plot='young'):
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+
+        rho_df = pd.DataFrame()
+        for age in ages_to_plot:
+            for mouse in self.meta['grouped_mice'][age]:
+                trends = self.find_activity_trends(mouse, 'Reversal')[0]
+                rhos, shuffle_rhos = self.correlate_ensemble_fields(mouse,
+                                                                    ('Reversal', session_type),
+                                                                    subset=trends['decreasing'],
+                                                                    n_shuffles=100)
+
+                rho_dict = {
+                    'age': age,
+                    'mouse': mouse,
+                    'mean_rho': [np.nanmean(rhos)],
+                    'mean_shuffle': [np.nanmean(np.hstack(shuffle_rhos))],
+                }
+
+                rho_df = pd.concat((rho_df, pd.DataFrame(rho_dict)))
+
+        fig, axs = plt.subplots(1, n_ages_to_plot, sharey=True, figsize=(3.5*n_ages_to_plot, 4.8))
+        axs = [axs] if n_ages_to_plot else axs
+        for age, color, ax in zip(ages_to_plot, plot_colors, axs):
+            real = rho_df.loc[rho_df['age']==age, 'mean_rho']
+            chance = rho_df.loc[rho_df['age']==age, 'mean_shuffle']
+            boxes = ax.boxplot(
+                [real[~np.isnan(real)], chance[~np.isnan(chance)]],
+                patch_artist=True,
+                zorder=0,
+                widths=0.75,
+                showfliers=False
+            )
+            color_boxes(boxes, color)
+
+            ax.plot(
+                [jitter_x(np.ones_like(real)), jitter_x(np.ones_like(chance)*2)],
+                [real, chance], 'o-', color='k', markerfacecolor=color, zorder=1,
+                markersize=10,
+            )
+
+            ax.set_xticks([1,2])
+            ax.set_xticklabels(['Real', 'Shuffled'], rotation=45)
+            ax.set_ylabel('Fading ensemble' "\n" r'spatial correlation [$\rho$]')
+            [ax.spines[side].set_visible(False) for side in ['top','right']]
+
+        fig.suptitle(f'Reversal x {session_type.replace("Goals", "Training")}')
+        fig.tight_layout()
+
+        stats = ttest_rel(rho_df['mean_rho'].dropna(), rho_df['mean_shuffle'].dropna())
+        msg = f't={np.round(stats.statistic, 3)}, p={stats.pvalue}'
+        print(msg)
+
+        return rho_df
 
     def plot_ensemble_field_correlations(self, session_pair: tuple, show_plot=True):
         ensemble_field_rhos = dict()
@@ -6982,7 +7212,7 @@ class RecentReversal:
             ensemble_field_rhos[age] = []
 
             for mouse in self.meta["grouped_mice"][age]:
-                rhos = self.correlate_ensemble_fields(mouse, session_pair)
+                rhos = self.correlate_ensemble_fields(mouse, session_pair)[0]
                 ensemble_field_rhos[age].append(rhos[~np.isnan(rhos)])
 
         if show_plot:
@@ -7056,7 +7286,7 @@ class RecentReversal:
         """
         rhos = {
             age: [
-                np.nanmedian(self.correlate_ensemble_fields(mouse, session_pair))
+                np.nanmedian(self.correlate_ensemble_fields(mouse, session_pair)[0])
                 for mouse in self.meta["grouped_mice"][age]
             ]
             for age in ages
@@ -7483,8 +7713,8 @@ class RecentReversal:
                 for values in data.values():
                     self.plot_delta_by_percentile(values, ax, percentile=p, method=method)
 
-                ax.set_xlabel(r"Mean $\rho$ of future" "\n" f"{stability} cell pairs" "\n" "beginning of session")
-                ax.set_ylabel(r"Mean $\rho$ of" "\n" f"{stability} cell pairs" "\n" "end of session")
+                ax.set_xlabel(r"Mean $\rho$ of" "\n" f"{stability} cell pairs," "\n" "beginning of session")
+                ax.set_ylabel(r"Mean $\rho$ of" "\n" f"{stability} cell pairs," "\n" "end of session")
             fig.tight_layout()
             fig.subplots_adjust(wspace=0.3)
             [plot_xy_line(ax) for ax in axs]
@@ -8040,172 +8270,172 @@ class RecentReversal:
 
         return R
 
-    def behavior_changepoint(
-        self,
-        mouse,
-        session_type="Reversal",
-        changepoint_algo=rpt.BottomUp,
-        behav_trial_threshold=3,
-        **algo_kwargs,
-    ):
-        behavior = self.data[mouse][session_type].behavior
-        (
-            behavior.data["learning"]["correct_responses"],
-            behavior.data["learning"]["curve"],
-            behavior.data["learning"]["start"],
-            behavior.data["learning"]["inflection"],
-            behavior.data["learning"]["criterion"],
-        ) = behavior.get_learning_curve(
-            trial_threshold=behav_trial_threshold, criterion="individual"
-        )
-
-        changepoint = changepoint_algo(**algo_kwargs).fit_predict(
-            behavior.data["learning"]["correct_responses"], n_bkps=1
-        )[0]
-
-        return changepoint
-
-    def ensemble_PV_changepoint(
-        self,
-        mouse,
-        session_type="Reversal",
-        bin_size=0.05,
-        changepoint_algo=rpt.BottomUp,
-        data_type="ensembles",
-        show_plot=True,
-        **algo_kwargs,
-    ):
-        R = self.trial_PV_corr(
-            mouse, session_type, data_type=data_type, bin_size=bin_size
-        )
-
-        changepoint = changepoint_algo(**algo_kwargs).fit_predict(R, n_bkps=1)[0]
-
-        if show_plot:
-            fig, ax = plt.subplots()
-
-            ax.imshow(R, cmap="bwr", aspect="equal")
-            ax.axvline(x=changepoint)
-            ax.set_xlabel("Trial")
-            ax.set_ylabel("Trial")
-
-        return changepoint, R
-
-    def corr_ensemble_PV_and_behavior_changepoints(
-        self,
-        age,
-        session_type="Reversal",
-        normalize=True,
-        show_plot=True,
-        ensemble_function="binned_activations",
-        **algo_kwargs,
-    ):
-        f = {
-            "binned_activations": self.binned_activations_changepoint,
-            "ensemble_PV": self.ensemble_PV_changepoint,
-        }
-        changepoints = pd.DataFrame(columns=["mice", "ensemble", "behavior"])
-        changepoints_ = dict()
-        for mouse in self.meta["grouped_mice"][age]:
-            session = self.data[mouse][session_type]
-            changepoints_["ensemble"] = f[ensemble_function](
-                mouse, session_type, show_plot=False, **algo_kwargs
-            )[0]
-            changepoints_["behavior"] = self.behavior_changepoint(
-                mouse, session_type, **algo_kwargs
-            )
-
-            if normalize:
-                changepoints_ = {
-                    key: changepoints_[key] / session.behavior.data["ntrials"]
-                    for key in ["ensemble", "behavior"]
-                }
-            changepoints = changepoints.append(
-                {
-                    "mice": mouse,
-                    "ensemble": changepoints_["ensemble"],
-                    "behavior": changepoints_["behavior"],
-                },
-                ignore_index=True,
-            )
-
-        if show_plot:
-            fig, ax = plt.subplots()
-            ax.scatter(changepoints["ensemble"], changepoints["behavior"])
-            ax.set_xlabel("Ensemble changepoint")
-            ax.set_ylabel("Behavior changepoint")
-            plot_xy_line(ax)
-            fig.tight_layout()
-
-        return changepoints
-
-    def binned_activations_changepoint(
-        self,
-        mouse,
-        session_type="Reversal",
-        changepoint_algo=rpt.BottomUp,
-        show_plot=True,
-        **algo_kwargs,
-    ):
-        trends, binned_activations, slopes, _ = self.find_activity_trends(
-            mouse,
-            session_type,
-            x="trial",
-            x_bin_size=1,
-        )
-        changepoint = changepoint_algo(**algo_kwargs).fit_predict(
-            binned_activations.T, n_bkps=1
-        )[0]
-
-        if show_plot:
-            fig, ax = plt.subplots()
-            ax.imshow(binned_activations)
-            ax.axvline(x=changepoint)
-
-        return changepoint, binned_activations
-
-    def align_ensemble_peaks_to_behavioral_changepoint(
-        self,
-        mouse,
-        session_type="Reversal",
-        changepoint_algo=rpt.BottomUp,
-        xtent=10,
-        behav_trial_threshold=3,
-        **algo_kwargs,
-    ):
-        (
-            binned_activations_changepoint,
-            binned_activations,
-        ) = self.binned_activations_changepoint(
-            mouse,
-            session_type,
-            changepoint_algo=changepoint_algo,
-            show_plot=False,
-            **algo_kwargs,
-        )
-        changepoints = {
-            "behavior": self.behavior_changepoint(
-                mouse,
-                session_type,
-                changepoint_algo=changepoint_algo,
-                behav_trial_threshold=behav_trial_threshold,
-                **algo_kwargs,
-            ),
-            "ensemble": binned_activations_changepoint,
-        }
-
-        fig, ax = plt.subplots()
-        ax.plot(
-            np.arange(-xtent, xtent),
-            np.median(
-                binned_activations[
-                    :,
-                    changepoints["behavior"] - xtent : changepoints["behavior"] + xtent,
-                ],
-                axis=0,
-            ),
-        )
-        return changepoints, binned_activations
+    # def behavior_changepoint(
+    #     self,
+    #     mouse,
+    #     session_type="Reversal",
+    #     changepoint_algo=rpt.BottomUp,
+    #     behav_trial_threshold=3,
+    #     **algo_kwargs,
+    # ):
+    #     behavior = self.data[mouse][session_type].behavior
+    #     (
+    #         behavior.data["learning"]["correct_responses"],
+    #         behavior.data["learning"]["curve"],
+    #         behavior.data["learning"]["start"],
+    #         behavior.data["learning"]["inflection"],
+    #         behavior.data["learning"]["criterion"],
+    #     ) = behavior.get_learning_curve(
+    #         trial_threshold=behav_trial_threshold, criterion="individual"
+    #     )
+    #
+    #     changepoint = changepoint_algo(**algo_kwargs).fit_predict(
+    #         behavior.data["learning"]["correct_responses"], n_bkps=1
+    #     )[0]
+    #
+    #     return changepoint
+    #
+    # def ensemble_PV_changepoint(
+    #     self,
+    #     mouse,
+    #     session_type="Reversal",
+    #     bin_size=0.05,
+    #     changepoint_algo=rpt.BottomUp,
+    #     data_type="ensembles",
+    #     show_plot=True,
+    #     **algo_kwargs,
+    # ):
+    #     R = self.trial_PV_corr(
+    #         mouse, session_type, data_type=data_type, bin_size=bin_size
+    #     )
+    #
+    #     changepoint = changepoint_algo(**algo_kwargs).fit_predict(R, n_bkps=1)[0]
+    #
+    #     if show_plot:
+    #         fig, ax = plt.subplots()
+    #
+    #         ax.imshow(R, cmap="bwr", aspect="equal")
+    #         ax.axvline(x=changepoint)
+    #         ax.set_xlabel("Trial")
+    #         ax.set_ylabel("Trial")
+    #
+    #     return changepoint, R
+    #
+    # def corr_ensemble_PV_and_behavior_changepoints(
+    #     self,
+    #     age,
+    #     session_type="Reversal",
+    #     normalize=True,
+    #     show_plot=True,
+    #     ensemble_function="binned_activations",
+    #     **algo_kwargs,
+    # ):
+    #     f = {
+    #         "binned_activations": self.binned_activations_changepoint,
+    #         "ensemble_PV": self.ensemble_PV_changepoint,
+    #     }
+    #     changepoints = pd.DataFrame(columns=["mice", "ensemble", "behavior"])
+    #     changepoints_ = dict()
+    #     for mouse in self.meta["grouped_mice"][age]:
+    #         session = self.data[mouse][session_type]
+    #         changepoints_["ensemble"] = f[ensemble_function](
+    #             mouse, session_type, show_plot=False, **algo_kwargs
+    #         )[0]
+    #         changepoints_["behavior"] = self.behavior_changepoint(
+    #             mouse, session_type, **algo_kwargs
+    #         )
+    #
+    #         if normalize:
+    #             changepoints_ = {
+    #                 key: changepoints_[key] / session.behavior.data["ntrials"]
+    #                 for key in ["ensemble", "behavior"]
+    #             }
+    #         changepoints = changepoints.append(
+    #             {
+    #                 "mice": mouse,
+    #                 "ensemble": changepoints_["ensemble"],
+    #                 "behavior": changepoints_["behavior"],
+    #             },
+    #             ignore_index=True,
+    #         )
+    #
+    #     if show_plot:
+    #         fig, ax = plt.subplots()
+    #         ax.scatter(changepoints["ensemble"], changepoints["behavior"])
+    #         ax.set_xlabel("Ensemble changepoint")
+    #         ax.set_ylabel("Behavior changepoint")
+    #         plot_xy_line(ax)
+    #         fig.tight_layout()
+    #
+    #     return changepoints
+    #
+    # def binned_activations_changepoint(
+    #     self,
+    #     mouse,
+    #     session_type="Reversal",
+    #     changepoint_algo=rpt.BottomUp,
+    #     show_plot=True,
+    #     **algo_kwargs,
+    # ):
+    #     trends, binned_activations, slopes, _ = self.find_activity_trends(
+    #         mouse,
+    #         session_type,
+    #         x="trial",
+    #         x_bin_size=1,
+    #     )
+    #     changepoint = changepoint_algo(**algo_kwargs).fit_predict(
+    #         binned_activations.T, n_bkps=1
+    #     )[0]
+    #
+    #     if show_plot:
+    #         fig, ax = plt.subplots()
+    #         ax.imshow(binned_activations)
+    #         ax.axvline(x=changepoint)
+    #
+    #     return changepoint, binned_activations
+    #
+    # def align_ensemble_peaks_to_behavioral_changepoint(
+    #     self,
+    #     mouse,
+    #     session_type="Reversal",
+    #     changepoint_algo=rpt.BottomUp,
+    #     xtent=10,
+    #     behav_trial_threshold=3,
+    #     **algo_kwargs,
+    # ):
+    #     (
+    #         binned_activations_changepoint,
+    #         binned_activations,
+    #     ) = self.binned_activations_changepoint(
+    #         mouse,
+    #         session_type,
+    #         changepoint_algo=changepoint_algo,
+    #         show_plot=False,
+    #         **algo_kwargs,
+    #     )
+    #     changepoints = {
+    #         "behavior": self.behavior_changepoint(
+    #             mouse,
+    #             session_type,
+    #             changepoint_algo=changepoint_algo,
+    #             behav_trial_threshold=behav_trial_threshold,
+    #             **algo_kwargs,
+    #         ),
+    #         "ensemble": binned_activations_changepoint,
+    #     }
+    #
+    #     fig, ax = plt.subplots()
+    #     ax.plot(
+    #         np.arange(-xtent, xtent),
+    #         np.median(
+    #             binned_activations[
+    #                 :,
+    #                 changepoints["behavior"] - xtent : changepoints["behavior"] + xtent,
+    #             ],
+    #             axis=0,
+    #         ),
+    #     )
+    #     return changepoints, binned_activations
 
     def make_fig2(self, panels=None):
         folder = 2
@@ -8303,7 +8533,7 @@ class RecentReversal:
         if "A" in panels:
             mouse = "Lyra"
             session_type = "Reversal"
-            for i in [9, 56]:
+            for i in [58, 56]:
                 fig = self.plot_ensemble(mouse, session_type, i)
 
                 if self.save_configs["save_figs"]:
@@ -8312,7 +8542,7 @@ class RecentReversal:
         if "B" in panels:
             mouse = "Lyra"
             session_type = "Reversal"
-            for i in [9, 56]:
+            for i in [58, 56]:
                 fig = self.plot_ensemble_raster(mouse, session_type, i, bin_size=0.2)
 
                 if self.save_configs["save_figs"]:
@@ -8322,7 +8552,7 @@ class RecentReversal:
 
         if "C" in panels:
             mouse = "Lyra"
-            for i in [9, 56]:
+            for i in [58, 56]:
                 fig = self.plot_activation_trend(mouse, "Reversal", i)
 
                 if self.save_configs["save_figs"]:
