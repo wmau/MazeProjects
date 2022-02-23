@@ -3565,11 +3565,29 @@ class RecentReversal:
                 color='gray'
             )
             [ax.spines[side].set_visible(False) for side in ['top', 'right']]
-            ax.set_xticklabels(xlabels, rotation=45)
+            ax.set_xticklabels(xlabels, rotation=45, fontsize=14)
         axs[0].set_ylabel('Decoding error (cm)', fontsize=22)
         fig.tight_layout()
 
-        return errors, errors_shuffled
+        errors_df = pd.DataFrame()
+        for age in ages_to_plot:
+            for session_type in session_types:
+                errors_df[session_type] = errors[session_type][age]
+            errors_df['mice'] = self.meta['grouped_mice'][age]
+            errors_df['age'] = age
+
+        errors_df = pd.melt(errors_df, id_vars=['mice', 'age'], var_name='session',
+                            value_name='error')
+
+        return errors, errors_shuffled, errors_df
+
+    def multisession_spatial_decoder_anova(self, errors_df):
+        anova_df = pg.rm_anova(errors_df, dv='error', within='session', subject='mice')
+        pairwise_df = pg.pairwise_ttests(errors_df, dv='error', within='session',
+                                         subject='mouse', padjust='bonf')
+
+        return anova_df, pairwise_df
+
 
     def plot_spatial_decoder_errors(self, session_type, ages_to_plot='young', **kwargs):
         ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
