@@ -15,7 +15,9 @@ from CaImaging.util import (
     cluster_corr,
 )
 import multiprocessing as mp
+import random
 import ruptures as rpt
+from scipy.stats import bootstrap
 import networkx as nx
 from networkx.algorithms.approximation.clustering_coefficient import average_clustering
 from CaImaging.plotting import (
@@ -3588,7 +3590,6 @@ class RecentReversal:
 
         return anova_df, pairwise_df
 
-
     def plot_spatial_decoder_errors(self, session_type, ages_to_plot='young', **kwargs):
         ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
 
@@ -4112,6 +4113,30 @@ class RecentReversal:
         )[0]
 
         return fig
+
+    def plot_ex_patterns(self, mouse, session_type, pattern_numbers):
+        assemblies = self.data[mouse][session_type].assemblies
+        patterns = assemblies['patterns'][pattern_numbers]
+        n_patterns = patterns.shape[0]
+        bool_members, members = find_members(patterns)[:2]
+
+        fig, axs = plt.subplots(n_patterns, 1, figsize=(6.4, 2*n_patterns), sharey=True, sharex=True)
+        for ax, pattern, members_, bool_members_ in zip(axs, patterns, members, bool_members):
+            non_members = np.where(~bool_members_.astype(bool))[0]
+            markerlines, stemlines, _ = ax.stem(members_, pattern[members_], 'm', markerfmt='mo',
+                                                label='ensemble members')
+            plt.setp(markerlines, markersize = 3)
+
+            markerlines, stemlines, _ = ax.stem(non_members, pattern[non_members], 'k', markerfmt='ko',
+                                                label='non-members')
+            plt.setp(markerlines, markersize = 3)
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+
+        axs[-1].set_xlabel('Neurons')
+        fig.supylabel('Weights')
+        handles, labels = axs[-1].get_legend_handles_labels()
+        fig.legend(handles, labels)
+        fig.tight_layout()
 
     def make_ensemble_raster(
         self, mouse, session_type, bin_size=0.6, running_only=False
@@ -7040,13 +7065,182 @@ class RecentReversal:
             self.scatter_box(p[session], ax=ax)
 
             ax.set_xticks([])
-            ax.set_title(session.replace("Goals", "Training"))
+            ax.set_title(session.replace("Goals", "Training"), fontsize=14)
 
-        axs[0].set_ylabel("Proportion of ensembles with spatial selectivity")
+        axs[0].set_ylabel("Proportion of\nspatial ensembles")
 
         self.set_age_legend(fig)
+        fig.tight_layout()
+        fig.subplots_adjust(wspace=0)
 
         return p
+
+    def find_proportion_of_fading_ensembles_that_are_spatial(self, session_type,
+                                                             alpha=0.05,
+                                                             ages_to_plot='young',
+                                                             method='sidak'):
+        reversal = True if session_type=='Reversal' else False
+        p_spatial = pd.DataFrame()
+
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+        for age in ages_to_plot:
+            for mouse in self.meta['grouped_mice'][age]:
+                fading = self.find_activity_trends(mouse, 'Reversal')[0]['decreasing']
+
+                if not reversal:
+                    registered_ensembles = self.match_ensembles(mouse, ('Reversal', session_type))
+                    poor_matches = np.where(registered_ensembles['poor_matches'])[0]
+                    fading = [f for f in fading if f not in poor_matches]
+                    fading = registered_ensembles['matches'][fading]
+
+                is_spatial = self.get_spatial_ensembles(mouse, session_type, alpha=alpha,
+                                                        method=method)
+
+                p = np.nanmean(is_spatial[fading])
+                chance = [np.nanmean(random.sample(list(is_spatial), len(fading)))
+                          for i in range(1000)]
+
+                if len(fading):
+                    pval = np.sum(p < np.asarray(chance)) / len(chance)
+                else:
+                    pval=np.nan
+
+                p_spatial = pd.concat(
+                    (p_spatial,
+                     pd.DataFrame({
+                         'mice': mouse,
+                         'age': age,
+                         'session': session_type,
+                         'p_spatial': [p],
+                         'chance': [chance],
+                         'pvalue': [pval]
+                     }))
+                )
+
+        p_spatial = p_spatial.dropna()
+
+        fig, axs = plt.subplots(1, n_ages_to_plot)
+        axs = [axs] if n_ages_to_plot == 1 else axs
+        for age, color, ax in zip(ages_to_plot, plot_colors, axs):
+            idx = p_spatial['age'] == age
+            boxes = ax.boxplot(p_spatial.loc[idx, 'chance'], showfliers=False, zorder=0,
+                               widths=0.75, patch_artist=True)
+            color_boxes(boxes, 'w')
+            ax.plot(np.arange(1, len(idx)+1), p_spatial.loc[idx, 'p_spatial'], '_',
+                    markersize=18, color=color, markeredgewidth=5, zorder=1)
+            ax.set_ylabel(f"P(spatial during {session_type.replace('Goals', 'Training')} "
+                          f"|\nfading during Reversal)", fontsize=22)
+            ax.set_xticklabels(np.unique(p_spatial.loc[idx, 'mice']), rotation=45)
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+        fig.tight_layout()
+
+        return p_spatial
+
+    def SI_comparison_of_fading_ensembles(self, session_type, ages_to_plot='young',
+                                          alpha=0.05, method='sidak', spatial_only=True):
+        SIs_df = pd.DataFrame()
+        reversal = True if session_type=='Reversal' else False
+
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+        for age in ages_to_plot:
+            for mouse in self.meta['grouped_mice'][age]:
+                fading = self.find_activity_trends(mouse, 'Reversal')[0]['decreasing']
+
+                if not reversal:
+                    registered_ensembles = self.match_ensembles(mouse, ('Reversal', session_type))
+                    poor_matches = np.where(registered_ensembles['poor_matches'])[0]
+                    fading = [f for f in fading if f not in poor_matches]
+                    fading = registered_ensembles['matches'][fading]
+
+                is_spatial = np.where(self.get_spatial_ensembles(mouse, session_type, alpha=alpha,
+                                                        method=method))[0]
+                fading = [f for f in fading if f in is_spatial]
+
+                SIs = self.data[mouse][session_type].assemblies['fields'].data['spatial_info_z']
+                SI_fading = SIs[fading]
+                mean_SIs_fading = np.nanmean(SI_fading)
+                if spatial_only:
+                    SIs_to_sample = SIs[is_spatial]
+                else:
+                    SIs_to_sample = SIs
+
+                chance = [np.nanmean(random.sample(list(SIs_to_sample), len(fading)))
+                          for i in range(5000)]
+                if len(fading):
+                    pval = np.sum(mean_SIs_fading < np.asarray(chance)) / len(chance)
+                else:
+                    pval = np.nan
+
+                SIs_df = pd.concat(
+                    (SIs_df,
+                     pd.DataFrame({
+                         'mice': mouse,
+                         'age': age,
+                         'session': session_type,
+                         'SIs': [SI_fading],
+                         'chance': [chance],
+                         'pvalue': [pval]
+                     }))
+                )
+        SIs_df = SIs_df.dropna()
+        fig, axs = plt.subplots(1, n_ages_to_plot, sharey=True)
+        axs = [axs] if n_ages_to_plot==1 else axs
+        for age, color, ax in zip(ages_to_plot, plot_colors, axs):
+            idx = SIs_df['age'] == age
+            boxes = ax.boxplot(SIs_df.loc[idx, 'chance'], showfliers=False, zorder=0,
+                               widths=0.75, patch_artist=True)
+            color_boxes(boxes, 'w')
+            ax.plot(np.arange(1, len(idx)+1), [np.nanmean(si) for si in SIs_df.loc[idx, 'SIs']], '_',
+                    markersize=18, color=color, markeredgewidth=5, zorder=1)
+            chance = np.nanmean([np.nanmean(i) for i in SIs_df.loc[idx, 'chance']])
+            ax.axhline(y=chance, color='r')
+            ax.text(1.1, chance+0.5, 'Chance', horizontalalignment='center', color='r')
+
+            ax.set_ylabel(f"Spatial info. of Reversal fading\nensembles during "
+                          f"{session_type.replace('Goals', 'Training')} (z)", fontsize=18)
+            ax.set_xticklabels(np.unique(SIs_df.loc[idx, 'mice']), rotation=45)
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+
+        fig.tight_layout()
+        return SIs_df
+
+    def fading_also_fading_on_other_sessions(self, session_pair=("Reversal", "Goals4"), ages_to_plot='young'):
+        """
+        Of the fading ensembles from session_pair[0], what proportion of those are fading also in
+        session_pair[1]?
+
+        :param session_pair:
+        :param ages_to_plot:
+        :return:
+        """
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+        p_also_fading = dict()
+        chance = dict()
+        for age in ages_to_plot:
+            for mouse in self.meta['grouped_mice'][age]:
+                trends = {
+                    session: self.find_activity_trends(mouse, session)[0]
+                    for session in session_pair
+                }
+                n_fading = len(trends[session_pair[0]]['decreasing'])
+
+                registered_ensembles = self.match_ensembles(mouse, session_pair)
+                poor_matches = np.where(registered_ensembles['poor_matches'])[0]
+                fading = trends[session_pair[0]]['decreasing']
+                fading = [f for f in fading if f not in poor_matches]
+                fading = registered_ensembles['matches'][fading]
+
+                p_also_fading[mouse] = np.sum([1 for f in fading
+                                               if f in trends[session_pair[1]]['decreasing']]) / n_fading
+
+                chance[mouse] = []
+                n_ensembles = self.data[mouse][session_pair[1]].assemblies['significance'].nassemblies
+                for i in np.arange(1000):
+                    randsamp = random.sample(range(n_ensembles), n_fading)
+                    chance[mouse].append(np.sum([1 for f in fading
+                                          if f in randsamp]) / n_fading)
+
+        return p_also_fading, chance
 
     def map_ensemble_fields(
         self,
