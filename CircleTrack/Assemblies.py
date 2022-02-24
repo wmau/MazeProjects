@@ -17,7 +17,7 @@ def plot_assembly(
     order=None,
     ax=None,
     frames=None,
-    activation_color="r",
+    activation_color="m",
 ):
     """
     Plots single assemblies. This plot contains the activation profile (activation over time)

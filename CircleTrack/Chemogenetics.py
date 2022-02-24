@@ -219,8 +219,9 @@ class Chemogenetics:
                 )
             xlims = [int(x) for x in ax.get_xlim()]
             ax.set_xticks(xlims)
+            n_trials = np.max([self.data[mouse][session_type].data['ntrials'] for mouse in self.meta['mice']])
+            ax.set_xticklabels([1, n_trials])
             ax.set_title(session_type.replace('Goals', 'Training'))
-            ax.set_xticklabels([1, xlims[-1]])
 
             if i == 0:
                 ax.set_ylabel(ylabel[performance_metric])
@@ -235,9 +236,9 @@ class Chemogenetics:
                         ax.fill_between(np.arange(region[0], region[-1]), ylims[-1], ylims[0], alpha=0.4, color='gray')
 
         if n_sessions==1:
-            axs[0].set_xlabel('Sliding trial windows')
+            axs[0].set_xlabel('Trials')
         else:
-            fig.supxlabel("Sliding trial windows")
+            fig.supxlabel("Trials")
         fig.tight_layout()
         fig.subplots_adjust(wspace=0.2)
         axs[-1].legend(loc='lower right', fontsize=14)

@@ -1061,7 +1061,7 @@ class RecentReversal:
         )
 
         pairwise_df = df.pairwise_ttests(
-            dv="metric", between="session", padjust="fdr_bh"
+            dv="metric", between="session", padjust="sidak"
         )
 
         return df, anova_df, pairwise_df, fig
@@ -3567,7 +3567,7 @@ class RecentReversal:
                 color='gray'
             )
             [ax.spines[side].set_visible(False) for side in ['top', 'right']]
-            ax.set_xticklabels(xlabels, rotation=45, fontsize=14)
+            ax.set_xticklabels(xlabels, rotation=45, fontsize=16)
         axs[0].set_ylabel('Decoding error (cm)', fontsize=22)
         fig.tight_layout()
 
@@ -3581,12 +3581,12 @@ class RecentReversal:
         errors_df = pd.melt(errors_df, id_vars=['mice', 'age'], var_name='session',
                             value_name='error')
 
-        return errors, errors_shuffled, errors_df
+        return errors, errors_shuffled, errors_df, fig
 
     def multisession_spatial_decoder_anova(self, errors_df):
         anova_df = pg.rm_anova(errors_df, dv='error', within='session', subject='mice')
         pairwise_df = pg.pairwise_ttests(errors_df, dv='error', within='session',
-                                         subject='mouse', padjust='bonf')
+                                         subject='mice', padjust='sidak')
 
         return anova_df, pairwise_df
 
@@ -4123,7 +4123,7 @@ class RecentReversal:
         fig, axs = plt.subplots(n_patterns, 1, figsize=(6.4, 2*n_patterns), sharey=True, sharex=True)
         for ax, pattern, members_, bool_members_ in zip(axs, patterns, members, bool_members):
             non_members = np.where(~bool_members_.astype(bool))[0]
-            markerlines, stemlines, _ = ax.stem(members_, pattern[members_], 'm', markerfmt='mo',
+            markerlines, stemlines, _ = ax.stem(members_, pattern[members_], 'c', markerfmt='co',
                                                 label='ensemble members')
             plt.setp(markerlines, markersize = 3)
 
@@ -4132,11 +4132,13 @@ class RecentReversal:
             plt.setp(markerlines, markersize = 3)
             [ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
-        axs[-1].set_xlabel('Neurons')
-        fig.supylabel('Weights')
+        axs[-1].set_xlabel('Neurons', fontsize=22)
+        fig.supylabel('Weights', fontsize=22)
         handles, labels = axs[-1].get_legend_handles_labels()
         fig.legend(handles, labels)
         fig.tight_layout()
+
+        return fig
 
     def make_ensemble_raster(
         self, mouse, session_type, bin_size=0.6, running_only=False
@@ -4214,7 +4216,7 @@ class RecentReversal:
         )[0]
 
         fig, ax = plt.subplots()
-        ax.imshow(rasters[ensemble_number], cmap="viridis", interpolation='hanning')
+        im = ax.imshow(rasters[ensemble_number], cmap="viridis", interpolation='hanning')
         # axs[1].plot(np.mean(rasters[ensemble_number], axis=0))
         port_colors = {
             True: "g",
@@ -4235,6 +4237,9 @@ class RecentReversal:
         ax.axis("tight")
         ax.set_ylabel("Trial", fontsize=22)
         ax.set_xlabel("Linearized position (cm)", fontsize=22)
+        cbar = fig.colorbar(im, ticks=[np.min(rasters[ensemble_number]), np.max(rasters[ensemble_number])])
+        cbar.ax.set_yticklabels([0, 'Max'])
+        cbar.set_label('Ensemble activity (a.u.)', rotation=270, fontsize=18)
         fig.tight_layout()
 
         return fig
@@ -8310,7 +8315,7 @@ class RecentReversal:
 
         return SI
 
-    def boxplot_all_assembly_SI(self, ages_to_plot=None):
+    def boxplot_all_assembly_SI(self, ages_to_plot=None, plot_type='line'):
         SI = {
             session_type: {
                 age: [
@@ -8350,36 +8355,52 @@ class RecentReversal:
                 "SI": SIs_,
             }
         )
-
-        fig, axs = plt.subplots(1, len(self.meta["session_types"]), sharey=True)
-        fig.subplots_adjust(wspace=0)
-
-        for ax, session_type, title in zip(
-            axs, self.meta["session_types"], self.meta["session_labels"]
-        ):
-            self.scatter_box(SI[session_type], ax=ax, ages_to_plot=ages_to_plot)
-
-            ax.set_xticks([])
-            ax.set_title(title)
-            [ax.spines[side].set_visible(False) for side in ["top", "right"]]
-
         ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(
             ages_to_plot
         )
-        axs[0].set_ylabel("Ensemble spatial info. (z)", fontsize=22)
+        if plot_type == 'box':
+            fig, axs = plt.subplots(1, len(self.meta["session_types"]), sharey=True)
+            fig.subplots_adjust(wspace=0)
 
-        if n_ages_to_plot == 2:
-            self.set_age_legend(fig)
+            for ax, session_type, title in zip(
+                axs, self.meta["session_types"], self.meta["session_labels"]
+            ):
+                self.scatter_box(SI[session_type], ax=ax, ages_to_plot=ages_to_plot)
 
-        if self.save_configs["save_figs"]:
-            self.save_fig(fig, f"Ensemble_spatial_info_{ages_to_plot}", 2)
+                ax.set_xticks([])
+                ax.set_title(title, fontsize=14)
+                [ax.spines[side].set_visible(False) for side in ["top", "right"]]
 
-        return SI, df
+            axs[0].set_ylabel("Ensemble spatial info. (z)", fontsize=22)
+
+            if n_ages_to_plot == 2:
+                self.set_age_legend(fig)
+
+        else:
+            fig, ax = plt.subplots()
+            for age, color in zip(ages_to_plot, plot_colors):
+                SI_arr = np.vstack([session[age] for session in SI.values()])
+
+                ax.plot(self.meta['session_labels'], SI_arr, color=color, alpha=0.5)
+                errorfill(
+                    self.meta['session_labels'],
+                    np.nanmean(SI_arr, axis=1),
+                    sem(SI_arr, axis=1),
+                    ax=ax,
+                    color=color,
+                )
+            for tick in ax.get_xticklabels():
+                tick.set_rotation(45)
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+            ax.set_ylabel('Ensemble spatial info. (z)', fontsize=22)
+            fig.tight_layout()
+
+        return SI, df, fig
 
     def ensemble_SI_anova(self, df):
         SI_anova = pg.rm_anova(df, dv="SI", subject="mice", within="session")
         pairwise_df = df.pairwise_ttests(
-            dv="SI", between="session", subject="mice", padjust="fdr_bh"
+            dv="SI", between="session", subject="mice", padjust="sidak"
         )
 
         return SI_anova, pairwise_df
@@ -8661,7 +8682,7 @@ class RecentReversal:
             fig = self.plot_max_projs(mouse)
 
             if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"{mouse} max projections", 2)
+                self.save_fig(fig, f"{mouse} max projections", folder)
 
         if "C" in panels:
             age = "young"
@@ -8670,7 +8691,7 @@ class RecentReversal:
 
             if self.save_configs["save_figs"]:
                 self.save_fig(
-                    fig, f"All sessions_{age}_{performance_metric}", 2
+                    fig, f"All sessions_{age}_{performance_metric}", folder
                 )
 
             return anova_df, pairwise_df
@@ -8680,62 +8701,58 @@ class RecentReversal:
             _, fig = self.scrollplot_rasters_by_day(mouse, self.meta["session_types"])
 
             if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"{mouse}_longitudinal_cell", 2)
+                self.save_fig(fig, f"{mouse}_longitudinal_cell", folder)
 
         if "E" in panels:
-            mouse = "Miranda"
-            fig = self.snakeplot_matched_placefields(
-                mouse, ["Goals3", "Goals4", "Reversal"], 1
-            )
+            mouse = 'Fornax'
+            session_type = 'Goals4'
+            ensembles = [0, 1, 2, 3]
+
+            fig = self.plot_ex_patterns(mouse, session_type, ensembles)
 
             if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"{mouse}_snakeplot", 2)
+                self.save_fig(fig, f'{mouse} ensemble patterns {session_type}', folder)
 
         if "F" in panels:
-            ages_to_plot = "young"
-            n_ensembles, _, fig = self.count_ensembles(
-                normalize=False, ages_to_plot=ages_to_plot
-            )
-            anova_results = pg.rm_anova(
-                n_ensembles.loc[
-                    n_ensembles["aged"] == False, self.meta["session_types"]
-                ]
-            )
-            print(anova_results)
+            mouse = "Lyra"
+            session_type = "Goals4"
+            ensemble = 38
+            fig = self.plot_ensemble(mouse, session_type, ensemble)
 
             if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"NumberEnsembles_{ages_to_plot}", folder)
+                self.save_fig(fig, f"{mouse} ensemble {ensemble} from {session_type}", folder)
 
         if "G" in panels:
-            data, _, fig = self.plot_session_PV_corr_comparisons(
-                corr_matrices, ages_to_plot="young"
-            )
-            x = data[("Goals3", "Goals4")]["young"]
-            y = data[("Goals4", "Reversal")]["young"]
-            h = wilcoxon(x, y)
-            dof = len(x) + len(y) - 2
-            print(
-                f"Training vs Reversal correlation coefficients:, W({dof})={round(h.statistic, 3)},"
-                f" p={round(h.pvalue, 3)}"
-            )
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"PVCorr_scatterbox", 2)
-
-        if "H" in panels:
-            field_threshold = 0.5
-            ages_to_plot = "young"
-            remap_score_df, fig = self.plot_remap_score_means(
-                place_cells_only=False,
-                field_threshold=field_threshold,
-                ages_to_plot=ages_to_plot,
-            )
-            self.test_rate_remap_sig(remap_score_df)
+            mouse = "Lyra"
+            session_type = "Goals4"
+            ensemble = 38
+            fig = self.plot_ensemble_raster(mouse, session_type, ensemble, bin_size=0.2)
 
             if self.save_configs["save_figs"]:
                 self.save_fig(
-                    fig, f"Rate remap scores_thresh={field_threshold}_{ages_to_plot}", 2
+                    fig, f"{mouse}_{session_type}_ensemble{ensemble}_raster", folder
                 )
+
+        if "H" in panels:
+            ages_to_plot = 'young'
+            df, fig = self.boxplot_all_assembly_SI(ages_to_plot, plot_type='line')[1:]
+            SI_anova, pairwise_df = self.ensemble_SI_anova(df)
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"Ensemble_spatial_info_{ages_to_plot}", folder)
+
+            return SI_anova, pairwise_df
+
+        if "I" in panels:
+            errors_df, fig = self.plot_spatial_decoder_errors_over_days()[2:]
+            anova_df, pairwise_df = self.multisession_spatial_decoder_anova(errors_df)
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(
+                    fig, 'Spatial decoder error over sessions', folder
+                )
+
+            return anova_df, pairwise_df, errors_df
 
     def make_fig3(self, panels=None):
         if panels is None:
