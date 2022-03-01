@@ -1,5 +1,6 @@
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.colors import to_rgba
 
 from CaImaging.util import check_attrs
 
@@ -228,9 +229,10 @@ def highlight_column(column, ax, **kwargs):
 
     return rect
 
-def color_boxes(boxes, colors):
+def color_boxes(boxes, colors, alpha=1):
     if type(colors) is str:
-        colors = [colors for i in boxes['boxes']]
+        colors = [to_rgba(colors, alpha=alpha) for i in boxes['boxes']]
+
     for patch, med, color in zip(boxes["boxes"], boxes["medians"], colors):
         patch.set_facecolor(color)
         med.set(color="k")
