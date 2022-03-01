@@ -7804,54 +7804,103 @@ class RecentReversal:
 
         return xcorrs
 
-    def degree_comparison(self, mouse, session_type, n_splits=6, method='fdr_bh', show_plot=False,
-                          trend='decreasing'):
-        xcorrs = self.xcorr_fading_ensembles(mouse, session_type, n_splits=n_splits, trend=trend)
-        age = 'aged' if mouse in self.meta['grouped_mice']['aged'] else 'young'
-        color = age_colors[ages.index(age)]
-        if xcorrs is None:
+    def degree_start_end_session(self, mouse, session_type, n_splits=6, method='fdr_bh', quartiles_to_plot=None,
+                                 trend='decreasing', axs=None):
+        degree_df = self.find_degrees(mouse, session_type, n_splits=n_splits, method=method, trend=trend)
+        last_time_bin = n_splits-1
+        degree_df = self.categorize_hub_dropped_neurons(degree_df, time_bin=last_time_bin)
+
+        if degree_df.empty:
             return None, None
 
-        G_seqs = [self.make_graphs(ensemble, method=method) for ensemble in xcorrs.values()]
+        age = 'aged' if mouse in self.meta['grouped_mice']['aged'] else 'young'
+        color = age_colors[ages.index(age)]
 
-        degrees = dict()
-        mean_degrees = [[], [], [], []]
-        for G_seq, ensemble in zip(G_seqs, xcorrs.keys()):
-            degrees[ensemble] = []
-            degrees_last = np.asarray([d for n,d in G_seq[-1].degree()])
-            degrees_first = np.asarray([d for n,d in G_seq[0].degree()])
-            percentiles = np.percentile(degrees_last, [0, 25, 50, 75, 100])
-
-            for i, (lower, upper) in enumerate(zip(percentiles[:-1],
-                                                   percentiles[1:])):
-                idx = np.logical_and(degrees_last >= lower,
-                                     degrees_last <= upper)
-                d = {
-                    'first': degrees_first[idx],
-                    'last': degrees_last[idx]
-                }
-                degrees[ensemble].append(d)
-                mean_degrees[i].append([np.nanmean(d['first']),
-                                        np.nanmean(d['last'])])
-
-        mean_degrees = [np.vstack(m).T for m in mean_degrees]
-
-        if show_plot:
+        if quartiles_to_plot:
             titles = ['1st quartile', '2nd quartile', '3rd quartile', '4th quartile']
-            fig, axs = plt.subplots(1, 4, sharey=True, figsize=(10,6))
-            for title, d, ax in zip(titles, mean_degrees, axs):
-                boxes = ax.boxplot([y for y in d], patch_artist=True, widths=0.75, zorder=0)
-                ax.plot([1, 2], [y for y in d], color=color, zorder=1 ,alpha=0.5)
+            titles = [titles[i-1] for i in quartiles_to_plot]
+            n_percentiles = len(quartiles_to_plot)
+
+            if axs is None:
+                fig, axs = plt.subplots(1, n_percentiles, sharey=True, figsize=(2.5*n_percentiles,6))
+                axs[0].set_ylabel('Mean degree per fading ensemble')
+            else:
+                fig = axs[0].figure
+            for title, quartile, ax in zip(titles, quartiles_to_plot, axs):
+                m = degree_df.groupby(["quartile", "time_bin", "ensemble_id"]).mean().loc[quartile, 'degree']
+                data = [m.loc[i] for i in [0, last_time_bin]]
+                boxes = ax.boxplot([y for y in data], patch_artist=True, widths=0.75, zorder=0)
+                ax.plot([1, 2], [y for y in data], color=color, zorder=1 ,alpha=0.5)
                 color_boxes(boxes, 'w')
                 ax.set_title(title)
                 ax.set_xticklabels(['Beginning\nof session', 'End of\nsession'], rotation=45)
                 [ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
-            axs[0].set_ylabel('Mean degree per fading ensemble')
             fig.tight_layout()
             fig.subplots_adjust(wspace=0.3)
+        else:
+            fig = None
 
-        return degrees, mean_degrees
+        return degree_df, fig
+
+    def find_degrees(self, mouse, session_type, n_splits=6, method='fdr_bh', trend='decreasing'):
+        xcorrs = self.xcorr_fading_ensembles(mouse, session_type, n_splits=n_splits, trend=trend)
+        if xcorrs is None:
+            return pd.DataFrame()
+
+        G_seqs = [self.make_graphs(ensemble, method=method) for ensemble in xcorrs.values()]
+
+        degree_df = pd.DataFrame()
+        for G_seq, ensemble_id in zip(G_seqs, xcorrs.keys()):
+            for time_bin, G in enumerate(G_seq):
+                degree = [d for n,d in G.degree()]
+
+                degree_df = pd.concat(
+                    (degree_df,
+                    pd.DataFrame(
+                        {
+                            'mouse': mouse,
+                            'neuron_id': xcorrs[ensemble_id]['neurons'],
+                            'ensemble_id': ensemble_id,
+                            'time_bin': time_bin,
+                            'degree': degree,
+                         }
+                    )), ignore_index=True
+                )
+
+        return degree_df.reset_index(drop=True)
+
+    def categorize_hub_dropped_neurons(self, session_degree_df, time_bin=5):
+        if 'time_bin' not in session_degree_df:
+            return session_degree_df
+
+        time_bin_idx = session_degree_df['time_bin']==time_bin
+        degrees_this_bin = session_degree_df.loc[time_bin_idx]
+        for ensemble_id in degrees_this_bin.ensemble_id.unique():
+            ensemble_idx = session_degree_df['ensemble_id']==ensemble_id
+            idx = np.logical_and(time_bin_idx,
+                                 ensemble_idx)
+            ensemble_degrees = degrees_this_bin.loc[idx]
+
+            quartiles = np.percentile(ensemble_degrees['degree'], [0, 25, 50, 75, 100])
+            quartiles[0] = quartiles[0]-1
+
+            quartile_bins = np.digitize(ensemble_degrees['degree'], quartiles, right=True)
+            quartile_map = {
+                neuron_id: percentile
+                for neuron_id, percentile in zip(ensemble_degrees['neuron_id'], quartile_bins)
+            }
+
+            session_degree_df.loc[ensemble_idx, 'quartile'] = \
+                session_degree_df.loc[ensemble_idx,'neuron_id'].map(quartile_map)
+
+        return session_degree_df
+
+    def make_degree_df(self, mouse, session_type, trend='decreasing', time_bin=5):
+        degree_df = self.find_degrees(mouse, session_type, trend=trend)
+        degree_df = self.categorize_hub_dropped_neurons(degree_df, time_bin=time_bin)
+
+        return degree_df
 
     def degree_comparison_all_mice(self, age, average_within_ensemble=True, trend='decreasing'):
         """
@@ -7873,27 +7922,26 @@ class RecentReversal:
             True: 'Average degree',
             False: 'Degree',
         }
-        Degrees = dict()
-        Mean_Degrees = dict()
+        Degrees = pd.DataFrame()
         for mouse in mice:
-            Degrees[mouse], Mean_Degrees[mouse] = \
-                self.degree_comparison(mouse, 'Reversal', show_plot=False, trend=trend)
+            degree_df = self.make_degree_df(mouse, 'Reversal', trend=trend, time_bin=5)
+            Degrees = pd.concat((Degrees, degree_df), ignore_index=True)
 
-            if Degrees[mouse] is None:
-                Degrees.pop(mouse)
-                Mean_Degrees.pop(mouse)
-
-        n_mice = len(Mean_Degrees.values())
+        n_mice = len(Degrees.mouse.unique())
         fig, axs = plt.subplots(1, n_mice, sharey=True, figsize=(2*n_mice, 4.8))
-        for mouse, ax in zip(Degrees.keys(), axs):
-
+        for mouse, ax in zip(mice, axs):
+            mouse_degrees = Degrees.loc[Degrees['mouse']==mouse]
             if average_within_ensemble:
-                stable = Mean_Degrees[mouse][-1][0]
-                disconnected = Mean_Degrees[mouse][0][0]
+                hub_neurons = mouse_degrees.loc[mouse_degrees['quartile']==4]
+                stable = hub_neurons.groupby(["time_bin", 'ensemble_id']).mean()['degree'][0]
+
+                dropped_neurons = mouse_degrees.loc[mouse_degrees['quartile']==1]
+                disconnected = dropped_neurons.groupby(["time_bin", 'ensemble_id']).mean()['degree'][0]
                 showfliers = False
             else:
-                stable = np.hstack([ensemble[-1]['first'] for ensemble in Degrees[mouse].values()])
-                disconnected = np.hstack([ensemble[0]['first'] for ensemble in Degrees[mouse].values()])
+                first_time_bin = mouse_degrees['time_bin']==0
+                stable = mouse_degrees.loc[np.logical_and(first_time_bin, mouse_degrees['quartile']==4), 'degree']
+                disconnected = mouse_degrees.loc[np.logical_and(first_time_bin, mouse_degrees['quartile']==1), 'degree']
                 showfliers = True
 
             boxes = ax.boxplot([stable, disconnected], widths=0.75, patch_artist=True, zorder=0, showfliers=showfliers)
@@ -7916,7 +7964,39 @@ class RecentReversal:
         fig.tight_layout()
         fig.subplots_adjust(wspace=0.3)
 
-        return Degrees, Mean_Degrees, fig
+        return Degrees, fig
+
+    def delta_degree_comparison(self, age='young'):
+        Degrees = dict()
+        for trend in ['decreasing', 'no trend']:
+            degrees = pd.DataFrame()
+            for mouse in self.meta['grouped_mice'][age]:
+                degree_df = self.make_degree_df(mouse, 'Reversal', trend=trend, time_bin=5)
+                degrees = pd.concat((degrees, degree_df), ignore_index=True)
+
+            Degrees[trend] = degrees
+
+        color = age_colors[ages.index(age)]
+        n_mice = len(Degrees['decreasing'].mouse.unique())
+        fig, axs = plt.subplots(1, n_mice, figsize=(2*n_mice, 4.8), sharey=True)
+        for mouse, ax in zip(Degrees['decreasing'].mouse.unique(), axs):
+            x = np.abs(Degrees['decreasing'][mouse][-1][0] - mean_degrees['decreasing'][mouse][0][0])
+            y = np.abs(mean_degrees['no trend'][mouse][-1][0] - mean_degrees['no trend'][mouse][0][0])
+
+            print(ttest_ind(x,y, alternative='greater'))
+
+            boxes=ax.boxplot([x, y], patch_artist=True, widths=0.75)
+            color_boxes(boxes, color)
+            ax.set_xticklabels(['Fading\nensembles', 'Non-fading\nensembles'], rotation=45, fontsize=14)
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+            ax.set_title(mouse)
+
+        axs[0].set_ylabel('Abs. degree difference btwn\nhub and dropped neurons', fontsize=22)
+
+        fig.tight_layout()
+        fig.subplots_adjust(wspace=0.3)
+
+        return mean_degrees
 
     def R_percentile_comparison(self, mouse, session_type, n_splits=6, percentile=33,
                                 plot_all_ensembles=True, plot_means=True):
@@ -9115,6 +9195,18 @@ class RecentReversal:
 
         if "B" in panels:
             age = "young"
+
+            for mouse in self.meta['grouped_mice'][age]:
+                fig = self.degree_start_end_session(mouse, "Reversal", quartiles_to_plot=[1, 4])[-1]
+
+                if fig is not None:
+                    fig.suptitle(mouse)
+
+                    if self.save_configs["save_figs"]:
+                        self.save_fig(fig, f"{mouse} degrees over time", folder)
+
+        if "C" in panels:
+            age = "young"
             metric='degree'
             cluster_coeffs, anova_dfs, fig = self.connectedness_over_session_all_mice(age=age,
                                                                                       metric=metric)
@@ -9126,9 +9218,9 @@ class RecentReversal:
 
             return anova_dfs
 
-        if "C" in panels:
+        if "D" in panels:
             age = 'young'
-            Degrees, Mean_Degrees, fig = self.degree_comparison_all_mice(age=age)
+            Degrees, fig = self.degree_comparison_all_mice(age=age)
 
             if self.save_configs["save_figs"]:
                 self.save_fig(
