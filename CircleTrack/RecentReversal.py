@@ -7720,7 +7720,11 @@ class RecentReversal:
 
             A[i][r, c] = R[r, c]
 
-        G = [nx.convert_matrix.from_numpy_matrix(a) for a in A]
+        node_mappings = {
+            i: neuron_id
+            for i, neuron_id in enumerate(data['neurons'])
+        }
+        G = [nx.relabel_nodes(nx.convert_matrix.from_numpy_matrix(a), node_mappings) for a in A]
 
         return G
 
@@ -7843,27 +7847,36 @@ class RecentReversal:
 
         return degree_df, fig
 
-    def find_degrees(self, mouse, session_type, n_splits=6, method='fdr_bh', trend='decreasing'):
+    def find_degrees(self, mouse, session_type, n_splits=6, method='fdr_bh', trend='decreasing',
+                     subgraphs=None):
         xcorrs = self.xcorr_fading_ensembles(mouse, session_type, n_splits=n_splits, trend=trend)
         if xcorrs is None:
             return pd.DataFrame()
 
-        G_seqs = [self.make_graphs(ensemble, method=method) for ensemble in xcorrs.values()]
+        G_ensembles = [self.make_graphs(ensemble, method=method) for ensemble in xcorrs.values()]
+
+        if subgraphs is not None:
+            G_subgraphed = []
+            for G_ensemble, subgraph in zip(G_ensembles, subgraphs):
+                G_subgraphed.append([G.subgraph(subgraph) for G in G_ensemble])
+
+        else:
+            G_subgraphed = G_ensembles
 
         degree_df = pd.DataFrame()
-        for G_seq, ensemble_id in zip(G_seqs, xcorrs.keys()):
+        for i, (G_seq, ensemble_id) in enumerate(zip(G_subgraphed, xcorrs.keys())):
             for time_bin, G in enumerate(G_seq):
-                degree = [d for n,d in G.degree()]
+                degree = {n: d for n,d in G.degree()}
 
                 degree_df = pd.concat(
                     (degree_df,
                     pd.DataFrame(
                         {
                             'mouse': mouse,
-                            'neuron_id': xcorrs[ensemble_id]['neurons'],
+                            'neuron_id': degree.keys(),
                             'ensemble_id': ensemble_id,
                             'time_bin': time_bin,
-                            'degree': degree,
+                            'degree': degree.values(),
                          }
                     )), ignore_index=True
                 )
@@ -7896,7 +7909,7 @@ class RecentReversal:
 
         return session_degree_df
 
-    def make_degree_df(self, mouse, session_type, trend='decreasing', time_bin=5):
+    def make_degree_df_with_quartiles(self, mouse, session_type, trend='decreasing', time_bin=5):
         degree_df = self.find_degrees(mouse, session_type, trend=trend)
         degree_df = self.categorize_hub_dropped_neurons(degree_df, time_bin=time_bin)
 
@@ -7924,7 +7937,7 @@ class RecentReversal:
         }
         Degrees = pd.DataFrame()
         for mouse in mice:
-            degree_df = self.make_degree_df(mouse, 'Reversal', trend=trend, time_bin=5)
+            degree_df = self.make_degree_df_with_quartiles(mouse, 'Reversal', trend=trend, time_bin=5)
             Degrees = pd.concat((Degrees, degree_df), ignore_index=True)
 
         n_mice = len(Degrees.mouse.unique())
@@ -7968,24 +7981,63 @@ class RecentReversal:
 
     def delta_degree_comparison(self, age='young'):
         Degrees = dict()
+        trends = ['decreasing', 'no trend']
         for trend in ['decreasing', 'no trend']:
             degrees = pd.DataFrame()
             for mouse in self.meta['grouped_mice'][age]:
-                degree_df = self.make_degree_df(mouse, 'Reversal', trend=trend, time_bin=5)
+                degree_df = self.make_degree_df_with_quartiles(mouse, 'Reversal', trend=trend, time_bin=5)
                 degrees = pd.concat((degrees, degree_df), ignore_index=True)
 
             Degrees[trend] = degrees
 
+        # Make subgraph.
+        degrees = pd.DataFrame()
+        for mouse in self.meta['grouped_mice'][age]:
+            mouse_idx = Degrees['decreasing'].mouse == mouse
+
+            subgraph = []
+            for ensemble in Degrees['decreasing'].loc[mouse_idx].ensemble_id.unique():
+                ensemble_idx = Degrees['decreasing'].ensemble_id == ensemble
+                quartile_idx = Degrees['decreasing'].quartile > 1
+                non_dropped_neurons = Degrees['decreasing'].loc[np.logical_and(
+                    np.logical_and(
+                        mouse_idx, ensemble_idx
+                    ), quartile_idx
+                ), 'neuron_id'].values
+                subgraph.append(non_dropped_neurons)
+
+            degree_df = self.find_degrees(mouse, 'Reversal', trend='decreasing', subgraphs=subgraph)
+            degrees = pd.concat((degrees, degree_df), ignore_index=True)
+        Degrees['no dropped neurons'] = degrees
+
         color = age_colors[ages.index(age)]
         n_mice = len(Degrees['decreasing'].mouse.unique())
         fig, axs = plt.subplots(1, n_mice, figsize=(2*n_mice, 4.8), sharey=True)
+        degree_diffs = pd.DataFrame()
         for mouse, ax in zip(Degrees['decreasing'].mouse.unique(), axs):
-            x = np.abs(Degrees['decreasing'][mouse][-1][0] - mean_degrees['decreasing'][mouse][0][0])
-            y = np.abs(mean_degrees['no trend'][mouse][-1][0] - mean_degrees['no trend'][mouse][0][0])
+            for trend in trends:
+                grouped_means = Degrees[trend].groupby(["mouse",
+                                                        "quartile",
+                                                        "time_bin",
+                                                        "ensemble_id"]).mean()
+                for quartile in [1, 4]:
+                    last_time_bin = grouped_means.loc[mouse, quartile, 5]['degree'].values
+                    first_time_bin = grouped_means.loc[mouse, quartile, 1]['degree'].values
+                    deg_diffs = last_time_bin - first_time_bin
 
-            print(ttest_ind(x,y, alternative='greater'))
+                    degree_diffs = pd.concat(
+                        (degree_diffs,
+                         {
+                             'mouse': mouse,
+                             'neuron_type': "hub" if quartile==4 else "dropped",
+                             'degree_diffs': deg_diffs,
+                             'trend': trend,
+                         })
+                    )
 
-            boxes=ax.boxplot([x, y], patch_artist=True, widths=0.75)
+            print(ttest_ind(degree_diffs[mouse][0], degree_diffs[mouse][1], alternative='greater'))
+
+            boxes=ax.boxplot(degree_diffs[mouse], patch_artist=True, widths=0.75)
             color_boxes(boxes, color)
             ax.set_xticklabels(['Fading\nensembles', 'Non-fading\nensembles'], rotation=45, fontsize=14)
             [ax.spines[side].set_visible(False) for side in ['top', 'right']]
@@ -7996,7 +8048,7 @@ class RecentReversal:
         fig.tight_layout()
         fig.subplots_adjust(wspace=0.3)
 
-        return mean_degrees
+        return Degrees, degree_diffs
 
     def R_percentile_comparison(self, mouse, session_type, n_splits=6, percentile=33,
                                 plot_all_ensembles=True, plot_means=True):
