@@ -17,7 +17,6 @@ from CaImaging.util import (
 import multiprocessing as mp
 import random
 import ruptures as rpt
-from scipy.stats import bootstrap
 import networkx as nx
 from networkx.algorithms.approximation.clustering_coefficient import average_clustering
 from CaImaging.plotting import (
@@ -38,6 +37,7 @@ from scipy.stats import (
     ttest_ind,
     chisquare,
     ttest_rel,
+    ttest_1samp
 )
 from scipy.spatial import distance
 from joblib import Parallel, delayed
@@ -7973,7 +7973,7 @@ class RecentReversal:
                 print(ttest_rel(stable, disconnected))
             else:
                 print(ttest_ind(stable, disconnected))
-        axs[0].set_ylabel(ylabel[average_within_ensemble] + ' at\nbeginning of session')
+        axs[0].set_ylabel(ylabel[average_within_ensemble] + ' at\nbeginning of session', fontsize=22)
         fig.tight_layout()
         fig.subplots_adjust(wspace=0.3)
 
@@ -8011,44 +8011,104 @@ class RecentReversal:
         Degrees['no dropped neurons'] = degrees
 
         color = age_colors[ages.index(age)]
-        n_mice = len(Degrees['decreasing'].mouse.unique())
-        fig, axs = plt.subplots(1, n_mice, figsize=(2*n_mice, 4.8), sharey=True)
+        valid_mice = Degrees['decreasing'].mouse.unique()
+        n_mice = len(valid_mice)
         degree_diffs = pd.DataFrame()
-        for mouse, ax in zip(Degrees['decreasing'].mouse.unique(), axs):
-            for trend in trends:
-                grouped_means = Degrees[trend].groupby(["mouse",
-                                                        "quartile",
-                                                        "time_bin",
-                                                        "ensemble_id"]).mean()
+        for trend in trends:
+            grouped_means = Degrees[trend].groupby(["mouse",
+                                                    "quartile",
+                                                    "time_bin",
+                                                    "ensemble_id"]).mean()
+
+            for mouse in valid_mice:
                 for quartile in [1, 4]:
                     last_time_bin = grouped_means.loc[mouse, quartile, 5]['degree'].values
-                    first_time_bin = grouped_means.loc[mouse, quartile, 1]['degree'].values
+                    first_time_bin = grouped_means.loc[mouse, quartile, 0]['degree'].values
                     deg_diffs = last_time_bin - first_time_bin
 
                     degree_diffs = pd.concat(
                         (degree_diffs,
-                         {
+                         pd.DataFrame({
                              'mouse': mouse,
                              'neuron_type': "hub" if quartile==4 else "dropped",
                              'degree_diffs': deg_diffs,
                              'trend': trend,
-                         })
+                         }))
                     )
 
-            print(ttest_ind(degree_diffs[mouse][0], degree_diffs[mouse][1], alternative='greater'))
+        for mouse in valid_mice:
+            mouse_df = Degrees['decreasing'].loc[Degrees['decreasing'].mouse == mouse]
+            deg_diffs = []
+            for ensemble in mouse_df.ensemble_id.unique():
+                ensemble_df = mouse_df.loc[mouse_df.ensemble_id == ensemble]
+                hub_neurons = ensemble_df.loc[ensemble_df['quartile']==4, 'neuron_id'].unique()
 
-            boxes=ax.boxplot(degree_diffs[mouse], patch_artist=True, widths=0.75)
+                subgraph_idx = {
+                    'mouse': Degrees['no dropped neurons'].mouse == mouse,
+                    'ensemble': Degrees['no dropped neurons'].ensemble_id == ensemble,
+                    'hub_neurons': Degrees['no dropped neurons'].neuron_id.isin(hub_neurons),
+                    'first_time_bin': Degrees['no dropped neurons'].time_bin == 0,
+                    'last_time_bin': Degrees['no dropped neurons'].time_bin == 5,
+                }
+
+                deg_t0 = Degrees['no dropped neurons'].loc[np.all(
+                    [subgraph_idx[key] for key in ['mouse', 'ensemble', 'hub_neurons', 'first_time_bin']],
+                    axis=0), 'degree'].values
+
+                deg_tf = Degrees['no dropped neurons'].loc[np.all(
+                    [subgraph_idx[key] for key in ['mouse', 'ensemble', 'hub_neurons', 'last_time_bin']],
+                    axis=0), 'degree'].values
+
+                deg_diffs.append(np.nanmean(deg_tf - deg_t0))
+
+            degree_diffs = pd.concat(
+                (degree_diffs,
+                 pd.DataFrame({
+                     'mouse': mouse,
+                     'neuron_type': "hub",
+                     'degree_diffs': deg_diffs,
+                     'trend': 'subgraph',
+                 }))
+            )
+
+
+            # boxes=ax.boxplot(degree_diffs[mouse], patch_artist=True, widths=0.75)
+            # color_boxes(boxes, color)
+            # ax.set_xticklabels(['Fading\nensembles', 'Non-fading\nensembles'], rotation=45, fontsize=14)
+            # [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+            # ax.set_title(mouse)
+
+        fig, axs = plt.subplots(1, n_mice, figsize=(2*n_mice, 4.8), sharey=True)
+        for ax, mouse in zip(axs, valid_mice):
+            idxs = {
+                'mouse': degree_diffs.mouse == mouse,
+                'hub': np.logical_and(degree_diffs.neuron_type == 'hub',
+                                      degree_diffs.trend=='decreasing'),
+                'dropped': np.logical_and(degree_diffs.neuron_type == 'dropped',
+                                          degree_diffs.trend=='decreasing'),
+                'hub_subgraph': degree_diffs.trend == 'subgraph',
+            }
+
+            hub = degree_diffs.loc[np.logical_and(idxs['mouse'], idxs['hub_subgraph']), 'degree_diffs'].values
+            dropped = degree_diffs.loc[np.logical_and(idxs['mouse'], idxs['dropped']), 'degree_diffs'].values
+            boxes = ax.boxplot([hub, dropped], patch_artist=True, widths=0.75, zorder=0, showfliers=False)
             color_boxes(boxes, color)
-            ax.set_xticklabels(['Fading\nensembles', 'Non-fading\nensembles'], rotation=45, fontsize=14)
+            ax.plot([jitter_x(np.ones_like(hub), 0.05), jitter_x(np.ones_like(dropped)*2, 0.05)],
+                    [hub, dropped], 'o-', color='k', markerfacecolor=color, zorder=1)
+            ax.set_xticks([1,2])
+            ax.set_xticklabels(['Hub\nneurons',
+                                'Dropped\nneurons'],
+                               rotation=45, fontsize=14)
             [ax.spines[side].set_visible(False) for side in ['top', 'right']]
             ax.set_title(mouse)
 
-        axs[0].set_ylabel('Abs. degree difference btwn\nhub and dropped neurons', fontsize=22)
+            print(ttest_rel(hub, dropped))
+        axs[0].set_ylabel('Degree difference', fontsize=22)
 
         fig.tight_layout()
         fig.subplots_adjust(wspace=0.3)
 
-        return Degrees, degree_diffs
+        return Degrees, degree_diffs, fig
 
     def R_percentile_comparison(self, mouse, session_type, n_splits=6, percentile=33,
                                 plot_all_ensembles=True, plot_means=True):
@@ -8264,8 +8324,8 @@ class RecentReversal:
         color = age_colors[ages.index(age)]
         connectedness, anova_dfs = dict(), dict()
         ylabel = {
-            'clustering_coefficient': "Ensemble\nclustering coefficient",
-            'degree': "Ensemble\naverage degree",
+            'clustering_coefficient': "Fading ensemble\nclustering coefficient",
+            'degree': "Fading ensemble\naverage degree",
         }
         for mouse in self.meta["grouped_mice"][age]:
             connectedness[mouse] = self.connectedness_over_session(
@@ -9228,6 +9288,26 @@ class RecentReversal:
         folder = 4
 
         if "A" in panels:
+            fig = self.delta_degree_comparison('young')[-1]
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, "Hub vs disconnected degree diff", folder)
+
+
+        if "B" in panels:
+            age = "young"
+            metric='degree'
+            cluster_coeffs, anova_dfs, fig = self.connectedness_over_session_all_mice(age=age,
+                                                                                      metric=metric)
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(
+                    fig, f"{metric} of ensemble members_{age}", folder
+                )
+
+            return anova_dfs
+
+        if "B" in panels:
             mouse = 'Fornax'
             ensembles = [8, 35, 52, 54]
             n_splits = 6
@@ -9245,32 +9325,20 @@ class RecentReversal:
             if self.save_configs['save_figs']:
                 self.save_fig(fig, f"Spring graph labeled {mouse} {ensembles}", folder)
 
-        if "B" in panels:
-            age = "young"
+        # if "C" in panels:
+        #     age = "young"
+        #
+        #     for mouse in self.meta['grouped_mice'][age]:
+        #         fig = self.degree_start_end_session(mouse, "Reversal", quartiles_to_plot=[1, 4])[-1]
+        #
+        #         if fig is not None:
+        #             fig.suptitle(mouse)
+        #
+        #             if self.save_configs["save_figs"]:
+        #                 self.save_fig(fig, f"{mouse} degrees over time", folder)
 
-            for mouse in self.meta['grouped_mice'][age]:
-                fig = self.degree_start_end_session(mouse, "Reversal", quartiles_to_plot=[1, 4])[-1]
-
-                if fig is not None:
-                    fig.suptitle(mouse)
-
-                    if self.save_configs["save_figs"]:
-                        self.save_fig(fig, f"{mouse} degrees over time", folder)
 
         if "C" in panels:
-            age = "young"
-            metric='degree'
-            cluster_coeffs, anova_dfs, fig = self.connectedness_over_session_all_mice(age=age,
-                                                                                      metric=metric)
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(
-                    fig, f"{metric} of ensemble members_{age}", folder
-                )
-
-            return anova_dfs
-
-        if "D" in panels:
             age = 'young'
             Degrees, fig = self.degree_comparison_all_mice(age=age)
 
