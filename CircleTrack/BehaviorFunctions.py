@@ -1329,7 +1329,8 @@ class BehaviorSession:
             licks = np.array_split(self.data["all_licks"], n_trial_blocks)
         elif rolling_window is not None:
             licks = self.rolling_window_licks(window_size=rolling_window,
-                                              trial_interval=trial_interval)
+                                              trial_interval=trial_interval,
+                                              trial_limit=trial_limit)
         elif trial_limit is not None:
             licks = [self.data["all_licks"][:trial_limit]]
         else:
@@ -1379,9 +1380,13 @@ class BehaviorSession:
         self.sdt = sdt
         return self.sdt
 
-    def rolling_window_licks(self, window_size=4, trial_interval=2):
+    def rolling_window_licks(self, window_size=4, trial_interval=2, trial_limit=None):
+        if trial_limit is None:
+            licks = self.data['all_licks']
+        else:
+            licks = self.data['all_licks'][:trial_limit]
         windowed_licks = np.squeeze(
-            sliding_window_view(self.data['all_licks'],
+            sliding_window_view(licks,
                                 (window_size, 8),
                                 axis=(0, 1))[
             ::trial_interval])

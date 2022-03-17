@@ -3,7 +3,7 @@ from CircleTrack.SessionCollation import MultiAnimal
 from CircleTrack.BehaviorFunctions import BehaviorSession
 import matplotlib.pyplot as plt
 import xarray as xr
-from scipy.stats import ttest_ind
+from scipy.stats import ttest_ind, mannwhitneyu, ranksums
 from CaImaging.util import nan_array, sem, stack_padding, group_consecutives
 import pandas as pd
 from CaImaging.plotting import errorfill, beautify_ax, jitter_x
@@ -113,7 +113,7 @@ class Chemogenetics:
                              f'{fname}.{self.save_configs["ext"]}')
         fig.savefig(fpath)
 
-    def set_legend(self, fig, groups=None, colors=None):
+    def set_legend(self, fig, groups=None, colors=None, loc='lower right'):
         if groups is None:
             groups = self.meta['groups']
         if colors is None:
@@ -123,7 +123,7 @@ class Chemogenetics:
             mpatches.Patch(facecolor=c, label=label, edgecolor="k")
             for c, label in zip(colors, groups)
         ]
-        fig.legend(handles=patches, loc="lower right", fontsize=14)
+        fig.legend(handles=patches, loc=loc, fontsize=14)
 
     def behavior_over_trials(self,
                              session_type,
@@ -179,7 +179,7 @@ class Chemogenetics:
         return dv
 
     def plot_trial_behavior(self, session_types=None, performance_metric='d_prime',
-                            plot_sig=False, **kwargs):
+                            plot_sig=False, trial_limit=None, **kwargs):
         if session_types is None:
             session_types = self.meta['session_types']
         elif type(session_types) is str:
@@ -190,7 +190,7 @@ class Chemogenetics:
         for session_type in session_types:
             anova_dfs[session_type], df, pvals[session_type] =\
                 self.trial_behavior_anova(session_type, performance_metric=performance_metric,
-                                          **kwargs)
+                                          trial_limit=trial_limit, **kwargs)
             dv[session_type] = self.stack_behavior_dv(df)
 
         ylabel = {
@@ -219,7 +219,11 @@ class Chemogenetics:
                 )
             xlims = [int(x) for x in ax.get_xlim()]
             ax.set_xticks(xlims)
-            n_trials = np.max([self.data[mouse][session_type].data['ntrials'] for mouse in self.meta['mice']])
+            if trial_limit is None:
+                n_trials = np.max([self.data[mouse][session_type].data['ntrials']
+                                   for mouse in self.meta['mice']])
+            else:
+                n_trials = trial_limit
             ax.set_xticklabels([1, n_trials])
             ax.set_title(session_type.replace('Goals', 'Training'))
 
@@ -488,17 +492,22 @@ class Chemogenetics:
                 fig, ax = plt.subplots(figsize=(3, 4.75))
             else:
                 label_axes = False
+                fig = ax.figure
 
-            self.scatter_box(best_performance, ax=ax)
+            fig = self.scatter_box(best_performance, ax=ax)
+            [ax.spines[side].set_visible(False) for side in ['top' ,'right']]
 
             if label_axes:
                 ax.set_xticks([1, 2])
-                ax.set_xticklabels(self.meta['groups'])
+                ax.set_xticklabels(self.meta['groups'], rotation=45)
                 ax.set_ylabel(ylabels[performance_metric])
                 # ax = beautify_ax(ax)
-                plt.tight_layout()
+            fig.tight_layout()
 
-        return best_performance
+        else:
+            fig = None
+
+        return best_performance, fig
 
     def plot_best_performance_all_sessions(
         self,
@@ -771,9 +780,11 @@ class Chemogenetics:
         return perseverative_errors, unforgiveable_errors
 
 
-    def scatter_box(self, data, ylabel="", ax=None):
+    def scatter_box(self, data, ylabel="", ax=None, xticks=[]):
         if ax is None:
             fig, ax = plt.subplots()
+        else:
+            fig = ax.figure
         boxes = ax.boxplot(
             [data[inj] for inj in self.meta['groups']],
             widths=0.75,
@@ -797,8 +808,10 @@ class Chemogenetics:
         for patch, med, color in zip(boxes["boxes"], boxes["medians"], self.meta['colors']):
             patch.set_facecolor(color)
             med.set(color="k")
-        ax.set_xticks([])
+        ax.set_xticklabels(xticks, rotation=45)
         ax.set_ylabel(ylabel)
+
+        return fig
 
     def compare_trial_count(self, session_type):
         trials = {
@@ -809,9 +822,13 @@ class Chemogenetics:
             for inj in self.meta['groups']
         }
 
-        self.scatter_box(trials, "Trials")
+        fig, ax = plt.subplots(figsize=(3, 4.75))
+        fig = self.scatter_box(trials, "Trials", ax=ax, xticks=self.meta['groups'])
+        ax = fig.axes[0]
+        [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+        fig.tight_layout()
 
-        return trials
+        return trials, fig
 
     def compare_licks(self, session_type, exclude_rewarded=False):
         licks = {group: [] for group in self.meta['groups']}
@@ -828,9 +845,13 @@ class Chemogenetics:
                     np.sum(self.data[mouse][session_type].data["all_licks"][:, ports])
                 )
 
-        self.scatter_box(licks, ylabel="Licks")
+        fig, ax = plt.subplots(figsize=(3,4.75))
+        fig = self.scatter_box(licks, ylabel="Licks", ax=ax, xticks=self.meta['groups'])
+        ax = fig.axes[0]
+        [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+        fig.tight_layout()
 
-        return licks
+        return licks, fig
 
     def make_fig1(self, panels=None):
         if panels is None:
@@ -855,6 +876,103 @@ class Chemogenetics:
             for df in anova_dfs.values():
                 print(df)
 
+    def make_sfig1(self, panels=None):
+        if panels is None:
+            panels = ["A", "B", "C", "D", "E", "F", "G", "H"]
+
+        folder = "S1"
+
+        if "A" in panels:
+            trials, fig = self.compare_trial_count('Reversal')
+
+            print(ttest_ind(trials['vehicle'], trials['PSEM']))
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, 'Trial counts', folder)
+
+        if "B" in panels:
+            licks, fig = self.compare_licks('Reversal', exclude_rewarded=False)
+
+            print(ttest_ind(licks['vehicle'], licks['PSEM']))
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, 'Lick counts', folder)
+
+        if "C" in panels:
+            licks, fig = self.compare_licks('Reversal', exclude_rewarded=True)
+
+            print(ttest_ind(licks['vehicle'], licks['PSEM']))
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, 'Lick counts_exclude_rewarded', folder)
+
+        if "D" in panels:
+            performance_metric = 'd_prime'
+            dv, anova_dfs, fig = \
+                self.plot_trial_behavior(session_types=['Goals4','Reversal'],
+                                         performance_metric=performance_metric,
+                                         window=6, strides=2)
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f'Vehicle vs PSEM Reversal_{performance_metric}', folder)
+
+            for df in anova_dfs.values():
+                print(df)
+
+        if "E" in panels:
+            performance_metric = 'hits'
+            dv, anova_dfs, fig = \
+                self.plot_trial_behavior(session_types=['Goals4','Reversal'],
+                                         performance_metric=performance_metric,
+                                         window=6, strides=2)
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f'Vehicle vs PSEM Reversal_{performance_metric}', folder)
+
+            for df in anova_dfs.values():
+                print(df)
+
+        # if "F" in panels:
+        #     performance_metric='d_prime'
+        #     fig, axs = plt.subplots(1,2, figsize=(6,4.75), sharey=True)
+        #     for ax, downsample, title in zip(
+        #             axs, [False, True], ['All trials', 'Downsampled']
+        #     ):
+        #         bp, fig = self.plot_best_performance('Reversal', performance_metric=performance_metric,
+        #                                                      downsample_trials=downsample, ax=ax)
+        #         ax.set_title(title)
+        #         print(title)
+        #         print(ttest_ind(*[value for value in bp.values()]))
+        #     axs[-1].set_ylabel('')
+        #     print('')
+        #
+        # if "G" in panels:
+        #     performance_metric='hits'
+        #     fig, axs = plt.subplots(1,2, figsize=(6,4.75), sharey=True)
+        #     for ax, downsample, title in zip(
+        #             axs, [False, True], ['All trials', 'Downsampled']
+        #     ):
+        #         bp, fig = self.plot_best_performance('Reversal', performance_metric=performance_metric,
+        #                                              downsample_trials=downsample, ax=ax)
+        #         ax.set_title(title)
+        #         print(title)
+        #         print(ttest_ind(*[value for value in bp.values()]))
+        #     axs[-1].set_ylabel('')
+        #     print('')
+        #
+        # if "H" in panels:
+        #     performance_metric='CRs'
+        #     fig, axs = plt.subplots(1,2, figsize=(6,4.75), sharey=True)
+        #     for ax, downsample, title in zip(
+        #             axs, [False, True], ['All trials', 'Downsampled']
+        #     ):
+        #         bp, fig = self.plot_best_performance('Reversal', performance_metric=performance_metric,
+        #                                              downsample_trials=downsample, ax=ax)
+        #         ax.set_title(title)
+        #         print(title)
+        #         print(ttest_ind(*[value for value in bp.values()]))
+        #     axs[-1].set_ylabel('')
+        #     print('')
 
 if __name__ == "__main__":
     PSAM_mice = ['PSAM_' + str(i) for i in np.arange(4,28)]
