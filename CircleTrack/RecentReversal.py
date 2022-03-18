@@ -3272,7 +3272,7 @@ class RecentReversal:
     def snakeplot_placefields(
         self,
         mouse,
-        session,
+        session_type,
         order=None,
         neurons=None,
         ax=None,
@@ -3295,10 +3295,10 @@ class RecentReversal:
             Indices of the neurons, sorted by the order in which they appear on the track.
 
         """
-        spatial_bin_size_radians = self.data[mouse][session].spatial.meta["bin_size"]
-        behavior_data = self.data[mouse][session].behavior
+        spatial_bin_size_radians = self.data[mouse][session_type].spatial.meta["bin_size"]
+        behavior_data = self.data[mouse][session_type].behavior
 
-        session = self.data[mouse][session].spatial.data
+        session = self.data[mouse][session_type].spatial.data
         port_locations = np.asarray(behavior_data.data["lin_ports"])[
             behavior_data.data["rewarded_ports"]
         ]
@@ -3309,13 +3309,6 @@ class RecentReversal:
 
         placefields = session["placefields_normalized"][neurons][order]
 
-        # Get reward locations
-        reward_location_bins, bins = find_reward_spatial_bins(
-            session["x"],
-            port_locations,
-            spatial_bin_size_radians=spatial_bin_size_radians,
-        )
-
         if show_plot:
             if normalize:
                 placefields = placefields / np.max(placefields, axis=1, keepdims=True)
@@ -3324,10 +3317,30 @@ class RecentReversal:
             ax.imshow(placefields)
 
             if show_reward_sites:
+                # Get reward locations
+                reward_location_bins, bins = find_reward_spatial_bins(
+                    session["x"],
+                    port_locations,
+                    spatial_bin_size_radians=spatial_bin_size_radians,
+                )
+
                 [
                     ax.axvline(x=reward_location_bin, color="g")
                     for reward_location_bin in reward_location_bins
                 ]
+
+                if session_type=='Reversal':
+                    training_session = self.data[mouse]['Goals4']
+                    ex_reward_bins = find_reward_spatial_bins(
+                        training_session.spatial.data['x'],
+                        np.asarray(training_session.behavior.data['lin_ports'])[training_session.behavior.data['rewarded_ports']],
+                        spatial_bin_size_radians=spatial_bin_size_radians,
+                    )[0]
+
+                    [
+                        ax.axvline(x=reward_location_bin, color="c", alpha=0.5)
+                        for reward_location_bin in ex_reward_bins
+                    ]
 
             ax.axis("tight")
             ax.set_ylabel("Neuron #", fontsize=22)
@@ -3335,6 +3348,7 @@ class RecentReversal:
 
             ax.set_xticks(ax.get_xlim())
             ax.set_xticklabels([0, 220])
+
         else:
             ax = None
 
