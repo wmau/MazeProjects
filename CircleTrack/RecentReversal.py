@@ -312,7 +312,7 @@ class RecentReversal:
         ]
         fig.legend(handles=patches, loc=loc)
 
-    def plot_neuron_count(self, sessions_to_plot=None):
+    def plot_neuron_count(self, sessions_to_plot=None, ages_to_plot=None):
         """
         Plot the number of neurons in each session.
 
@@ -345,10 +345,10 @@ class RecentReversal:
                 aged = age == "aged"
                 data[age] = n_neurons[session].loc[n_neurons["aged"] == aged]
 
-            self.scatter_box(data, ax=ax)
+            self.scatter_box(data, ax=ax, ages_to_plot=ages_to_plot)
             ax.set_title(session_label, fontsize=14)
         axs[0].set_ylabel("# neurons", fontsize=22)
-        self.set_age_legend(fig)
+        #self.set_age_legend(fig)
         fig.tight_layout()
         fig.subplots_adjust(wspace=0)
 
