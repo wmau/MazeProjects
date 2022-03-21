@@ -822,29 +822,14 @@ class RecentReversal:
         )
         return anova_df, pairwise_df, df
 
-    def plot_performance_session_type(
+    def performance_session_type(
         self,
         session_type,
-        ax=None,
         window=None,
         strides=None,
-        performance_metric="d_prime",
-        show_plot=True,
+        performance_metric='d_prime',
         downsample_trials=False,
     ):
-        """
-        Plot the performance of all mice, separated by age, on that session.
-
-        :parameters
-        ---
-        session_type: str
-
-        :returns
-        ---
-        peak_performance: dict
-            Behavioral performance split into young versus aged.
-
-        """
         if downsample_trials:
             trial_limit = min(
                 [
@@ -874,28 +859,53 @@ class RecentReversal:
                     )
                 )
 
-        if show_plot:
-            label_axes = True
-            ylabels = {
-                "CRs": "Correct rejection rate",
-                "hits": "Hit rate",
-                "d_prime": "d'",
-            }
-            if ax is None:
-                fig, ax = plt.subplots(figsize=(3, 4.75))
-            else:
-                fig = ax.get_figure()
+        return peak_performance
 
-            self.scatter_box(peak_performance, ax=ax)
+    def plot_performance_session_type(
+        self,
+        session_type,
+        ax=None,
+        window=None,
+        strides=None,
+        performance_metric="d_prime",
+        downsample_trials=False,
+    ):
+        """
+        Plot the performance of all mice, separated by age, on that session.
 
-            ax.set_xticks([1, 2])
-            ax.set_xticklabels(ages, rotation=45)
-            ax.set_ylabel(ylabels[performance_metric])
-            [ax.spines[side].set_visible(False) for side in ["top", "right"]]
-            # ax = beautify_ax(ax)
-            fig.tight_layout()
+        :parameters
+        ---
+        session_type: str
+
+        :returns
+        ---
+        peak_performance: dict
+            Behavioral performance split into young versus aged.
+
+        """
+        peak_performance = self.performance_session_type(session_type,
+                                                         window=window,
+                                                         strides=strides,
+                                                         performance_metric=performance_metric,
+                                                         downsample_trials=downsample_trials)
+        ylabels = {
+            "CRs": "Correct rejection rate",
+            "hits": "Hit rate",
+            "d_prime": "d'",
+        }
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(3, 4.75))
         else:
-            fig = None
+            fig = ax.get_figure()
+
+        self.scatter_box(peak_performance, ax=ax)
+
+        ax.set_xticks([1, 2])
+        ax.set_xticklabels(ages, rotation=45)
+        ax.set_ylabel(ylabels[performance_metric])
+        [ax.spines[side].set_visible(False) for side in ["top", "right"]]
+        # ax = beautify_ax(ax)
+        fig.tight_layout()
 
         return peak_performance, fig
 
@@ -961,27 +971,18 @@ class RecentReversal:
             "CRs": "Correct rejection rate",
             "hits": "Hit rate",
         }
-        performance = dict()
-        fig, axs = plt.subplots(1, len(sessions), sharey=True)
-        fig.subplots_adjust(wspace=0)
-
-        for ax, session, title in zip(axs, sessions, session_labels):
-            performance[session] = self.plot_performance_session_type(
-                session_type=session,
-                ax=ax,
+        performance = {
+            session_type: self.performance_session_type(
+                session_type,
                 window=window,
                 strides=strides,
                 performance_metric=performance_metric,
-                downsample_trials=downsample_trials,
-            )[0]
-            ax.set_xticks([])
-            ax.set_title(title, fontsize=16)
-            [ax.spines[side].set_visible(False) for side in ["top", "right"]]
-        axs[0].set_ylabel(ylabels[performance_metric])
-        self.set_age_legend(fig)
-
+                downsample_trials=downsample_trials
+            )
+            for session_type in sessions
+        }
         if plot_line:
-            line_fig, ax = plt.subplots(figsize=(5, 6.5))
+            fig, ax = plt.subplots(figsize=(5, 6.5))
             for age, color in zip(ages_to_plot, plot_colors):
                 data = np.hstack(
                     [
@@ -1002,11 +1003,27 @@ class RecentReversal:
                 tick.set_rotation(45)
             [ax.spines[side].set_visible(False) for side in ["top", "right"]]
             ax.set_ylabel(ylabels[performance_metric], fontsize=22)
-            line_fig.tight_layout()
+            fig.tight_layout()
         else:
-            line_fig = None
+            fig, axs = plt.subplots(1, len(sessions), sharey=True)
+            fig.subplots_adjust(wspace=0)
 
-        return performance, fig, line_fig
+            for ax, session, title in zip(axs, sessions, session_labels):
+                self.plot_performance_session_type(
+                    session_type=session,
+                    ax=ax,
+                    window=window,
+                    strides=strides,
+                    performance_metric=performance_metric,
+                    downsample_trials=downsample_trials,
+                )
+                ax.set_xticks([])
+                ax.set_title(title, fontsize=16)
+                [ax.spines[side].set_visible(False) for side in ["top", "right"]]
+            axs[0].set_ylabel(ylabels[performance_metric])
+            self.set_age_legend(fig)
+
+        return performance, fig
 
     def performance_to_df(self, performance):
         """
@@ -1064,7 +1081,7 @@ class RecentReversal:
         if sessions is None:
             sessions = self.meta["session_types"]
 
-        behavior, _, fig = self.plot_peak_performance_all_sessions(
+        behavior, fig = self.plot_peak_performance_all_sessions(
             performance_metric=performance_metric,
             sessions=sessions,
             plot_line=True,
@@ -9743,10 +9760,11 @@ class RecentReversal:
     #     )
     #     return changepoints, binned_activations
 
-    def make_fig2(self, panels=None):
-        folder = 2
+    def make_fig1(self, panels=None):
+        folder = 1
         with open(r"Z:\Will\RemoteReversal\Data\PV_corr_matrices.pkl", "rb") as file:
             corr_matrices = pkl.load(file)
+
         if panels is None:
             panels = ["A", "C", "D", "E", "F", "G", "H"]
 
@@ -9777,55 +9795,91 @@ class RecentReversal:
                 self.save_fig(fig, f"{mouse}_longitudinal_cell", folder)
 
         if "E" in panels:
-            mouse = "Fornax"
-            session_type = "Goals4"
-            ensembles = [0, 1, 2, 3]
+            mouse = "Lyra"
 
-            fig = self.plot_ex_patterns(mouse, session_type, ensembles)
+            fig = self.snakeplot_matched_placefields(mouse,
+                                             self.meta['session_types'],
+                                             sort_by_session=-2,
+                                             place_cells_only=False)
 
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"{mouse} ensemble patterns {session_type}", folder)
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f"{mouse} cells snakeplot", folder)
+
+        # if "E" in panels:
+        #     mouse = "Fornax"
+        #     session_type = "Goals4"
+        #     ensembles = [0, 1, 2, 3]
+        #
+        #     fig = self.plot_ex_patterns(mouse, session_type, ensembles)
+        #
+        #     if self.save_configs["save_figs"]:
+        #         self.save_fig(fig, f"{mouse} ensemble patterns {session_type}", folder)
 
         if "F" in panels:
-            mouse = "Lyra"
-            session_type = "Goals4"
-            ensemble = 38
-            fig = self.plot_ensemble(mouse, session_type, ensemble)
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(
-                    fig, f"{mouse} ensemble {ensemble} from {session_type}", folder
-                )
-
-        if "G" in panels:
-            mouse = "Lyra"
-            session_type = "Goals4"
-            ensemble = 38
-            fig = self.plot_ensemble_raster(mouse, session_type, ensemble, bin_size=0.2)
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(
-                    fig, f"{mouse}_{session_type}_ensemble{ensemble}_raster", folder
-                )
-
-        if "H" in panels:
-            ages_to_plot = "young"
-            df, fig = self.boxplot_all_assembly_SI(ages_to_plot, plot_type="line")[1:]
-            SI_anova, pairwise_df = self.ensemble_SI_anova(df)
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"Ensemble_spatial_info_{ages_to_plot}", folder)
-
-            return SI_anova, pairwise_df
-
-        if "I" in panels:
-            errors_df, fig = self.plot_spatial_decoder_errors_over_days()[2:]
+            predictors = 'cells'
+            errors_df, fig = self.plot_spatial_decoder_errors_over_days(predictors=predictors)[2:]
             anova_df, pairwise_df = self.multisession_spatial_decoder_anova(errors_df)
 
             if self.save_configs["save_figs"]:
-                self.save_fig(fig, "Spatial decoder error over sessions", folder)
+                self.save_fig(fig, f"Spatial decoder error over sessions_{predictors}", folder)
 
             return anova_df, pairwise_df, errors_df
+
+        # if "F" in panels:
+        #     mouse = "Lyra"
+        #     session_type = "Goals4"
+        #     ensemble = 38
+        #     fig = self.plot_ensemble(mouse, session_type, ensemble)
+        #
+        #     if self.save_configs["save_figs"]:
+        #         self.save_fig(
+        #             fig, f"{mouse} ensemble {ensemble} from {session_type}", folder
+        #         )
+
+        if "G" in panels:
+            remap_score_df, fig = self.plot_remap_score_means(
+                ages_to_plot="young", place_cells_only=False
+            )
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, "Rate remapping", folder)
+
+        if "H" in panels:
+            data, df, fig = self.plot_session_PV_corr_comparisons(
+                corr_matrices, ages_to_plot="young"
+            )
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, "Global remapping", folder)
+
+        # if "G" in panels:
+        #     mouse = "Lyra"
+        #     session_type = "Goals4"
+        #     ensemble = 38
+        #     fig = self.plot_ensemble_raster(mouse, session_type, ensemble, bin_size=0.2)
+        #
+        #     if self.save_configs["save_figs"]:
+        #         self.save_fig(
+        #             fig, f"{mouse}_{session_type}_ensemble{ensemble}_raster", folder
+        #         )
+        #
+        # if "H" in panels:
+        #     ages_to_plot = "young"
+        #     df, fig = self.boxplot_all_assembly_SI(ages_to_plot, plot_type="line")[1:]
+        #     SI_anova, pairwise_df = self.ensemble_SI_anova(df)
+        #
+        #     if self.save_configs["save_figs"]:
+        #         self.save_fig(fig, f"Ensemble_spatial_info_{ages_to_plot}", folder)
+        #
+        #     return SI_anova, pairwise_df
+        #
+        # if "I" in panels:
+        #     errors_df, fig = self.plot_spatial_decoder_errors_over_days()[2:]
+        #     anova_df, pairwise_df = self.multisession_spatial_decoder_anova(errors_df)
+        #
+        #     if self.save_configs["save_figs"]:
+        #         self.save_fig(fig, "Spatial decoder error over sessions", folder)
+        #
+        #     return anova_df, pairwise_df, errors_df
 
     def make_fig3(self, panels=None):
         if panels is None:
@@ -10178,7 +10232,7 @@ class RecentReversal:
 
             return anova_dfs
 
-    def make_sfig1(self, panels=None):
+    def make_sfig2(self, panels=None):
         with open(r"Z:\Will\RemoteReversal\Data\PV_corr_matrices.pkl", "rb") as file:
             corr_matrices = pkl.load(file)
         if panels is None:

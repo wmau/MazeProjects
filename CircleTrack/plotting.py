@@ -149,10 +149,10 @@ def plot_daily_rasters(ScrollObj):
 
     for day, (raster, tuning_curve, title) in enumerate(zip(rasters, tuning_curves, titles)):
         axs[day, 0].imshow(raster[ScrollObj.current_position], cmap='gray', aspect='auto')
-        axs[day, 0].set_ylabel(f'{title} trials')
+        axs[day, 0].set_ylabel(f'{title} trials', fontsize=14)
         axs[day, 1].plot(tuning_curve[ScrollObj.current_position])
         axs[day, 1].set_ylabel('$Ca^{2+}$ event '
-                               'rate')
+                               'rate', fontsize=14)
     fig = axs[0,0].figure
     fig.supxlabel('Linearized position (cm)')
     fig.tight_layout()
