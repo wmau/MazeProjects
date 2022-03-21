@@ -9805,15 +9805,6 @@ class RecentReversal:
             if self.save_configs['save_figs']:
                 self.save_fig(fig, f"{mouse} cells snakeplot", folder)
 
-        # if "E" in panels:
-        #     mouse = "Fornax"
-        #     session_type = "Goals4"
-        #     ensembles = [0, 1, 2, 3]
-        #
-        #     fig = self.plot_ex_patterns(mouse, session_type, ensembles)
-        #
-        #     if self.save_configs["save_figs"]:
-        #         self.save_fig(fig, f"{mouse} ensemble patterns {session_type}", folder)
 
         if "F" in panels:
             predictors = 'cells'
@@ -9824,17 +9815,6 @@ class RecentReversal:
                 self.save_fig(fig, f"Spatial decoder error over sessions_{predictors}", folder)
 
             return anova_df, pairwise_df, errors_df
-
-        # if "F" in panels:
-        #     mouse = "Lyra"
-        #     session_type = "Goals4"
-        #     ensemble = 38
-        #     fig = self.plot_ensemble(mouse, session_type, ensemble)
-        #
-        #     if self.save_configs["save_figs"]:
-        #         self.save_fig(
-        #             fig, f"{mouse} ensemble {ensemble} from {session_type}", folder
-        #         )
 
         if "G" in panels:
             remap_score_df, fig = self.plot_remap_score_means(
@@ -9851,35 +9831,61 @@ class RecentReversal:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, "Global remapping", folder)
 
-        # if "G" in panels:
-        #     mouse = "Lyra"
-        #     session_type = "Goals4"
-        #     ensemble = 38
-        #     fig = self.plot_ensemble_raster(mouse, session_type, ensemble, bin_size=0.2)
-        #
-        #     if self.save_configs["save_figs"]:
-        #         self.save_fig(
-        #             fig, f"{mouse}_{session_type}_ensemble{ensemble}_raster", folder
-        #         )
-        #
-        # if "H" in panels:
-        #     ages_to_plot = "young"
-        #     df, fig = self.boxplot_all_assembly_SI(ages_to_plot, plot_type="line")[1:]
-        #     SI_anova, pairwise_df = self.ensemble_SI_anova(df)
-        #
-        #     if self.save_configs["save_figs"]:
-        #         self.save_fig(fig, f"Ensemble_spatial_info_{ages_to_plot}", folder)
-        #
-        #     return SI_anova, pairwise_df
-        #
-        # if "I" in panels:
-        #     errors_df, fig = self.plot_spatial_decoder_errors_over_days()[2:]
-        #     anova_df, pairwise_df = self.multisession_spatial_decoder_anova(errors_df)
-        #
-        #     if self.save_configs["save_figs"]:
-        #         self.save_fig(fig, "Spatial decoder error over sessions", folder)
-        #
-        #     return anova_df, pairwise_df, errors_df
+    def make_fig2(self, panels=None):
+        folder = 2
+        if panels is None:
+            panels = ['A', 'B', 'C','D', 'E']
+
+        if "A" in panels:
+            mouse = "Fornax"
+            session_type = "Goals4"
+            ensembles = [0, 1, 2, 3]
+
+            fig = self.plot_ex_patterns(mouse, session_type, ensembles)
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"{mouse} ensemble patterns {session_type}", folder)
+
+        if "B" in panels:
+            mouse = "Lyra"
+            session_type = "Goals4"
+            ensemble = 38
+            fig = self.plot_ensemble(mouse, session_type, ensemble)
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(
+                    fig, f"{mouse} ensemble {ensemble} from {session_type}", folder
+                )
+
+        if "C" in panels:
+            mouse = "Lyra"
+            session_type = "Goals4"
+            ensemble = 38
+            fig = self.plot_ensemble_raster(mouse, session_type, ensemble, bin_size=0.2)
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(
+                    fig, f"{mouse}_{session_type}_ensemble{ensemble}_raster", folder
+                )
+
+        if "D" in panels:
+            ages_to_plot = "young"
+            df, fig = self.boxplot_all_assembly_SI(ages_to_plot, plot_type="line")[1:]
+            SI_anova, pairwise_df = self.ensemble_SI_anova(df)
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"Ensemble_spatial_info_{ages_to_plot}", folder)
+
+            return SI_anova, pairwise_df
+
+        if "E" in panels:
+            errors_df, fig = self.plot_spatial_decoder_errors_over_days()[2:]
+            anova_df, pairwise_df = self.multisession_spatial_decoder_anova(errors_df)
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, "Spatial decoder error over sessions", folder)
+
+            return anova_df, pairwise_df, errors_df
 
     def make_fig3(self, panels=None):
         if panels is None:

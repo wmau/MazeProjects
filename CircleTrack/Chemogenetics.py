@@ -18,8 +18,7 @@ plt.rcParams["svg.fonttype"] = "none"
 plt.rcParams["text.usetex"] = False
 plt.rcParams.update({"font.size": 22})
 
-project_names = {"DREADDs": "DREADDs_Reversal",
-                 "PSAM": "PSAMReversal"}
+project_names = {"DREADDs": "DREADDs_Reversal", "PSAM": "PSAMReversal"}
 
 session_types = {
     "Drift": [
@@ -65,26 +64,30 @@ grouped_mice = {
     ],
 }
 
-groups = {"DREADDs": ["fluorophore", "hM4di"],
-          "PSAM": ["vehicle", "PSEM"]}
+groups = {"DREADDs": ["fluorophore", "hM4di"], "PSAM": ["vehicle", "PSEM"]}
 age_colors = ["cornflowerblue", "r"]
-colors = {"PSAM": ["cornflowerblue", "mediumpurple"],
-          "DREADDs": ["silver", "coral"]}
+colors = {"PSAM": ["cornflowerblue", "mediumpurple"], "DREADDs": ["silver", "coral"]}
 
 
 class Chemogenetics:
-    def __init__(self, mice, actuator='DREADDs', save_figs=True, ext='pdf',
-                 save_path=r'Z:\Will\Manuscripts\memory_flexibility\Figures'):
+    def __init__(
+        self,
+        mice,
+        actuator="DREADDs",
+        save_figs=True,
+        ext="pdf",
+        save_path=r"Z:\Will\Manuscripts\memory_flexibility\Figures",
+    ):
         project_name = project_names[actuator]
         self.data = MultiAnimal(
-            mice, project_name=project_name,
-            SessionFunction=BehaviorSession
+            mice, project_name=project_name, SessionFunction=BehaviorSession
         )
 
-        self.save_configs = {'save_figs': save_figs,
-                             'ext': ext,
-                             'path': save_path,
-                             }
+        self.save_configs = {
+            "save_figs": save_figs,
+            "ext": ext,
+            "path": save_path,
+        }
         self.meta = {
             "session_types": session_types[project_name],
             "mice": mice,
@@ -97,27 +100,42 @@ class Chemogenetics:
             for session_type in self.meta["session_types"]
         ]
 
-        self.meta["grouped_mice"] = {key: [mouse for mouse in self.meta['mice'] if mouse in grouped_mice[actuator]]
-                                     for key in groups[actuator]}
+        self.meta["grouped_mice"] = {
+            key: [
+                mouse for mouse in self.meta["mice"] if mouse in grouped_mice[actuator]
+            ]
+            for key in groups[actuator]
+        }
 
         self.meta["grouped_mice"] = dict()
         for key in groups[actuator]:
             if key in ["hM4di", "PSEM"]:
-                mouse_list = [mouse for mouse in self.meta["mice"] if mouse in grouped_mice[actuator]]
+                mouse_list = [
+                    mouse
+                    for mouse in self.meta["mice"]
+                    if mouse in grouped_mice[actuator]
+                ]
             else:
-                mouse_list = [mouse for mouse in self.meta["mice"] if mouse not in grouped_mice[actuator]]
+                mouse_list = [
+                    mouse
+                    for mouse in self.meta["mice"]
+                    if mouse not in grouped_mice[actuator]
+                ]
             self.meta["grouped_mice"][key] = mouse_list
 
     def save_fig(self, fig, fname, folder):
-        fpath = os.path.join(self.save_configs['path'], str(folder),
-                             f'{fname}.{self.save_configs["ext"]}')
+        fpath = os.path.join(
+            self.save_configs["path"],
+            str(folder),
+            f'{fname}.{self.save_configs["ext"]}',
+        )
         fig.savefig(fpath)
 
-    def set_legend(self, fig, groups=None, colors=None, loc='lower right'):
+    def set_legend(self, fig, groups=None, colors=None, loc="lower right"):
         if groups is None:
-            groups = self.meta['groups']
+            groups = self.meta["groups"]
         if colors is None:
-            colors = self.meta['colors']
+            colors = self.meta["colors"]
 
         patches = [
             mpatches.Patch(facecolor=c, label=label, edgecolor="k")
@@ -125,15 +143,17 @@ class Chemogenetics:
         ]
         fig.legend(handles=patches, loc=loc, fontsize=14)
 
-    def behavior_over_trials(self,
-                             session_type,
-                             window=6,
-                             strides=2,
-                             performance_metric='CRs',
-                             trial_limit=None):
+    def behavior_over_trials(
+        self,
+        session_type,
+        window=6,
+        strides=2,
+        performance_metric="CRs",
+        trial_limit=None,
+    ):
         dv, mice, sessions, groups, trial_blocks = [], [], [], [], []
-        for group in self.meta['groups']:
-            for mouse in self.meta['grouped_mice'][group]:
+        for group in self.meta["groups"]:
+            for mouse in self.meta["grouped_mice"][group]:
                 session = self.data[mouse][session_type]
                 session.sdt_trials(
                     rolling_window=window,
@@ -151,61 +171,75 @@ class Chemogenetics:
 
         df = pd.DataFrame(
             {
-                't': trial_blocks,
-                'dv': dv,
-                'mice': mice,
-                'session': sessions,
-                'group': groups,
+                "t": trial_blocks,
+                "dv": dv,
+                "mice": mice,
+                "session": sessions,
+                "group": groups,
             }
         )
 
         # cols = ['mice', 'session', 'group']
         # df[cols] = df[cols].mask(df[cols]=='nan', None).ffill(axis=0)
         # df['t'] = df['t'].isna().cumsum() + df['t'].ffill()
-        #df = df.dropna(axis=0)
+        # df = df.dropna(axis=0)
 
         return df
 
     def stack_behavior_dv(self, df):
         dv = dict()
 
-        for group in self.meta['groups']:
+        for group in self.meta["groups"]:
             dv_temp = []
 
-            for mouse in self.meta['grouped_mice'][group]:
-                dv_temp.append(df.loc[df['mice']==mouse, 'dv'])
+            for mouse in self.meta["grouped_mice"][group]:
+                dv_temp.append(df.loc[df["mice"] == mouse, "dv"])
                 dv[group] = stack_padding(dv_temp)
 
         return dv
 
-    def plot_trial_behavior(self, session_types=None, performance_metric='d_prime',
-                            plot_sig=False, trial_limit=None, **kwargs):
+    def plot_trial_behavior(
+        self,
+        session_types=None,
+        performance_metric="d_prime",
+        plot_sig=False,
+        trial_limit=None,
+        **kwargs,
+    ):
         if session_types is None:
-            session_types = self.meta['session_types']
+            session_types = self.meta["session_types"]
         elif type(session_types) is str:
             session_types = [session_types]
         n_sessions = len(session_types)
 
         dv, pvals, anova_dfs = dict(), dict(), dict()
         for session_type in session_types:
-            anova_dfs[session_type], df, pvals[session_type] =\
-                self.trial_behavior_anova(session_type, performance_metric=performance_metric,
-                                          trial_limit=trial_limit, **kwargs)
+            (
+                anova_dfs[session_type],
+                df,
+                pvals[session_type],
+            ) = self.trial_behavior_anova(
+                session_type,
+                performance_metric=performance_metric,
+                trial_limit=trial_limit,
+                **kwargs,
+            )
             dv[session_type] = self.stack_behavior_dv(df)
 
         ylabel = {
-            'd_prime': "d'",
-            'CRs': "Correct rejection rate",
-            'hits': "Hit rate",
+            "d_prime": "d'",
+            "CRs": "Correct rejection rate",
+            "hits": "Hit rate",
         }
         if n_sessions == 1:
-            fig, axs = plt.subplots(1,n_sessions, figsize=(5,5))
+            fig, axs = plt.subplots(1, n_sessions, figsize=(5, 5))
             axs = [axs]
         else:
-            fig, axs = plt.subplots(1, n_sessions, figsize=(5*n_sessions, 5),
-                                    sharey=True)
+            fig, axs = plt.subplots(
+                1, n_sessions, figsize=(5 * n_sessions, 5), sharey=True
+            )
         for i, (ax, session_type) in enumerate(zip(axs, session_types)):
-            for group, color in zip(self.meta['groups'], self.meta['colors']):
+            for group, color in zip(self.meta["groups"], self.meta["colors"]):
                 y = dv[session_type][group]
                 xrange = y.shape[1]
                 ax.plot(range(xrange), y.T, color=color, alpha=0.3)
@@ -215,21 +249,25 @@ class Chemogenetics:
                     sem(y, axis=0),
                     ax=ax,
                     color=color,
-                    label=group
+                    label=group,
                 )
             xlims = [int(x) for x in ax.get_xlim()]
             ax.set_xticks(xlims)
             if trial_limit is None:
-                n_trials = np.max([self.data[mouse][session_type].data['ntrials']
-                                   for mouse in self.meta['mice']])
+                n_trials = np.max(
+                    [
+                        self.data[mouse][session_type].data["ntrials"]
+                        for mouse in self.meta["mice"]
+                    ]
+                )
             else:
                 n_trials = trial_limit
             ax.set_xticklabels([1, n_trials])
-            ax.set_title(session_type.replace('Goals', 'Training'))
+            ax.set_title(session_type.replace("Goals", "Training"))
 
             if i == 0:
                 ax.set_ylabel(ylabel[performance_metric])
-            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+            [ax.spines[side].set_visible(False) for side in ["top", "right"]]
 
             if plot_sig:
                 sig = np.where(pvals[session_type] < 0.05)[0]
@@ -237,34 +275,49 @@ class Chemogenetics:
                     sig_regions = group_consecutives(sig, step=1)
                     ylims = ax.get_ylim()
                     for region in sig_regions:
-                        ax.fill_between(np.arange(region[0], region[-1]), ylims[-1], ylims[0], alpha=0.4, color='gray')
+                        ax.fill_between(
+                            np.arange(region[0], region[-1]),
+                            ylims[-1],
+                            ylims[0],
+                            alpha=0.4,
+                            color="gray",
+                        )
 
-        if n_sessions==1:
-            axs[0].set_xlabel('Trials')
+        if n_sessions == 1:
+            axs[0].set_xlabel("Trials")
         else:
             fig.supxlabel("Trials")
         fig.tight_layout()
         fig.subplots_adjust(wspace=0.2)
-        axs[-1].legend(loc='lower right', fontsize=14)
+        axs[-1].legend(loc="lower right", fontsize=14)
 
         return dv, anova_dfs, fig
 
-    def trial_behavior_anova(self, session_type, performance_metric='d_prime', **kwargs):
-        df = self.behavior_over_trials(session_type, performance_metric=performance_metric,
-                                       **kwargs)
+    def trial_behavior_anova(
+        self, session_type, performance_metric="d_prime", **kwargs
+    ):
+        df = self.behavior_over_trials(
+            session_type, performance_metric=performance_metric, **kwargs
+        )
 
-        anova_df = pg.anova(df, dv='dv', between=['t', 'group'], ss_type=1)
+        anova_df = pg.anova(df, dv="dv", between=["t", "group"], ss_type=1)
 
         pvals = []
-        for i in range(np.max(df['t'])):
-            x = df.loc[np.logical_and(df['group']==self.meta['groups'][0], df['t']==i), 'dv']
-            y = df.loc[np.logical_and(df['group']==self.meta['groups'][1], df['t']==i), 'dv']
+        for i in range(np.max(df["t"])):
+            x = df.loc[
+                np.logical_and(df["group"] == self.meta["groups"][0], df["t"] == i),
+                "dv",
+            ]
+            y = df.loc[
+                np.logical_and(df["group"] == self.meta["groups"][1], df["t"] == i),
+                "dv",
+            ]
 
-            pval = ttest_ind(x,y, nan_policy='omit').pvalue
+            pval = ttest_ind(x, y, nan_policy="omit").pvalue
             if np.isfinite(pval) and ((len(x) + len(y)) > 5):
                 pvals.append(pval)
 
-        pvals = multipletests(pvals, method='fdr_bh')[1]
+        pvals = multipletests(pvals, method="fdr_bh")[1]
 
         return anova_df, df, pvals
 
@@ -280,57 +333,66 @@ class Chemogenetics:
     #
     #     return learning_rates
 
-    def plot_reversal_vs_training4_trial_behavior(self, group, performance_metric='d_prime',
-                                                  **kwargs):
+    def plot_reversal_vs_training4_trial_behavior(
+        self, group, performance_metric="d_prime", **kwargs
+    ):
         dv, pvals = dict(), dict()
         reversal_color = {
-            'vehicle': 'cornflowerblue',
-            'PSEM': self.meta['colors'][self.meta['groups'].index(group)],
+            "vehicle": "cornflowerblue",
+            "PSEM": self.meta["colors"][self.meta["groups"].index(group)],
         }
-        session_types = ('Goals4', 'Reversal')
+        session_types = ("Goals4", "Reversal")
         for session_type in session_types:
-            df = self.trial_behavior_anova(session_type, performance_metric=performance_metric,
-                                           **kwargs)[1]
+            df = self.trial_behavior_anova(
+                session_type, performance_metric=performance_metric, **kwargs
+            )[1]
             dv[session_type] = self.stack_behavior_dv(df)
 
         # For significance markers.
         pvals = []
         for x, y in zip(dv[session_types[0]][group].T, dv[session_types[1]][group].T):
-            pval = ttest_ind(x,y, nan_policy='omit').pvalue
+            pval = ttest_ind(x, y, nan_policy="omit").pvalue
 
             if np.isfinite(pval) and ((len(x) + len(y)) > 5):
                 pvals.append(pval)
-        pvals = multipletests(pvals, method='fdr_bh')[1]
+        pvals = multipletests(pvals, method="fdr_bh")[1]
 
         ylabel = {
-            'd_prime': "d'",
-            'CRs': "Correct rejection rate",
-            'hits': "Hit rate",
+            "d_prime": "d'",
+            "CRs": "Correct rejection rate",
+            "hits": "Hit rate",
         }
-        fig, ax = plt.subplots(figsize=(5,5))
-        for session_type, color in zip(session_types, ['k', reversal_color[group]]):
+        fig, ax = plt.subplots(figsize=(5, 5))
+        for session_type, color in zip(session_types, ["k", reversal_color[group]]):
             y = dv[session_type][group]
             x = y.shape[1]
             ax.plot(range(x), y.T, color=color, alpha=0.3)
-            errorfill(range(x),
-                      np.nanmean(y, axis=0),
-                      sem(y, axis=0),
-                      ax=ax,
-                      color=color,
-                      label=session_type.replace('Goals', 'Training'))
+            errorfill(
+                range(x),
+                np.nanmean(y, axis=0),
+                sem(y, axis=0),
+                ax=ax,
+                color=color,
+                label=session_type.replace("Goals", "Training"),
+            )
 
         sig = np.where(pvals < 0.05)[0]
         if len(sig):
             sig_regions = group_consecutives(sig, step=1)
             ylims = ax.get_ylim()
             for region in sig_regions:
-                ax.fill_between(np.arange(region[0], region[-1]), ylims[-1], ylims[0],
-                                alpha=0.4, color='gray')
+                ax.fill_between(
+                    np.arange(region[0], region[-1]),
+                    ylims[-1],
+                    ylims[0],
+                    alpha=0.4,
+                    color="gray",
+                )
         ax.set_title(group, color=reversal_color[group])
-        ax.legend(loc='lower right', fontsize=14)
+        ax.legend(loc="lower right", fontsize=14)
         ax.set_ylabel(ylabel[performance_metric])
-        ax.set_xlabel('Sliding trial windows')
-        [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+        ax.set_xlabel("Sliding trial windows")
+        [ax.spines[side].set_visible(False) for side in ["top", "right"]]
         fig.tight_layout()
 
         return dv, fig
@@ -394,11 +456,11 @@ class Chemogenetics:
         # Get dimensions of new arrays.
         dims = {
             group: (len(self.meta["grouped_mice"][group]), sum(longest_sessions))
-            for group in self.meta['groups']
+            for group in self.meta["groups"]
         }
-        metrics = {key: nan_array(dims[key]) for key in self.meta['groups']}
+        metrics = {key: nan_array(dims[key]) for key in self.meta["groups"]}
 
-        for group in self.meta['groups']:
+        for group in self.meta["groups"]:
             for row, mouse in enumerate(self.meta["grouped_mice"][group]):
                 for border, session in zip(borders, self.meta["session_types"]):
                     metric_this_session = behavioral_performance.sel(
@@ -411,23 +473,25 @@ class Chemogenetics:
             mice_ = np.hstack(
                 [
                     np.repeat(
-                        self.meta["grouped_mice"][group], len(self.meta["session_types"])
+                        self.meta["grouped_mice"][group],
+                        len(self.meta["session_types"]),
                     )
-                    for group in self.meta['groups']
+                    for group in self.meta["groups"]
                 ]
             )
             groups_ = np.hstack(
-                [np.repeat(group, metrics[group].size) for group in self.meta['groups']]
+                [np.repeat(group, metrics[group].size) for group in self.meta["groups"]]
             )
             session_types_ = np.hstack(
                 [
                     np.tile(
-                        self.meta["session_types"], len(self.meta["grouped_mice"][group])
+                        self.meta["session_types"],
+                        len(self.meta["grouped_mice"][group]),
                     )
-                    for group in self.meta['groups']
+                    for group in self.meta["groups"]
                 ]
             )
-            metric_ = np.hstack([metrics[inj].flatten() for inj in self.meta['groups']])
+            metric_ = np.hstack([metrics[inj].flatten() for inj in self.meta["groups"]])
 
             df = pd.DataFrame(
                 {
@@ -470,7 +534,7 @@ class Chemogenetics:
         )[0]
 
         best_performance = dict()
-        for group in self.meta['groups']:
+        for group in self.meta["groups"]:
             best_performance[group] = []
             for mouse in self.meta["grouped_mice"][group]:
                 best_performance[group].append(
@@ -495,11 +559,11 @@ class Chemogenetics:
                 fig = ax.figure
 
             fig = self.scatter_box(best_performance, ax=ax)
-            [ax.spines[side].set_visible(False) for side in ['top' ,'right']]
+            [ax.spines[side].set_visible(False) for side in ["top", "right"]]
 
             if label_axes:
                 ax.set_xticks([1, 2])
-                ax.set_xticklabels(self.meta['groups'], rotation=45)
+                ax.set_xticklabels(self.meta["groups"], rotation=45)
                 ax.set_ylabel(ylabels[performance_metric])
                 # ax = beautify_ax(ax)
             fig.tight_layout()
@@ -544,7 +608,7 @@ class Chemogenetics:
             ax.set_xticks([])
             ax.set_title(title, fontsize=16)
 
-            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+            [ax.spines[side].set_visible(False) for side in ["top", "right"]]
 
         axs[0].set_ylabel(ylabels[performance_metric])
 
@@ -561,8 +625,8 @@ class Chemogenetics:
             keys=sessions,
         )
 
-        if self.save_configs['save_figs']:
-            self.save_fig(fig, f'session {performance_metric}', 1)
+        if self.save_configs["save_figs"]:
+            self.save_fig(fig, f"session {performance_metric}", 1)
 
         return performance, df
 
@@ -585,10 +649,12 @@ class Chemogenetics:
                 window=window,
                 performance_metric=performance_metric,
                 show_plot=False,
-            )
+            )[0]
 
-            performance[self.meta['groups'][0]].extend(performance[self.meta['groups'][1]])
-            performance_all[:, i] = performance[self.meta['groups'][0]]
+            performance[self.meta["groups"][0]].extend(
+                performance[self.meta["groups"][1]]
+            )
+            performance_all[:, i] = performance[self.meta["groups"][0]]
 
         ylabel = {"CRs": "Correct rejection rate", "hits": "Hit rate", "d_prime": "d'"}
         fig, ax = plt.subplots(figsize=(5, 5))
@@ -601,30 +667,25 @@ class Chemogenetics:
             color="k",
         )
         [tick.set_rotation(45) for tick in ax.get_xticklabels()]
-        [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+        [ax.spines[side].set_visible(False) for side in ["top", "right"]]
         ax.set_ylabel(ylabel[performance_metric])
         fig.tight_layout()
 
         df = pd.DataFrame(
             performance_all,
-            index=np.hstack(
-                [mice for mice in self.meta['grouped_mice'].values()]
-            ),
+            index=np.hstack([mice for mice in self.meta["grouped_mice"].values()]),
             columns=sessions,
         )
 
-        if self.save_configs['save_figs']:
-            self.save_fig(fig, f'all_mice_{performance_metric}', 1)
-
-        return df
+        return df, fig
 
     def plot_perseverative_licking(self, show_plot=True, binarize=True):
-        goals4 = self.meta['session_types'][-2]
+        goals4 = self.meta["session_types"][-2]
         reversal = "Reversal"
 
         perseverative_errors = dict()
         unforgiveable_errors = dict()
-        for group in self.meta['groups']:
+        for group in self.meta["groups"]:
             perseverative_errors[group] = []
             unforgiveable_errors[group] = []
 
@@ -655,7 +716,7 @@ class Chemogenetics:
                 ["Perseverative errors", "Unforgiveable errors"],
             ):
                 boxes = ax.boxplot(
-                    [rate[inj] for inj in self.meta['groups']],
+                    [rate[inj] for inj in self.meta["groups"]],
                     patch_artist=True,
                     widths=0.75,
                     showfliers=False,
@@ -672,12 +733,12 @@ class Chemogenetics:
                         s=50,
                     )
                     for i, (group, color) in enumerate(
-                        zip(self.meta['groups'], self.meta['colors'])
+                        zip(self.meta["groups"], self.meta["colors"])
                     )
                 ]
 
                 for patch, med, color in zip(
-                    boxes["boxes"], boxes["medians"], self.meta['colors']
+                    boxes["boxes"], boxes["medians"], self.meta["colors"]
                 ):
                     patch.set_facecolor(color)
                     med.set(color="k")
@@ -690,13 +751,13 @@ class Chemogenetics:
         return perseverative_errors, unforgiveable_errors
 
     def plot_perseverative_licking_over_session(
-                self,
-                session_type="Reversal",
-                window_size=6,
-                trial_interval=2,
-                show_plot=True,
-                binarize_licks=True,
-        ):
+        self,
+        session_type="Reversal",
+        window_size=6,
+        trial_interval=2,
+        show_plot=True,
+        binarize_licks=True,
+    ):
         """
         Plot perseverative and unforgiveable errors averaged across trial windows
 
@@ -704,9 +765,13 @@ class Chemogenetics:
         """
         perseverative_errors = dict()
         unforgiveable_errors = dict()
-        for group in self.meta['groups']:
-            perseverative_errors[group] = [[] for mouse in self.meta["grouped_mice"][group]]
-            unforgiveable_errors[group] = [[] for mouse in self.meta["grouped_mice"][group]]
+        for group in self.meta["groups"]:
+            perseverative_errors[group] = [
+                [] for mouse in self.meta["grouped_mice"][group]
+            ]
+            unforgiveable_errors[group] = [
+                [] for mouse in self.meta["grouped_mice"][group]
+            ]
 
             for i, mouse in enumerate(self.meta["grouped_mice"][group]):
                 behavior = self.data[mouse][session_type]
@@ -740,10 +805,12 @@ class Chemogenetics:
                     )
 
         perseverative_errors = {
-            group: stack_padding(perseverative_errors[group]) for group in self.meta['groups']
+            group: stack_padding(perseverative_errors[group])
+            for group in self.meta["groups"]
         }
         unforgiveable_errors = {
-            group: stack_padding(unforgiveable_errors[group]) for group in self.meta['groups']
+            group: stack_padding(unforgiveable_errors[group])
+            for group in self.meta["groups"]
         }
 
         if show_plot:
@@ -753,32 +820,48 @@ class Chemogenetics:
                 fig.subplots_adjust(wspace=0)
 
                 for ax, rate, title in zip(
-                        axs,
-                        [perseverative_errors, unforgiveable_errors],
-                        ["Perseverative errors", "Unforgiveable errors"],
+                    axs,
+                    [perseverative_errors, unforgiveable_errors],
+                    ["Perseverative errors", "Unforgiveable errors"],
                 ):
-                    se = {group: sem(rate[group], axis=0) for group in self.meta['groups']}
-                    m = {group: np.nanmean(rate[group], axis=0) for group in self.meta['groups']}
-                    for c, group in zip(self.meta['colors'], self.meta['groups']):
+                    se = {
+                        group: sem(rate[group], axis=0) for group in self.meta["groups"]
+                    }
+                    m = {
+                        group: np.nanmean(rate[group], axis=0)
+                        for group in self.meta["groups"]
+                    }
+                    for c, group in zip(self.meta["colors"], self.meta["groups"]):
                         ax.plot(rate[group].T, color=c, alpha=0.1)
                         errorfill(
-                            range(m[group].shape[0]), m[group], se[group], color=c, ax=ax
+                            range(m[group].shape[0]),
+                            m[group],
+                            se[group],
+                            color=c,
+                            ax=ax,
                         )
                         ax.set_title(title)
                     fig.supxlabel("Trial blocks")
                     fig.supylabel(ylabel)
             else:
                 fig, ax = plt.subplots()
-                se = {group: sem(unforgiveable_errors[group], axis=0) for group in self.meta['groups']}
-                m = {group: np.nanmean(unforgiveable_errors[group], axis=0) for group in self.meta['groups']}
-                for c, group in zip(self.meta['colors'], self.meta['groups']):
+                se = {
+                    group: sem(unforgiveable_errors[group], axis=0)
+                    for group in self.meta["groups"]
+                }
+                m = {
+                    group: np.nanmean(unforgiveable_errors[group], axis=0)
+                    for group in self.meta["groups"]
+                }
+                for c, group in zip(self.meta["colors"], self.meta["groups"]):
                     ax.plot(unforgiveable_errors[group].T, color=c, alpha=0.1)
-                    errorfill(range(m[group].shape[0]), m[group], se[group], color=c, ax=ax)
+                    errorfill(
+                        range(m[group].shape[0]), m[group], se[group], color=c, ax=ax
+                    )
                 ax.set_xlabel("Trial blocks")
                 ax.set_ylabel(ylabel)
 
         return perseverative_errors, unforgiveable_errors
-
 
     def scatter_box(self, data, ylabel="", ax=None, xticks=[]):
         if ax is None:
@@ -786,7 +869,7 @@ class Chemogenetics:
         else:
             fig = ax.figure
         boxes = ax.boxplot(
-            [data[inj] for inj in self.meta['groups']],
+            [data[inj] for inj in self.meta["groups"]],
             widths=0.75,
             showfliers=False,
             zorder=0,
@@ -802,10 +885,14 @@ class Chemogenetics:
                 zorder=1,
                 s=100,
             )
-            for i, (group, color) in enumerate(zip(self.meta['groups'], self.meta['colors']))
+            for i, (group, color) in enumerate(
+                zip(self.meta["groups"], self.meta["colors"])
+            )
         ]
 
-        for patch, med, color in zip(boxes["boxes"], boxes["medians"], self.meta['colors']):
+        for patch, med, color in zip(
+            boxes["boxes"], boxes["medians"], self.meta["colors"]
+        ):
             patch.set_facecolor(color)
             med.set(color="k")
         ax.set_xticklabels(xticks, rotation=45)
@@ -819,20 +906,20 @@ class Chemogenetics:
                 self.data[mouse][session_type].data["ntrials"]
                 for mouse in self.meta["grouped_mice"][inj]
             ]
-            for inj in self.meta['groups']
+            for inj in self.meta["groups"]
         }
 
         fig, ax = plt.subplots(figsize=(3, 4.75))
-        fig = self.scatter_box(trials, "Trials", ax=ax, xticks=self.meta['groups'])
+        fig = self.scatter_box(trials, "Trials", ax=ax, xticks=self.meta["groups"])
         ax = fig.axes[0]
-        [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+        [ax.spines[side].set_visible(False) for side in ["top", "right"]]
         fig.tight_layout()
 
         return trials, fig
 
     def compare_licks(self, session_type, exclude_rewarded=False):
-        licks = {group: [] for group in self.meta['groups']}
-        for group in self.meta['groups']:
+        licks = {group: [] for group in self.meta["groups"]}
+        for group in self.meta["groups"]:
             for mouse in self.meta["grouped_mice"][group]:
                 if exclude_rewarded:
                     ports = ~self.data[mouse][session_type].data["rewarded_ports"]
@@ -845,90 +932,97 @@ class Chemogenetics:
                     np.sum(self.data[mouse][session_type].data["all_licks"][:, ports])
                 )
 
-        fig, ax = plt.subplots(figsize=(3,4.75))
-        fig = self.scatter_box(licks, ylabel="Licks", ax=ax, xticks=self.meta['groups'])
+        fig, ax = plt.subplots(figsize=(3, 4.75))
+        fig = self.scatter_box(licks, ylabel="Licks", ax=ax, xticks=self.meta["groups"])
         ax = fig.axes[0]
-        [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+        [ax.spines[side].set_visible(False) for side in ["top", "right"]]
         fig.tight_layout()
 
         return licks, fig
 
-    def make_fig1(self, panels=None):
+    def make_sfig1(self, panels=None):
+        folder = "S1"
         if panels is None:
-            panels = ['C', 'D', 'E', 'F']
+            panels = ["A", "B", "C", "D", "E", "F", "G"]
 
-        if 'C' in panels:
-            d_prime = self.plot_behavior_grouped(performance_metric='d_prime',
-                                              sessions=['Goals' + str(i) for i in np.arange(1,5)])
+        if "A" in panels:
+            performance_metric = "d_prime"
+            d_prime, fig = self.plot_behavior_grouped(
+                performance_metric=performance_metric,
+                sessions=["Goals" + str(i) for i in np.arange(1, 5)],
+            )
             anova_results = pg.rm_anova(d_prime)
             print(anova_results)
 
-        if 'D' in panels:
-            performance_metric = 'CRs'
-            dv, anova_dfs, fig = \
-                self.plot_trial_behavior(session_types=['Goals4','Reversal'],
-                                         performance_metric=performance_metric,
-                                         window=6, strides=2)
-
-            if self.save_configs['save_figs']:
-                self.save_fig(fig, f'Vehicle vs PSEM Reversal_{performance_metric}', 1)
-
-            for df in anova_dfs.values():
-                print(df)
-
-    def make_sfig1(self, panels=None):
-        if panels is None:
-            panels = ["A", "B", "C", "D", "E", "F", "G", "H"]
-
-        folder = "S1"
-
-        if "A" in panels:
-            trials, fig = self.compare_trial_count('Reversal')
-
-            print(ttest_ind(trials['vehicle'], trials['PSEM']))
-
-            if self.save_configs['save_figs']:
-                self.save_fig(fig, 'Trial counts', folder)
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"all_mice_{performance_metric}", folder)
 
         if "B" in panels:
-            licks, fig = self.compare_licks('Reversal', exclude_rewarded=False)
+            trials, fig = self.compare_trial_count("Reversal")
 
-            print(ttest_ind(licks['vehicle'], licks['PSEM']))
+            print(ttest_ind(trials["vehicle"], trials["PSEM"]))
 
-            if self.save_configs['save_figs']:
-                self.save_fig(fig, 'Lick counts', folder)
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, "Trial counts", folder)
 
         if "C" in panels:
-            licks, fig = self.compare_licks('Reversal', exclude_rewarded=True)
+            licks, fig = self.compare_licks("Reversal", exclude_rewarded=False)
 
-            print(ttest_ind(licks['vehicle'], licks['PSEM']))
+            print(ttest_ind(licks["vehicle"], licks["PSEM"]))
 
-            if self.save_configs['save_figs']:
-                self.save_fig(fig, 'Lick counts_exclude_rewarded', folder)
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, "Lick counts", folder)
 
         if "D" in panels:
-            performance_metric = 'd_prime'
-            dv, anova_dfs, fig = \
-                self.plot_trial_behavior(session_types=['Goals4','Reversal'],
-                                         performance_metric=performance_metric,
-                                         window=6, strides=2)
+            licks, fig = self.compare_licks("Reversal", exclude_rewarded=True)
 
-            if self.save_configs['save_figs']:
-                self.save_fig(fig, f'Vehicle vs PSEM Reversal_{performance_metric}', folder)
+            print(ttest_ind(licks["vehicle"], licks["PSEM"]))
 
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, "Lick counts_exclude_rewarded", folder)
+
+        if "E" in panels:
+            performance_metric = "d_prime"
+            dv, anova_dfs, fig = self.plot_trial_behavior(
+                session_types=["Goals4", "Reversal"],
+                performance_metric=performance_metric,
+                window=6,
+                strides=2,
+            )
+            if self.save_configs["save_figs"]:
+                self.save_fig(
+                    fig, f"Vehicle vs PSEM Reversal_{performance_metric}", folder
+                )
             for df in anova_dfs.values():
                 print(df)
 
-        if "E" in panels:
-            performance_metric = 'hits'
-            dv, anova_dfs, fig = \
-                self.plot_trial_behavior(session_types=['Goals4','Reversal'],
-                                         performance_metric=performance_metric,
-                                         window=6, strides=2)
+        if "F" in panels:
+            performance_metric = "hits"
+            dv, anova_dfs, fig = self.plot_trial_behavior(
+                session_types=["Goals4", "Reversal"],
+                performance_metric=performance_metric,
+                window=6,
+                strides=2,
+            )
+            if self.save_configs["save_figs"]:
+                self.save_fig(
+                    fig, f"Vehicle vs PSEM Reversal_{performance_metric}", folder
+                )
+            for df in anova_dfs.values():
+                print(df)
 
-            if self.save_configs['save_figs']:
-                self.save_fig(fig, f'Vehicle vs PSEM Reversal_{performance_metric}', folder)
-
+        if "G" in panels:
+            performance_metric = "CRs"
+            dv, anova_dfs, fig = self.plot_trial_behavior(
+                session_types=["Goals4", "Reversal"],
+                performance_metric=performance_metric,
+                window=6,
+                strides=2,
+            )
+            if self.save_configs["save_figs"]:
+                self.save_fig(
+                    fig, f"Vehicle vs PSEM Reversal_{performance_metric}", folder
+                )
             for df in anova_dfs.values():
                 print(df)
 
@@ -974,12 +1068,13 @@ class Chemogenetics:
         #     axs[-1].set_ylabel('')
         #     print('')
 
+
 if __name__ == "__main__":
-    PSAM_mice = ['PSAM_' + str(i) for i in np.arange(4,28)]
-    mistargets = ['PSAM_' + str(i) for i in [4, 5, 6, 8]]
-    PSAM_mice.remove('PSAM_18') # Bad reversal session.
+    PSAM_mice = ["PSAM_" + str(i) for i in np.arange(4, 28)]
+    mistargets = ["PSAM_" + str(i) for i in [4, 5, 6, 8]]
+    PSAM_mice.remove("PSAM_18")  # Bad reversal session.
     exclude_non_learners = True
     if exclude_non_learners:
-        [PSAM_mice.remove(x) for x in ['PSAM_' + str(i) for i in [13,15]]]
+        [PSAM_mice.remove(x) for x in ["PSAM_" + str(i) for i in [13, 15]]]
     [PSAM_mice.remove(x) for x in mistargets]
-    C = Chemogenetics(PSAM_mice, actuator='PSAM')
+    C = Chemogenetics(PSAM_mice, actuator="PSAM")
