@@ -337,17 +337,25 @@ class RecentReversal:
 
         n_neurons["aged"] = [self.meta["aged"][mouse] for mouse in n_neurons.index]
 
-        fig, axs = plt.subplots(1, len(sessions_to_plot), sharey=True)
-        fig.subplots_adjust(wspace=0)
-        for ax, session, session_label in zip(axs, sessions_to_plot, session_labels):
-            data = dict()
-            for age in ages:
-                aged = age == "aged"
-                data[age] = n_neurons[session].loc[n_neurons["aged"] == aged]
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
 
-            self.scatter_box(data, ax=ax, ages_to_plot=ages_to_plot)
-            ax.set_title(session_label, fontsize=14)
-        axs[0].set_ylabel("# neurons", fontsize=22)
+        fig, ax = plt.subplots()
+        for age, color in zip(ages_to_plot, plot_colors):
+            aged = True if age == 'aged' else False
+            n_neurons_plot = n_neurons.loc[n_neurons.aged==aged]
+            n_neurons_plot = n_neurons_plot.drop(columns='aged')
+            xticks = [col.replace('Goals', 'Training') for col in n_neurons_plot.columns]
+            ax.plot(xticks, n_neurons_plot.T, color=color, alpha=0.5)
+            errorfill(
+                xticks,
+                n_neurons_plot.mean(axis=0),
+                yerr=sem(n_neurons_plot, axis=0),
+                ax=ax,
+                color=color,
+            )
+            plt.setp(ax.get_xticklabels(), rotation=45)
+        ax.set_ylabel('# neurons', fontsize=22)
+        [ax.spines[side].set_visible(False) for side in ['top', 'right']]
         #self.set_age_legend(fig)
         fig.tight_layout()
         fig.subplots_adjust(wspace=0)
@@ -2060,7 +2068,7 @@ class RecentReversal:
             ages_to_plot
         )
         fig, axs = plt.subplots(
-            1, n_ages_to_plot, sharey=True, figsize=(4.8 * n_ages_to_plot, 4.8)
+            1, n_ages_to_plot, sharey=True, figsize=(3 * n_ages_to_plot, 4.8)
         )
 
         mean_df = remap_score_df.groupby(["mice", "session_type"]).mean()[
@@ -2097,7 +2105,7 @@ class RecentReversal:
                 [
                     session_type.replace("Goals", "Training")
                     for session_type in session_types
-                ]
+                ], rotation=45
             )
             [ax.spines[side].set_visible(False) for side in ["top", "right"]]
         axs[0].set_ylabel("Rate remap scores", fontsize=22)
@@ -2179,7 +2187,7 @@ class RecentReversal:
         ]
 
         n_plots = len(locations_to_plot)
-        fig, axs = plt.subplots(1, n_plots, sharey=True, figsize=(n_plots*4.8, 4.8))
+        fig, axs = plt.subplots(1, n_plots, sharey=True, figsize=(n_plots*3, 4.8))
         if n_plots == 1:
             axs = [axs]
         fig.subplots_adjust(wspace=0)
@@ -2206,8 +2214,9 @@ class RecentReversal:
                     markersize=10,
                 )
 
-                ax.set_xticklabels(xticks, rotation=45)
-                ax.set_xlabel(reward_type.replace("_", " \n"))
+                ax.set_xticklabels(xticks, rotation=45, fontsize=14)
+                if n_plots > 1:
+                    ax.set_xlabel(reward_type.replace("_", " \n"))
                 [ax.spines[side].set_visible(False) for side in ["top", "right"]]
             else:
                 boxes = ax.boxplot(
@@ -2220,8 +2229,9 @@ class RecentReversal:
                 color_boxes(boxes, color)
 
                 ax.set_xticklabels([xticks[-1]], rotation=45)
-                ax.set_xlabel("previously \nrewarded")
-        axs[0].set_ylabel("PV correlation coefficient", fontsize=22)
+                if n_plots > 1:
+                    ax.set_xlabel("previously \nrewarded")
+        axs[0].set_ylabel("Spatial PV\ncorrelation coefficient", fontsize=22)
         [axs[-1].spines[side].set_visible(False) for side in ["top", "right"]]
 
         fig.tight_layout()
@@ -2459,7 +2469,7 @@ class RecentReversal:
                     data[session_pair][age].append(corr_matrices[mouse][s1, s2])
 
         fig, axs = plt.subplots(
-            1, n_ages_to_plot, sharey=True, figsize=(4.8 * n_ages_to_plot, 4.8)
+            1, n_ages_to_plot, sharey=True, figsize=(3 * n_ages_to_plot, 4.8)
         )
         if n_ages_to_plot == 1:
             axs = [axs]
@@ -2488,13 +2498,12 @@ class RecentReversal:
             color_boxes(boxes, color)
             ax.set_xticklabels(
                 [
-                    f'{session_pair[0].replace("Goals", "Training")} vs. \n'
+                    f'{session_pair[0].replace("Goals", "Training")} x \n'
                     f'{session_pair[1].replace("Goals", "Training")}'
                     for session_pair in session_pairs
                 ],
-                rotation=45,
+                rotation=45, fontsize=14,
             )
-            ax.tick_params(axis="x", length=0)
 
             if n_ages_to_plot == 2:
                 ax.set_title(age)
@@ -4480,19 +4489,27 @@ class RecentReversal:
                     ]
 
             # Plot.
-            fig, axs = plt.subplots(1, len(self.meta["session_types"]), sharey=True)
-            fig.subplots_adjust(wspace=0)
-
-            for i, (ax, session_type, title) in enumerate(
-                zip(axs, sessions_to_plot, session_labels)
-            ):
-                self.scatter_box(
-                    n_ensembles[session_type], ax=ax, ages_to_plot=ages_to_plot
+            ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+            fig, ax = plt.subplots()
+            for age, color in zip(ages_to_plot, plot_colors):
+                aged = True if age == 'aged' else False
+                n_neurons_plot = df.loc[df.aged==aged]
+                n_neurons_plot = n_neurons_plot.drop(columns='aged')
+                xticks = [col.replace('Goals', 'Training') for col in n_neurons_plot.columns]
+                ax.plot(xticks, n_neurons_plot.T, color=color, alpha=0.5)
+                errorfill(
+                    xticks,
+                    n_neurons_plot.mean(axis=0),
+                    yerr=sem(n_neurons_plot, axis=0),
+                    ax=ax,
+                    color=color,
                 )
-                ax.set_title(title, fontsize=14)
-                [ax.spines[side].set_visible(False) for side in ["top", "right"]]
+                plt.setp(ax.get_xticklabels(), rotation=45)
+            ax.set_ylabel(ylabel, fontsize=22)
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
-            axs[0].set_ylabel(ylabel, fontsize=22)
+            #self.set_age_legend(fig)
+            fig.tight_layout()
 
             if ages_to_plot is None:
                 self.set_age_legend(fig)
@@ -5647,9 +5664,6 @@ class RecentReversal:
                 )
                 ensemble_size_df = pd.concat((ensemble_size_df, size_dict))
 
-        fig, axs = plt.subplots(1, len(self.meta["session_types"]), sharey=True)
-        fig.subplots_adjust(wspace=0)
-
         data = {
             "unique_members": proportion_unique_members,
             "ensemble_size": ensemble_size,
@@ -5658,17 +5672,27 @@ class RecentReversal:
             "unique_members": "Unique members / total # neurons",
             "ensemble_size": "% of total neurons per ensemble",
         }
-        to_plot = data[data_type]
-        for i, (ax, session_type) in enumerate(zip(axs, self.meta["session_types"])):
-            self.scatter_box(to_plot[session_type], ax=ax, ages_to_plot=ages_to_plot)
-            ax.set_xticks([])
-            ax.set_title(session_type.replace("Goals", "Training"), fontsize=14)
-            [ax.spines[side].set_visible(False) for side in ["top", "right"]]
 
-        axs[0].set_ylabel(ylabels[data_type])
+        ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
+        fig, ax = plt.subplots()
+        for age, color in zip(ages_to_plot, plot_colors):
+            piv_df = ensemble_size_df[ensemble_size_df.age==age].pivot(index='mice',
+                                                                       columns='session',
+                                                                       values='ensemble_size')
 
-        if self.save_configs["save_figs"]:
-            self.save_fig(fig, f"EnsembleSize_{data_type}_{ages_to_plot}", 2)
+            xticks = [col.replace('Goals', 'Training') for col in piv_df.columns]
+            ax.plot(xticks, piv_df.T, color=color, alpha=0.5)
+            errorfill(
+                xticks,
+                piv_df.mean(axis=0),
+                yerr=sem(piv_df, axis=0),
+                ax=ax,
+                color=color,
+            )
+            plt.setp(ax.get_xticklabels(), rotation=45)
+        ax.set_ylabel(ylabels[data_type], fontsize=22)
+        [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+        fig.tight_layout()
 
         return data, ensemble_size_df, fig
 
@@ -9822,6 +9846,8 @@ class RecentReversal:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, "Neuron count", folder)
 
+            return n_neurons
+
         if "D" in panels:
             mouse = "Miranda"
             _, fig = self.scrollplot_rasters_by_day(mouse, self.meta["session_types"])
@@ -10116,15 +10142,15 @@ class RecentReversal:
             for df in anova_dfs.values():
                 print(df)
 
-            performance = self.plot_performance_session_type(
+            performance, fig = self.plot_performance_session_type(
                 "Reversal",
                 window=None,
+                strides=None,
                 performance_metric=performance_metric,
-                show_plot=True,
             )
             if self.save_configs["save_figs"]:
                 self.save_fig(
-                    plt.gcf(), f"Reversal_aged_vs_young_{performance_metric}", folder
+                    fig, f"Reversal_aged_vs_young_{performance_metric}", folder
                 )
 
             stats = ttest_ind(performance["young"], performance["aged"])
