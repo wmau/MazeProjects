@@ -216,6 +216,7 @@ class CalciumSession:
         miniscope_folder = self.meta["paths"]["minian"]
         C = self.imaging["C"]
         S = self.imaging["S"]
+
         frames = self.imaging["frames"]
 
         corrected_C, corrected_S = nan_corrupted_frames(miniscope_folder, C, S, frames)
