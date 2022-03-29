@@ -1492,7 +1492,8 @@ class RecentReversal:
         return df
 
     def hub_dropped_cells_activity_rate(
-        self, mouse, graph_session, activity_rate_session=None, half=None, ax=None
+        self, mouse, graph_session, activity_rate_session=None, half=None, ax=None,
+            graph_session_neuron_id=False,
     ):
         degree_df = self.find_degrees(mouse, graph_session)
         degree_df = self.categorize_hub_dropped_neurons(degree_df, time_bin=5)
@@ -1522,15 +1523,23 @@ class RecentReversal:
             for q, category in zip([4, 1], categories):
                 neurons_ = degree_df.loc[
                     np.logical_and(in_ensemble, degree_df.quartile == q), "neuron_id"
-                ]
+                ].unique()
 
                 if activity_rate_session != graph_session:
+                    col_num = 0 if graph_session_neuron_id else 1
                     reg_neurons = trimmed_map.loc[
                         trimmed_map.iloc[:, 0].isin(neurons_), trimmed_map.columns[1]
                     ].values
-                    neurons = reg_neurons[reg_neurons > -9999]
+                    good_neurons = reg_neurons > -9999
+                    neurons = reg_neurons[good_neurons]
+
+                    neuron_labels = trimmed_map.loc[
+                        trimmed_map.iloc[:, 0].isin(neurons_), trimmed_map.columns[col_num]
+                    ].values
+                    neuron_labels = neuron_labels[good_neurons]
                 else:
                     neurons = neurons_
+                    neuron_labels = neurons_
 
                 event_rates_df = pd.concat(
                     (
@@ -1538,8 +1547,9 @@ class RecentReversal:
                         pd.DataFrame(
                             {
                                 "mouse": mouse,
+                                "session_id": activity_rate_session,
                                 "ensemble_id": ensemble_id,
-                                "neuron_id": neurons,
+                                "neuron_id": neuron_labels,
                                 "category": category,
                                 "event_rates": event_rates[neurons],
                             }
@@ -4804,7 +4814,7 @@ class RecentReversal:
         # axs[1].plot(np.mean(rasters[ensemble_number], axis=0))
 
         for port in port_bins[behavior_data["rewarded_ports"]]:
-            ax.axvline(x=port, color='r')
+            ax.axvline(x=port, color='y')
 
         ax.set_xticks(ax.get_xlim())
         ax.set_xticklabels([0, 220])
@@ -9512,7 +9522,7 @@ class RecentReversal:
                 ax.set_xticklabels([0, 220])
 
                 for port in ports:
-                    ax.axvline(port, c="r")
+                    ax.axvline(port, c="y")
 
             axs[0].set_ylabel("Ensemble #")
             fig.suptitle(mouse)
@@ -10601,13 +10611,14 @@ class RecentReversal:
                     fig, "Hub vs dropped neuron delta deg_no dropped neurons", folder
                 )
         if "B" in panels:
+            master_df = pd.DataFrame()
             for session_type in self.meta["session_types"]:
                 df = pd.DataFrame()
                 fig, axs = plt.subplots(1, 5, figsize=(10, 4.8), sharey=True)
                 pvals = []
                 for mouse, ax in zip(self.meta["grouped_mice"]["young"][:-2], axs):
                     rates_df, long_df = self.hub_dropped_cells_activity_rate(
-                        mouse, "Reversal", session_type, ax=ax
+                        mouse, "Reversal", session_type, ax=ax, graph_session_neuron_id=True
                     )
                     pval = ttest_rel(
                         *[rates_df[col] for col in rates_df.columns]
@@ -10623,6 +10634,8 @@ class RecentReversal:
                 df.to_csv(os.path.join(self.save_configs['path'], folder,
                                        f'{session_type}_act_rate.csv'))
 
+                master_df = pd.concat((master_df, df))
+
                 pvals = [
                     np.round(x, 4) for x in multipletests(pvals, method="fdr_bh")[1]
                 ]
@@ -10636,6 +10649,9 @@ class RecentReversal:
                         f"Hub vs dropped neurons transient rate {session_type}",
                         folder,
                     )
+
+            master_df.to_csv(os.path.join(self.save_configs['path'], folder,
+                             'all_sessions_activity_rate.csv'))
 
             for half, half_i in zip(["first half", "second half"], [0, 1]):
                 df = pd.DataFrame()
