@@ -2286,22 +2286,26 @@ class RecentReversal:
                         [rhos[mouse][session_pair][reward_type] for mouse in mice]
                     )
 
-                boxes = ax.boxplot(
-                    data, widths=0.75, showfliers=False, zorder=0, patch_artist=True
+                ax.bar(
+                    [0, 1],
+                    [np.nanmean(x) for x in data],
+                    zorder=1, color=color, ecolor='k', edgecolor='k',
+                    error_kw=dict(lw=1, capsize=5, capthick=1, zorder=0)
                 )
-                color_boxes(boxes, color)
 
                 ax.plot(
-                    [jitter_x(np.ones_like(x) * i) for i, x in zip([1, 2], data)],
+                    [jitter_x(np.ones_like(x) * i) for i, x in zip([0, 1], data)],
                     data,
                     "o-",
                     color="k",
                     markerfacecolor=color,
-                    zorder=1,
+                    zorder=2,
                     markersize=10,
+                    alpha=0.4,
                 )
 
-                ax.set_xticklabels(xticks, rotation=45, fontsize=14)
+                ax.set_xticks([0, 1])
+                ax.set_xticklabels(xticks, rotation=45, fontsize=12)
                 if n_plots > 1:
                     ax.set_xlabel(reward_type.replace("_", " \n"))
                 [ax.spines[side].set_visible(False) for side in ["top", "right"]]
@@ -3595,7 +3599,7 @@ class RecentReversal:
                 )
 
                 [
-                    ax.axvline(x=reward_location_bin, color="g")
+                    ax.axvline(x=reward_location_bin, color="y")
                     for reward_location_bin in reward_location_bins
                 ]
 
@@ -3610,7 +3614,7 @@ class RecentReversal:
                     )[0]
 
                     [
-                        ax.axvline(x=reward_location_bin, color="c", alpha=0.5)
+                        ax.axvline(x=reward_location_bin, color="y", alpha=0.3)
                         for reward_location_bin in ex_reward_bins
                     ]
 
@@ -4798,17 +4802,9 @@ class RecentReversal:
             rasters[ensemble_number], cmap="viridis", interpolation="hanning"
         )
         # axs[1].plot(np.mean(rasters[ensemble_number], axis=0))
-        port_colors = {
-            True: "g",
-            False: "gray",
-        }
-        alphas = [
-            0.6 if rewarded else 0.2 for rewarded in behavior_data["rewarded_ports"]
-        ]
-        for port, rewarded, alpha in zip(
-            port_bins, behavior_data["rewarded_ports"], alphas
-        ):
-            ax.axvline(x=port, color=port_colors[rewarded], alpha=alpha)
+
+        for port in port_bins[behavior_data["rewarded_ports"]]:
+            ax.axvline(x=port, color='r')
 
         ax.set_xticks(ax.get_xlim())
         ax.set_xticklabels([0, 220])
@@ -9516,7 +9512,7 @@ class RecentReversal:
                 ax.set_xticklabels([0, 220])
 
                 for port in ports:
-                    ax.axvline(port, c="g")
+                    ax.axvline(port, c="r")
 
             axs[0].set_ylabel("Ensemble #")
             fig.suptitle(mouse)
@@ -10043,6 +10039,16 @@ class RecentReversal:
             return remap_score_df
 
         if "L" in panels:
+            remap_score_df, fig = self.plot_remap_score_means(
+                ages_to_plot="young",
+                place_cells_only=False,
+                ports=["original rewards", "newly rewarded"],
+            )
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, "Rate remapping_rewardbins", folder)
+
+        if "M" in panels:
             data, df, fig = self.plot_session_PV_corr_comparisons(
                 corr_matrices, ages_to_plot="young"
             )
@@ -10055,6 +10061,14 @@ class RecentReversal:
             print(wilcoxon(x, y))
 
             return data, df
+
+        if "N" in panels:
+            rhos, fig = self.plot_reward_PV_corrs_v2(
+                age_to_plot="young", locations_to_plot=["currently_rewarded"]
+            )
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, "Global remapping_rewardbins", folder)
 
     def make_fig2(self, panels=None):
         folder = 2
@@ -10094,14 +10108,10 @@ class RecentReversal:
                 )
 
         if "D" in panels:
-            ages_to_plot = "young"
-            df, fig = self.boxplot_all_assembly_SI(ages_to_plot, plot_type="line")[1:]
-            SI_anova, pairwise_df = self.ensemble_SI_anova(df)
+            n_ensembles, df, fig = self.count_ensembles(ages_to_plot="young")
 
             if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"Ensemble_spatial_info_{ages_to_plot}", folder)
-
-            return SI_anova, pairwise_df
+                self.save_fig(fig, "# ensembles", folder)
 
         if "E" in panels:
             errors_df, fig = self.plot_spatial_decoder_errors_over_days()[2:]
@@ -10111,6 +10121,32 @@ class RecentReversal:
                 self.save_fig(fig, "Spatial decoder error over sessions", folder)
 
             return anova_df, pairwise_df, errors_df
+
+        if "F" in panels:
+            mouse = "Miranda"
+            ensemble_fields, fig = self.snakeplot_matched_ensembles(
+                mouse, ("Goals3", "Goals4")
+            )
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"{mouse}_ensemble_snakeplot", folder)
+
+        if "G" in panels:
+            ages_to_plot = "young"
+            lag = 0
+            fig = self.plot_lick_decoder(
+                licks_to_include="first",
+                lag=lag,
+                ages_to_plot=ages_to_plot,
+                class_weight="balanced",
+                random_state=7,
+                n_jobs=6,
+            )[1]
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(
+                    fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", folder
+                )
 
     def make_fig3(self, panels=None):
         if panels is None:
@@ -10286,6 +10322,35 @@ class RecentReversal:
 
         return df
 
+    def check_uniqueness(self, df):
+        overlaps = pd.DataFrame()
+        for mouse in df['mouse'].unique():
+            mouse_df = df.loc[df.mouse==mouse]
+
+            for combination in product(mouse_df['ensemble_id'].unique(), repeat=2):
+                if combination[0] != combination[1]:
+                    a = mouse_df.loc[mouse_df['ensemble_id']==combination[0],
+                                     'neuron_id'].unique()
+                    b = mouse_df.loc[mouse_df['ensemble_id']==combination[1],
+                                     'neuron_id'].unique()
+
+                    n_overlaps = np.sum(np.in1d(a,b))
+                    overlaps = pd.concat(
+                        (overlaps,
+                        pd.DataFrame(
+                            {'mouse': mouse,
+                             'ensemble1': combination[0],
+                             'ensemble2': combination[1],
+                             'n_overlaps': n_overlaps}, index=[0]
+                        ))
+                    )
+
+                    if n_overlaps > 0:
+                        print(f'{mouse} {combination}: {a[np.in1d(a,b)]}')
+
+        return overlaps
+
+
     def make_fig5(self, panels=None):
         if panels is None:
             panels = ["A", "B", "C", "D", "E", "F", "G"]
@@ -10425,28 +10490,25 @@ class RecentReversal:
                 )
 
         if "D" in panels:
-            remap_score_df, fig = self.plot_remap_score_means(
-                ages_to_plot="young",
-                place_cells_only=False,
-                ports=["original rewards", "newly rewarded"],
-            )
+            session = 'Goals3'
+            fig = self.plot_all_reward_field_densities(session, ages_to_plot="young")
 
             if self.save_configs["save_figs"]:
-                self.save_fig(fig, "Rate remapping_rewardbins", folder)
+                self.save_fig(fig, f"Reward field density_{session}", folder)
 
         if "E" in panels:
-            rhos, fig = self.plot_reward_PV_corrs_v2(
-                age_to_plot="young", locations_to_plot=["currently_rewarded"]
-            )
+            session = 'Goals4'
+            fig = self.plot_all_reward_field_densities(session, ages_to_plot="young")
 
             if self.save_configs["save_figs"]:
-                self.save_fig(fig, "Global remapping_rewardbins", folder)
+                self.save_fig(fig, f"Reward field density_{session}", folder)
 
         if "F" in panels:
-            fig = self.plot_all_reward_field_densities("Reversal", ages_to_plot="young")
+            session = 'Reversal'
+            fig = self.plot_all_reward_field_densities(session, ages_to_plot="young")
 
             if self.save_configs["save_figs"]:
-                self.save_fig(fig, "Reward field density", folder)
+                self.save_fig(fig, f"Reward field density_{session}", folder)
 
     def make_sfig3(self, panels=None):
         if panels is None:
@@ -10454,10 +10516,14 @@ class RecentReversal:
 
         folder = "S3"
         if "A" in panels:
-            n_ensembles, df, fig = self.count_ensembles(ages_to_plot="young")
+            ages_to_plot = "young"
+            df, fig = self.boxplot_all_assembly_SI(ages_to_plot, plot_type="line")[1:]
+            SI_anova, pairwise_df = self.ensemble_SI_anova(df)
 
             if self.save_configs["save_figs"]:
-                self.save_fig(fig, "# ensembles", folder)
+                self.save_fig(fig, f"Ensemble_spatial_info_{ages_to_plot}", folder)
+
+            return SI_anova, pairwise_df
 
         if "B" in panels:
             data, ensemble_size_df, fig = self.plot_ensemble_sizes(
@@ -10500,31 +10566,7 @@ class RecentReversal:
                 "Miranda", ("Goals3", "Goals4"), subset=[11]
             )
 
-        if "D" in panels:
-            mouse = "Miranda"
-            ensemble_fields, fig = self.snakeplot_matched_ensembles(
-                mouse, ("Goals3", "Goals4")
-            )
 
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"{mouse}_ensemble_snakeplot", folder)
-
-        if "E" in panels:
-            ages_to_plot = "young"
-            lag = 0
-            fig = self.plot_lick_decoder(
-                licks_to_include="first",
-                lag=lag,
-                ages_to_plot=ages_to_plot,
-                class_weight="balanced",
-                random_state=7,
-                n_jobs=6,
-            )[1]
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(
-                    fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", folder
-                )
 
         if "F" in panels:
             ages_to_plot = "young"
