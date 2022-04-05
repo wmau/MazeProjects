@@ -14,7 +14,7 @@ from CaImaging.util import (
     open_minian,
     cluster_corr,
 )
-import multiprocessing as mp
+import math
 import random
 import ruptures as rpt
 import networkx as nx
@@ -469,12 +469,17 @@ class RecentReversal:
         n_sessions = len(session_types)
 
         dv, pvals, anova_dfs = dict(), dict(), dict()
+        sessions_df = pd.DataFrame()
         for session_type in session_types:
             anova_dfs[session_type], df, pvals_temp = self.trial_behavior_anova(
                 session_type, performance_metric=performance_metric, **kwargs
             )
             dv[session_type] = self.stack_behavior_dv(df)
             pvals[session_type] = pvals_temp
+
+            sessions_df = pd.concat(
+                (sessions_df, df)
+            )
 
         ylabel = {
             "d_prime": "d'",
@@ -539,7 +544,7 @@ class RecentReversal:
         fig.subplots_adjust(wspace=0.2)
         axs[-1].legend(loc="lower right")
 
-        return dv, anova_dfs, fig
+        return dv, anova_dfs, fig, sessions_df
 
     def trial_behavior_anova(
         self, session_type, performance_metric="d_prime", **kwargs
@@ -3722,7 +3727,7 @@ class RecentReversal:
         for field in fields:
             field_bins = define_field_bins(field, field_threshold=field_threshold)
 
-            field_centers.append(np.floor(np.median(field_bins)))
+            field_centers.append(np.floor(circmean(field_bins, high=125)))
         field_centers = np.asarray(field_centers)
         # Find reward location.
         reward_bins, bins = find_reward_spatial_bins(
@@ -3737,6 +3742,7 @@ class RecentReversal:
         for reward_bin in reward_bins:
             normalized_bins = field_centers.copy()
             normalized_bins -= reward_bin
+            normalized_bins = np.asarray([math.remainder(x, 125) for x in normalized_bins]) #for circularity
 
             bins_to_plot.extend(normalized_bins)
 
@@ -8631,7 +8637,7 @@ class RecentReversal:
         return degree_df
 
     def degree_comparison_all_mice(
-        self, age, average_within_ensemble=True, trend="decreasing"
+        self, age, average_within_ensemble=True, trend="decreasing", plot_agg=False
     ):
         """
         Compute degrees for all neurons based on the graph from the last 5 min of the
@@ -8659,67 +8665,82 @@ class RecentReversal:
             )
             Degrees = pd.concat((Degrees, degree_df), ignore_index=True)
 
-        n_mice = len(Degrees.mouse.unique())
-        fig, axs = plt.subplots(1, n_mice, sharey=True, figsize=(2 * n_mice, 4.8))
-        for mouse, ax in zip(mice, axs):
-            mouse_degrees = Degrees.loc[Degrees["mouse"] == mouse]
-            if average_within_ensemble:
-                hub_neurons = mouse_degrees.loc[mouse_degrees["quartile"] == 4]
-                stable = hub_neurons.groupby(["time_bin", "ensemble_id"]).mean()[
-                    "degree"
-                ][0]
-
-                dropped_neurons = mouse_degrees.loc[mouse_degrees["quartile"] == 1]
-                disconnected = dropped_neurons.groupby(
-                    ["time_bin", "ensemble_id"]
-                ).mean()["degree"][0]
-                showfliers = False
-            else:
-                first_time_bin = mouse_degrees["time_bin"] == 0
-                stable = mouse_degrees.loc[
-                    np.logical_and(first_time_bin, mouse_degrees["quartile"] == 4),
-                    "degree",
-                ]
-                disconnected = mouse_degrees.loc[
-                    np.logical_and(first_time_bin, mouse_degrees["quartile"] == 1),
-                    "degree",
-                ]
-                showfliers = True
-
+        if plot_agg:
+            fig, ax = plt.subplots(figsize=(4, 4.8))
             boxes = ax.boxplot(
-                [stable, disconnected],
-                widths=0.75,
-                patch_artist=True,
-                zorder=0,
-                showfliers=showfliers,
+                [Degrees.loc[np.logical_and(Degrees['time_bin']==0, Degrees['quartile']==i), 'degree']
+                 for i in [4,1]],
+                widths=0.75, patch_artist=True,
             )
-
-            if average_within_ensemble:
-                ax.plot(
-                    [
-                        jitter_x(np.ones_like(stable), 0.05),
-                        jitter_x(np.ones_like(disconnected), 0.05) * 2,
-                    ],
-                    [stable, disconnected],
-                    "o-",
-                    color="k",
-                    markerfacecolor=color,
-                )
             color_boxes(boxes, color)
 
             ax.set_xticklabels(
                 ["Hub\nneurons", "Dropped\nneurons"], rotation=45, fontsize=14
             )
-            ax.set_title(mouse)
             [ax.spines[side].set_visible(False) for side in ["top", "right"]]
+            ax.set_ylabel('Degree at beginning\nof session', fontsize=22)
+        else:
+            n_mice = len(Degrees.mouse.unique())
+            fig, axs = plt.subplots(1, n_mice, sharey=True, figsize=(2 * n_mice, 4.8))
+            for mouse, ax in zip(mice, axs):
+                mouse_degrees = Degrees.loc[Degrees["mouse"] == mouse]
+                if average_within_ensemble:
+                    hub_neurons = mouse_degrees.loc[mouse_degrees["quartile"] == 4]
+                    stable = hub_neurons.groupby(["time_bin", "ensemble_id"]).mean()[
+                        "degree"
+                    ][0]
 
+                    dropped_neurons = mouse_degrees.loc[mouse_degrees["quartile"] == 1]
+                    disconnected = dropped_neurons.groupby(
+                        ["time_bin", "ensemble_id"]
+                    ).mean()["degree"][0]
+                    showfliers = False
+                else:
+                    first_time_bin = mouse_degrees["time_bin"] == 0
+                    stable = mouse_degrees.loc[
+                        np.logical_and(first_time_bin, mouse_degrees["quartile"] == 4),
+                        "degree",
+                    ]
+                    disconnected = mouse_degrees.loc[
+                        np.logical_and(first_time_bin, mouse_degrees["quartile"] == 1),
+                        "degree",
+                    ]
+                    showfliers = True
+
+                boxes = ax.boxplot(
+                    [stable, disconnected],
+                    widths=0.75,
+                    patch_artist=True,
+                    zorder=0,
+                    showfliers=showfliers,
+                )
+
+                if average_within_ensemble:
+                    ax.plot(
+                        [
+                            jitter_x(np.ones_like(stable), 0.05),
+                            jitter_x(np.ones_like(disconnected), 0.05) * 2,
+                        ],
+                        [stable, disconnected],
+                        "o-",
+                        color="k",
+                        markerfacecolor=color,
+                    )
+                color_boxes(boxes, color)
+
+                ax.set_xticklabels(
+                    ["Hub\nneurons", "Dropped\nneurons"], rotation=45, fontsize=14
+                )
+                ax.set_title(mouse)
+                [ax.spines[side].set_visible(False) for side in ["top", "right"]]
+            axs[0].set_ylabel(
+                ylabel[average_within_ensemble] + " at\nbeginning of session", fontsize=22
+            )
             if average_within_ensemble:
                 print(ttest_rel(stable, disconnected))
             else:
                 print(ttest_ind(stable, disconnected))
-        axs[0].set_ylabel(
-            ylabel[average_within_ensemble] + " at\nbeginning of session", fontsize=22
-        )
+
         fig.tight_layout()
         fig.subplots_adjust(wspace=0.3)
 
@@ -10259,17 +10280,11 @@ class RecentReversal:
 
     def make_fig4(self, panels=None):
         if panels is None:
-            panels = ["A", "B", "C"]
+            panels = ["A", "B", "C", "D"]
 
         folder = 4
 
         if "A" in panels:
-            fig = self.delta_degree_comparison("young")[-1]
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, "Hub vs disconnected degree diff", folder)
-
-        if "B" in panels:
             age = "young"
             metric = "degree"
             cluster_coeffs, anova_dfs, fig = self.connectedness_over_session_all_mice(
@@ -10281,7 +10296,7 @@ class RecentReversal:
 
             return anova_dfs
 
-        if "C" in panels:
+        if "B" in panels:
             mouse = "Fornax"
             ensembles = [8, 35, 52, 54]
             n_splits = 6
@@ -10299,6 +10314,14 @@ class RecentReversal:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, f"Spring graph labeled {mouse} {ensembles}", folder)
 
+        if "C" in panels:
+            age = "young"
+            Degrees, fig = self.degree_comparison_all_mice(age=age)
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"Hub vs disconnected degrees", folder)
+
+
         # if "C" in panels:
         #     age = "young"
         #
@@ -10312,11 +10335,32 @@ class RecentReversal:
         #                 self.save_fig(fig, f"{mouse} degrees over time", folder)
 
         if "D" in panels:
-            age = "young"
-            Degrees, fig = self.degree_comparison_all_mice(age=age)
+            act_rate_df = pd.read_csv(os.path.join(self.save_configs['path'], 'S6',
+                                                   'all_sessions_activity_rate.csv'))
+            session_ids = act_rate_df['session_id'].unique()
+            categories = ['hub', 'dropped']
 
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"Hub vs disconnected degrees", folder)
+            fig, axs = plt.subplots(1, len(session_ids), figsize=(2*len(session_ids), 4.8), sharey=True)
+            for session_id, ax in zip(session_ids, axs):
+                boxes = ax.boxplot(
+                    [
+                        act_rate_df.loc[np.logical_and(
+                            act_rate_df['session_id']==session_id,
+                            act_rate_df['category']==category), 'event_rates']
+                        for category in categories
+                    ], widths=0.75, patch_artist=True,
+                )
+                color_boxes(boxes, age_colors[0])
+                ax.set_xticklabels(['Hub\nneurons', 'Dropped\nneurons'], rotation=45)
+                ax.set_title(session_id.replace('Goals', 'Training'))
+                [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+            axs[0].set_ylabel('Event rate', fontsize=22)
+            fig.tight_layout()
+            fig.subplots_adjust(wspace=0.1)
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, 'Activity rate of hub and dropped neurons over sessions',
+                              folder)
 
     def format_Degrees_for_Mark(self, Degrees, fname):
         df = Degrees.copy()
@@ -10373,7 +10417,7 @@ class RecentReversal:
 
         if "B" in panels:
             performance_metric = "CRs"
-            dv, anova_dfs, fig = self.plot_trial_behavior(
+            dv, anova_dfs, fig, sessions_df = self.plot_trial_behavior(
                 session_types=["Goals4", "Reversal"],
                 performance_metric=performance_metric,
             )
@@ -10381,6 +10425,14 @@ class RecentReversal:
                 self.save_fig(
                     fig, f"Aged vs young Reversal_{performance_metric}", folder
                 )
+
+            sessions_df.to_csv(
+                os.path.join(
+                    self.save_configs['path'],
+                    f'{folder}',
+                    f'age_{performance_metric}.csv'
+                )
+            )
 
             for df in anova_dfs.values():
                 print(df)
@@ -10522,9 +10574,31 @@ class RecentReversal:
 
     def make_sfig3(self, panels=None):
         if panels is None:
+            panels = ["A", "B", "C", "D", "E", "F", "G"]
+        folder = 'S3'
+        mouse_panels = {
+            panel: mouse for panel, mouse in zip(panels, self.meta['grouped_mice']['young'])
+        }
+
+        for panel in panels:
+            mouse = mouse_panels[panel]
+
+            fig = self.snakeplot_matched_placefields(
+                mouse,
+                self.meta['session_types'],
+                sort_by_session=-2,
+                place_cells_only=False
+            )
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, f"{mouse}_snakeplots", folder)
+
+
+    def make_sfig4(self, panels=None):
+        if panels is None:
             panels = ["A", "B", "C"]
 
-        folder = "S3"
+        folder = "S4"
         if "A" in panels:
             ages_to_plot = "young"
             df, fig = self.boxplot_all_assembly_SI(ages_to_plot, plot_type="line")[1:]
@@ -10556,10 +10630,10 @@ class RecentReversal:
 
             return chi
 
-    def make_sfig4(self, panels=None):
+    def make_sfig5(self, panels=None):
         if panels is None:
             panels = ["A", "B", "C", "D", "E", "F"]
-        folder = "S4"
+        folder = "S5"
         if "A" in panels:
             self.plot_ensemble_registration_ex()
 
@@ -10575,8 +10649,6 @@ class RecentReversal:
             _ = self.spiralplot_matched_ensembles(
                 "Miranda", ("Goals3", "Goals4"), subset=[11]
             )
-
-
 
         if "F" in panels:
             ages_to_plot = "young"
@@ -10595,13 +10667,19 @@ class RecentReversal:
                     fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", folder
                 )
 
-    def make_sfig5(self, panels=None):
+    def make_sfig6(self, panels=None):
         if panels is None:
-            panels = ["A", "B"]
+            panels = ["A", "B", "C"]
 
-        folder = "S5"
+        folder = "S6"
 
         if "A" in panels:
+            fig = self.delta_degree_comparison("young")[-1]
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, "Hub vs disconnected degree diff", folder)
+
+        if "B" in panels:
             Degrees, degree_diffs, fig = self.delta_degree_comparison(
                 age="young", plot_subgraph=True
             )
@@ -10610,7 +10688,8 @@ class RecentReversal:
                 self.save_fig(
                     fig, "Hub vs dropped neuron delta deg_no dropped neurons", folder
                 )
-        if "B" in panels:
+
+        if "C" in panels:
             master_df = pd.DataFrame()
             for session_type in self.meta["session_types"]:
                 df = pd.DataFrame()
@@ -10690,11 +10769,11 @@ class RecentReversal:
                     )
 
 
-    def make_sfig6(self, panels=None):
+    def make_sfig7(self, panels=None):
         if panels is None:
             panels = ["A", "B", "C", "D", "E", "F", "G", "H"]
 
-        folder = "S6"
+        folder = "S7"
 
         if "A" in panels:
             trials, fig = self.compare_trial_count("Reversal")
@@ -10722,11 +10801,19 @@ class RecentReversal:
 
         if "D" in panels:
             performance_metric = "d_prime"
-            dv, anova_dfs, fig = self.plot_trial_behavior(
+            dv, anova_dfs, fig, sessions_df = self.plot_trial_behavior(
                 session_types=["Goals4", "Reversal"],
                 performance_metric=performance_metric,
                 window=6,
                 strides=2,
+            )
+
+            sessions_df.to_csv(
+                os.path.join(
+                    self.save_configs['path'],
+                    f'{folder}',
+                    f'age_{performance_metric}.csv'
+                )
             )
 
             if self.save_configs["save_figs"]:
@@ -10737,13 +10824,22 @@ class RecentReversal:
             for df in anova_dfs.values():
                 print(df)
 
+
         if "E" in panels:
             performance_metric = "hits"
-            dv, anova_dfs, fig = self.plot_trial_behavior(
+            dv, anova_dfs, fig, sessions_df = self.plot_trial_behavior(
                 session_types=["Goals4", "Reversal"],
                 performance_metric=performance_metric,
                 window=6,
                 strides=2,
+            )
+
+            sessions_df.to_csv(
+                os.path.join(
+                    self.save_configs['path'],
+                    f'{folder}',
+                    f'age_{performance_metric}.csv'
+                )
             )
 
             if self.save_configs["save_figs"]:
@@ -10816,10 +10912,10 @@ class RecentReversal:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, f"{performance_metric} downsamp", folder)
 
-    def make_sfig7(self, panels=None):
+    def make_sfig8(self, panels=None):
         if panels is None:
             panels = ["A", "B"]
-        folder = "S7"
+        folder = "S8"
 
         if "A" in panels:
             mouse = "Umbriel"
