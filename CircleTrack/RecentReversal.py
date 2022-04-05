@@ -1496,9 +1496,9 @@ class RecentReversal:
 
         return df
 
-    def hub_dropped_cells_activity_rate(
+    def hub_dropped_cells_metrics(
         self, mouse, graph_session, activity_rate_session=None, half=None, ax=None,
-            graph_session_neuron_id=False,
+            graph_session_neuron_id=False, metric='event_rate'
     ):
         degree_df = self.find_degrees(mouse, graph_session)
         degree_df = self.categorize_hub_dropped_neurons(degree_df, time_bin=5)
@@ -1514,10 +1514,14 @@ class RecentReversal:
             )[0]
 
         session = self.data[mouse][activity_rate_session]
-        S_binary = session.imaging["S_binary"]
-        if half is not None:
-            S_binary = np.array_split(S_binary, 2, axis=1)[half]
-        event_rates = np.sum(S_binary, axis=1) / S_binary.shape[1]
+
+        if metric == 'event_rate':
+            S_binary = session.imaging["S_binary"]
+            if half is not None:
+                S_binary = np.array_split(S_binary, 2, axis=1)[half]
+            metrics = np.sum(S_binary, axis=1) / S_binary.shape[1]
+        elif metric == 'spatial_info':
+            metrics = session.spatial.data['spatial_info_z']
 
         categories = ["hub", "dropped"]
         mean_rates = {category: [] for category in categories}
@@ -1556,13 +1560,13 @@ class RecentReversal:
                                 "ensemble_id": ensemble_id,
                                 "neuron_id": neuron_labels,
                                 "category": category,
-                                "event_rates": event_rates[neurons],
+                                f'{metric}': metrics[neurons],
                             }
                         ),
                     )
                 )
 
-                mean_rates[category].append(np.nanmean(event_rates[neurons]))
+                mean_rates[category].append(np.nanmean(metrics[neurons]))
 
         rates_df = pd.DataFrame(mean_rates).dropna()
 
@@ -1601,6 +1605,46 @@ class RecentReversal:
 
         return rates_df, event_rates_df
 
+    def hub_dropped_cells_metrics_all_mice(self, mice_to_plot, graph_session='Reversal',
+                                           activity_rate_session=None, half=None, axs=None,
+                                           graph_session_neuron_id=True, metric='event_rate'):
+        if axs is None:
+            fig, axs = plt.subplots(1, len(mice_to_plot), figsize=(len(mice_to_plot)*2, 4.8),
+                                    sharey=True)
+        else:
+            fig = axs[0].figure
+        pvals = []
+        ylabel = {
+            'event_rate': 'Ca2+ transient rate',
+            'spatial_info': 'Spatial info (z)'
+        }
+        df = pd.DataFrame()
+        for mouse, ax in zip(mice_to_plot, axs):
+            rates_df, long_df = self.hub_dropped_cells_metrics(
+                mouse, graph_session, activity_rate_session, ax=ax,
+                graph_session_neuron_id=graph_session_neuron_id,
+                half=half, metric=metric
+            )
+            pvals.append(ttest_rel(
+                *[rates_df[col] for col in rates_df.columns]
+            ).pvalue)
+            ax.set_title(mouse)
+
+            df = pd.concat(
+                (df, long_df)
+            )
+
+        pvals = [
+            np.round(x, 4) for x in multipletests(pvals, method="fdr_bh")[1]
+        ]
+        print(f"{pvals}")
+
+        df = df.reset_index(drop=True)
+
+        axs[0].set_ylabel(ylabel[metric]", fontsize=22)
+        fig.tight_layout()
+
+        return df, fig
     ############################ OVERLAP FUNCTIONS ############################
 
     def find_all_overlaps(self, show_plot=True):
@@ -10363,6 +10407,11 @@ class RecentReversal:
                               folder)
 
     def format_Degrees_for_Mark(self, Degrees, fname):
+        """
+        Format the Degrees DataFrame from self.degree_comparison_all_mice() to a clean version,
+        and save as a csv.
+
+        """
         df = Degrees.copy()
         df = df.loc[df["time_bin"] == 0]
         df = df.drop(columns="time_bin")
@@ -10375,34 +10424,6 @@ class RecentReversal:
         df.to_csv(os.path.join(self.save_configs["path"], "4", fname))
 
         return df
-
-    def check_uniqueness(self, df):
-        overlaps = pd.DataFrame()
-        for mouse in df['mouse'].unique():
-            mouse_df = df.loc[df.mouse==mouse]
-
-            for combination in product(mouse_df['ensemble_id'].unique(), repeat=2):
-                if combination[0] != combination[1]:
-                    a = mouse_df.loc[mouse_df['ensemble_id']==combination[0],
-                                     'neuron_id'].unique()
-                    b = mouse_df.loc[mouse_df['ensemble_id']==combination[1],
-                                     'neuron_id'].unique()
-
-                    n_overlaps = np.sum(np.in1d(a,b))
-                    overlaps = pd.concat(
-                        (overlaps,
-                        pd.DataFrame(
-                            {'mouse': mouse,
-                             'ensemble1': combination[0],
-                             'ensemble2': combination[1],
-                             'n_overlaps': n_overlaps}, index=[0]
-                        ))
-                    )
-
-                    if n_overlaps > 0:
-                        print(f'{mouse} {combination}: {a[np.in1d(a,b)]}')
-
-        return overlaps
 
 
     def make_fig5(self, panels=None):
@@ -10456,17 +10477,6 @@ class RecentReversal:
             if p < 0.05:
                 msg += "*"
             print(msg)
-        # if 'C' in panels:
-        #     mean_reliabilities = self.plot_reliabilities_comparisons(ages_to_plot='aged')[1]
-        #     w = wilcoxon(mean_reliabilities['Goals4']['aged'], mean_reliabilities['Reversal']['aged'])
-        #     print(f'Stability on Training4 vs Reversal, {w.statistic}, p={w.pvalue}')
-        #
-        # if 'D' in panels:
-        #     r, pvalue = self.correlate_field_reliability_to_performance(performance_metric='CRs',
-        #                                                                 data_type='ensembles',
-        #                                                                 ages_to_plot='aged')
-        #     print(r)
-        #     print(pvalue)
 
         if "C" in panels:
             ages_to_plot = "aged"
@@ -10506,8 +10516,6 @@ class RecentReversal:
                 )
 
     def make_sfig2(self, panels=None):
-        with open(r"Z:\Will\RemoteReversal\Data\PV_corr_matrices.pkl", "rb") as file:
-            corr_matrices = pkl.load(file)
         if panels is None:
             panels = ["A", "B", "C", "D", "E", "F"]
 
@@ -10692,36 +10700,14 @@ class RecentReversal:
         if "C" in panels:
             master_df = pd.DataFrame()
             for session_type in self.meta["session_types"]:
-                df = pd.DataFrame()
-                fig, axs = plt.subplots(1, 5, figsize=(10, 4.8), sharey=True)
-                pvals = []
-                for mouse, ax in zip(self.meta["grouped_mice"]["young"][:-2], axs):
-                    rates_df, long_df = self.hub_dropped_cells_activity_rate(
-                        mouse, "Reversal", session_type, ax=ax, graph_session_neuron_id=True
-                    )
-                    pval = ttest_rel(
-                        *[rates_df[col] for col in rates_df.columns]
-                    ).pvalue
-                    pvals.append(pval)
-                    ax.set_title(mouse)
+                print(f'{session_type}: ')
+                df, fig = self.hub_dropped_cells_metrics_all_mice(
+                    self.meta['grouped_mice']['young'][:-2], 'Reversal',
+                    activity_rate_session=session_type, graph_session_neuron_id=True,
+                    half=None, metric='event_rate'
+                )
 
-                    df = pd.concat(
-                        (df, long_df)
-                    )
-
-                df = df.reset_index(drop=True)
-                df.to_csv(os.path.join(self.save_configs['path'], folder,
-                                       f'{session_type}_act_rate.csv'))
-
-                master_df = pd.concat((master_df, df))
-
-                pvals = [
-                    np.round(x, 4) for x in multipletests(pvals, method="fdr_bh")[1]
-                ]
-                print(f"{session_type}: {pvals}")
-                axs[0].set_ylabel("Transient Rate", fontsize=22)
-                fig.tight_layout()
-
+                # Save fig and csv.
                 if self.save_configs["save_figs"]:
                     self.save_fig(
                         fig,
@@ -10729,37 +10715,23 @@ class RecentReversal:
                         folder,
                     )
 
+                df.to_csv(os.path.join(self.save_configs['path'], folder,
+                                       f'{session_type}_act_rate.csv'))
+
+                master_df = pd.concat((master_df, df))
+                print('')
+
             master_df.to_csv(os.path.join(self.save_configs['path'], folder,
                              'all_sessions_activity_rate.csv'))
 
             for half, half_i in zip(["first half", "second half"], [0, 1]):
-                df = pd.DataFrame()
-                fig, axs = plt.subplots(1, 5, figsize=(10, 4.8), sharey=True)
-                pvals = []
-                for mouse, ax in zip(self.meta["grouped_mice"]["young"][:-2], axs):
-                    rates_df, long_df = self.hub_dropped_cells_activity_rate(
-                        mouse, "Reversal", half=half_i, ax=ax
-                    )
-                    pval = ttest_rel(
-                        *[rates_df[col] for col in rates_df.columns]
-                    ).pvalue
-                    pvals.append(pval)
-                    ax.set_title(mouse)
-
-                    df = pd.concat(
-                        (df, long_df)
-                    )
-
-                df = df.reset_index(drop=True)
-                df.to_csv(os.path.join(self.save_configs['path'], folder,
-                                       f'reversal_{half}_act_rate.csv'))
-
-                pvals = [
-                    np.round(x, 4) for x in multipletests(pvals, method="fdr_bh")[1]
-                ]
-                print(f"{half}: {pvals}")
-                axs[0].set_ylabel("Transient Rate", fontsize=22)
-                fig.tight_layout()
+                print(f'{half}:')
+                df, fig = self.hub_dropped_cells_metrics_all_mice(
+                    self.meta['grouped_mice']['young'][:-2],
+                    'Reversal', graph_session_neuron_id=True,
+                    half=half_i, metric='event_rate'
+                )
+                print('')
 
                 if self.save_configs["save_figs"]:
                     self.save_fig(
@@ -10768,6 +10740,35 @@ class RecentReversal:
                         folder,
                     )
 
+                df.to_csv(os.path.join(self.save_configs['path'], folder,
+                                       f'reversal_{half}_act_rate.csv'))
+
+        if "D" in panels:
+            master_df = pd.DataFrame()
+            for session_type in self.meta["session_types"]:
+                print(f'{session_type}: ')
+                df, fig = self.hub_dropped_cells_metrics_all_mice(
+                    self.meta['grouped_mice']['young'][:-2], 'Reversal',
+                    activity_rate_session=session_type, graph_session_neuron_id=True,
+                    half=None, metric='spatial_info'
+                )
+
+                # Save fig and csv.
+                if self.save_configs["save_figs"]:
+                    self.save_fig(
+                        fig,
+                        f"Hub vs dropped neurons spatial info {session_type}",
+                        folder,
+                    )
+
+                df.to_csv(os.path.join(self.save_configs['path'], folder,
+                                       f'{session_type}_act_rate.csv'))
+
+                master_df = pd.concat((master_df, df))
+                print('')
+
+            master_df.to_csv(os.path.join(self.save_configs['path'], folder,
+                                          'all_sessions_spatial_info.csv'))
 
     def make_sfig7(self, panels=None):
         if panels is None:
