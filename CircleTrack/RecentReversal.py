@@ -967,6 +967,7 @@ class RecentReversal:
         downsample_trials=False,
         sessions=None,
         plot_line=False,
+        show_plot=True,
         ages_to_plot=None,
     ):
         """
@@ -1012,47 +1013,50 @@ class RecentReversal:
             )
             for session_type in sessions
         }
-        if plot_line:
-            fig, ax = plt.subplots(figsize=(5, 6.5))
-            for age, color in zip(ages_to_plot, plot_colors):
-                data = np.hstack(
-                    [
-                        np.asarray(performance[session][age])[:, np.newaxis]
-                        for session in sessions
-                    ]
-                )
+        if show_plot:
+            if plot_line:
+                fig, ax = plt.subplots(figsize=(5, 6.5))
+                for age, color in zip(ages_to_plot, plot_colors):
+                    data = np.hstack(
+                        [
+                            np.asarray(performance[session][age])[:, np.newaxis]
+                            for session in sessions
+                        ]
+                    )
 
-                ax.plot(session_labels, data.T, color=color, alpha=0.2)
-                errorfill(
-                    session_labels,
-                    np.nanmean(data, axis=0),
-                    yerr=sem(data, axis=0),
-                    color=color,
-                    ax=ax,
-                )
-            for tick in ax.get_xticklabels():
-                tick.set_rotation(45)
-            [ax.spines[side].set_visible(False) for side in ["top", "right"]]
-            ax.set_ylabel(ylabels[performance_metric], fontsize=22)
-            fig.tight_layout()
-        else:
-            fig, axs = plt.subplots(1, len(sessions), sharey=True)
-            fig.subplots_adjust(wspace=0)
-
-            for ax, session, title in zip(axs, sessions, session_labels):
-                self.plot_performance_session_type(
-                    session_type=session,
-                    ax=ax,
-                    window=window,
-                    strides=strides,
-                    performance_metric=performance_metric,
-                    downsample_trials=downsample_trials,
-                )
-                ax.set_xticks([])
-                ax.set_title(title, fontsize=16)
+                    ax.plot(session_labels, data.T, color=color, alpha=0.2)
+                    errorfill(
+                        session_labels,
+                        np.nanmean(data, axis=0),
+                        yerr=sem(data, axis=0),
+                        color=color,
+                        ax=ax,
+                    )
+                for tick in ax.get_xticklabels():
+                    tick.set_rotation(45)
                 [ax.spines[side].set_visible(False) for side in ["top", "right"]]
-            axs[0].set_ylabel(ylabels[performance_metric])
-            self.set_age_legend(fig)
+                ax.set_ylabel(ylabels[performance_metric], fontsize=22)
+                fig.tight_layout()
+            else:
+                fig, axs = plt.subplots(1, len(sessions), sharey=True)
+                fig.subplots_adjust(wspace=0)
+
+                for ax, session, title in zip(axs, sessions, session_labels):
+                    self.plot_performance_session_type(
+                        session_type=session,
+                        ax=ax,
+                        window=window,
+                        strides=strides,
+                        performance_metric=performance_metric,
+                        downsample_trials=downsample_trials,
+                    )
+                    ax.set_xticks([])
+                    ax.set_title(title, fontsize=16)
+                    [ax.spines[side].set_visible(False) for side in ["top", "right"]]
+                axs[0].set_ylabel(ylabels[performance_metric])
+                self.set_age_legend(fig)
+        else:
+            fig = None
 
         return performance, fig
 
@@ -1141,7 +1145,7 @@ class RecentReversal:
         behavior = self.plot_peak_performance_all_sessions(
             performance_metric=metric,
             sessions=["Goals4", "Reversal"],
-            plot_line=False,
+            show_plot=False
         )[0]
 
         diffs[metric] = np.asarray(behavior["Reversal"][age]) - np.asarray(
@@ -1641,7 +1645,7 @@ class RecentReversal:
 
         df = df.reset_index(drop=True)
 
-        axs[0].set_ylabel(ylabel[metric]", fontsize=22)
+        axs[0].set_ylabel(ylabel[metric], fontsize=22)
         fig.tight_layout()
 
         return df, fig
@@ -2215,6 +2219,9 @@ class RecentReversal:
             mice = self.meta["grouped_mice"][age]
 
             y = [mean_df.loc[mice, session_type] for session_type in session_types]
+            print(f'{age}: ')
+            print(wilcoxon(*y))
+            print('')
             ax.bar(
                 [0, 1],
                 [np.nanmean(x) for x in y],
@@ -2351,6 +2358,7 @@ class RecentReversal:
                     zorder=1, color=color, ecolor='k', edgecolor='k',
                     error_kw=dict(lw=1, capsize=5, capthick=1, zorder=0)
                 )
+                print(wilcoxon(data[0], data[1]))
 
                 ax.plot(
                     [jitter_x(np.ones_like(x) * i) for i, x in zip([0, 1], data)],
@@ -2364,7 +2372,7 @@ class RecentReversal:
                 )
 
                 ax.set_xticks([0, 1])
-                ax.set_xticklabels(xticks, rotation=45, fontsize=12)
+                ax.set_xticklabels(xticks, rotation=45, fontsize=14)
                 if n_plots > 1:
                     ax.set_xlabel(reward_type.replace("_", " \n"))
                 [ax.spines[side].set_visible(False) for side in ["top", "right"]]
@@ -6622,12 +6630,11 @@ class RecentReversal:
                 session="Reversal", mouse=self.meta["grouped_mice"][age]
             )
 
-        performance = self.plot_performance_session_type(
+        performance = self.performance_session_type(
             "Reversal",
             window=window,
             performance_metric=performance_metric,
-            show_plot=False,
-        )[0]
+        )
 
         if ax is None:
             fig, ax = plt.subplots()
@@ -7111,7 +7118,7 @@ class RecentReversal:
                     port_locations = np.asarray(behavior_data["lin_ports"])[
                         behavior_data["rewarded_ports"]
                     ]
-                    [ax.axvline(port, color="g") for port in port_locations]
+                    [ax.axvline(port, color="y") for port in port_locations]
 
                     # if session_type == "Reversal":
                     #     behavior_data = self.data[mouse]["Goals4"].behavior.data
@@ -8723,9 +8730,11 @@ class RecentReversal:
             )
             [ax.spines[side].set_visible(False) for side in ["top", "right"]]
             ax.set_ylabel('Degree at beginning\nof session', fontsize=22)
+            t_tests = None
         else:
             n_mice = len(Degrees.mouse.unique())
             fig, axs = plt.subplots(1, n_mice, sharey=True, figsize=(2 * n_mice, 4.8))
+            t_tests = dict()
             for mouse, ax in zip(mice, axs):
                 mouse_degrees = Degrees.loc[Degrees["mouse"] == mouse]
                 if average_within_ensemble:
@@ -8777,18 +8786,21 @@ class RecentReversal:
                 )
                 ax.set_title(mouse)
                 [ax.spines[side].set_visible(False) for side in ["top", "right"]]
+
+                if average_within_ensemble:
+                    t_result = ttest_rel(stable, disconnected)
+                else:
+                    t_result = ttest_ind(stable, disconnected)
+                t_tests[mouse] = t_result
+
             axs[0].set_ylabel(
                 ylabel[average_within_ensemble] + " at\nbeginning of session", fontsize=22
             )
-            if average_within_ensemble:
-                print(ttest_rel(stable, disconnected))
-            else:
-                print(ttest_ind(stable, disconnected))
 
         fig.tight_layout()
         fig.subplots_adjust(wspace=0.3)
 
-        return Degrees, fig
+        return Degrees, fig, t_tests
 
     def delta_degree_comparison(self, age="young", plot_subgraph=False):
         Degrees = dict()
@@ -10067,6 +10079,9 @@ class RecentReversal:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, "Neuron count", folder)
 
+            anova_df = pg.rm_anova(n_neurons.drop(columns='aged'))
+            print(anova_df)
+
             return n_neurons
 
         if "H" in panels:
@@ -10188,6 +10203,11 @@ class RecentReversal:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, "# ensembles", folder)
 
+            anova_df = pg.rm_anova(df.drop(columns='aged'))
+            print(anova_df)
+
+            return df
+
         if "E" in panels:
             errors_df, fig = self.plot_spatial_decoder_errors_over_days()[2:]
             anova_df, pairwise_df = self.multisession_spatial_decoder_anova(errors_df)
@@ -10209,19 +10229,21 @@ class RecentReversal:
         if "G" in panels:
             ages_to_plot = "young"
             lag = 0
-            fig = self.plot_lick_decoder(
+            df, fig = self.plot_lick_decoder(
                 licks_to_include="first",
                 lag=lag,
                 ages_to_plot=ages_to_plot,
                 class_weight="balanced",
                 random_state=7,
                 n_jobs=6,
-            )[1]
+            )
 
             if self.save_configs["save_figs"]:
                 self.save_fig(
                     fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", folder
                 )
+
+            return df
 
     def make_fig3(self, panels=None):
         if panels is None:
@@ -10295,7 +10317,7 @@ class RecentReversal:
                     fig, f"FadingEnsembleCorr_{performance_metric}_young", folder
                 )
 
-        if "G" in panels:
+        if "F" in panels:
             mouse = "Fornax"
             ensemble_number = 54
             fig, cbar_fig = self.plot_graph_evolution(
@@ -10310,7 +10332,7 @@ class RecentReversal:
                 )
                 self.save_fig(cbar_fig, f"cbar", folder)
 
-        if "H" in panels:
+        if "G" in panels:
             age = "young"
             metric = "clustering_coefficient"
             cluster_coeffs, anova_dfs, fig = self.connectedness_over_session_all_mice(
@@ -10360,11 +10382,15 @@ class RecentReversal:
 
         if "C" in panels:
             age = "young"
-            Degrees, fig = self.degree_comparison_all_mice(age=age)
+            Degrees, fig, t_tests = self.degree_comparison_all_mice(age=age)
+
+            for mouse, result in t_tests.items():
+                print(f"{mouse}: {result}")
 
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, f"Hub vs disconnected degrees", folder)
 
+            return Degrees
 
         # if "C" in panels:
         #     age = "young"
@@ -10625,6 +10651,15 @@ class RecentReversal:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, "Ensemble sizes", folder)
 
+            # anova_df = pg.rm_anova(ensemble_size_df)
+            # print(anova_df)
+            pt = pd.pivot_table(ensemble_size_df.loc[ensemble_size_df['age']=='young'],
+                                values='ensemble_size', index='mice', columns='session')
+            anova_df = pg.rm_anova(pt)
+            print(anova_df)
+
+            return ensemble_size_df
+
         if "C" in panels:
             ages_to_plot = "young"
             _, _, chi, fig = self.plot_proportion_fading_ensembles_near_important_ports(
@@ -10640,7 +10675,7 @@ class RecentReversal:
 
     def make_sfig5(self, panels=None):
         if panels is None:
-            panels = ["A", "B", "C", "D", "E", "F"]
+            panels = ["A", "B", "C", "D"]
         folder = "S5"
         if "A" in panels:
             self.plot_ensemble_registration_ex()
@@ -10658,22 +10693,24 @@ class RecentReversal:
                 "Miranda", ("Goals3", "Goals4"), subset=[11]
             )
 
-        if "F" in panels:
+        if "D" in panels:
             ages_to_plot = "young"
             lag = -1
-            fig = self.plot_lick_decoder(
+            df, fig = self.plot_lick_decoder(
                 licks_to_include="first",
                 lag=-lag,
                 ages_to_plot=ages_to_plot,
                 class_weight="balanced",
                 random_state=7,
                 n_jobs=6,
-            )[1]
+            )
 
             if self.save_configs["save_figs"]:
                 self.save_fig(
                     fig, f"EnsembleLickDecoding_{ages_to_plot}_lag{lag}", folder
                 )
+
+            return df
 
     def make_sfig6(self, panels=None):
         if panels is None:
@@ -10892,6 +10929,7 @@ class RecentReversal:
 
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, f"{performance_metric} downsamp", folder)
+
         if "H" in panels:
             performance_metric = "CRs"
             fig, axs = plt.subplots(1, 2, figsize=(6, 4.75), sharey=True)
