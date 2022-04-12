@@ -663,7 +663,7 @@ class Chemogenetics:
 
         ylabel = {"CRs": "Correct rejection rate", "hits": "Hit rate", "d_prime": "d'"}
         fig, ax = plt.subplots(figsize=(5, 5))
-        ax.plot(performance_all.T, color="k", alpha=0.5)
+        ax.plot(performance_all.T, color="k", alpha=0.2)
         errorfill(
             session_labels,
             np.mean(performance_all, axis=0),
@@ -962,7 +962,7 @@ class Chemogenetics:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, f"all_mice_{performance_metric}", folder)
 
-        if "B" in panels:
+        if "C" in panels:
             trials, fig = self.compare_trial_count("Reversal")
 
             print(ttest_ind(trials["vehicle"], trials["PSEM"]))
@@ -970,7 +970,7 @@ class Chemogenetics:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, "Trial counts", folder)
 
-        if "C" in panels:
+        if "D" in panels:
             licks, fig = self.compare_licks("Reversal", exclude_rewarded=False)
 
             print(ttest_ind(licks["vehicle"], licks["PSEM"]))
@@ -978,7 +978,7 @@ class Chemogenetics:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, "Lick counts", folder)
 
-        if "D" in panels:
+        if "E" in panels:
             licks, fig = self.compare_licks("Reversal", exclude_rewarded=True)
 
             print(ttest_ind(licks["vehicle"], licks["PSEM"]))
@@ -986,7 +986,7 @@ class Chemogenetics:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, "Lick counts_exclude_rewarded", folder)
 
-        if "E" in panels:
+        if "F" in panels:
             performance_metric = "d_prime"
             dv, anova_dfs, fig, sessions_df = self.plot_trial_behavior(
                 session_types=["Goals4", "Reversal"],
@@ -1004,7 +1004,7 @@ class Chemogenetics:
             sessions_df.to_csv(os.path.join(self.save_configs['path'],
                                             folder,
                                             f'psem_{performance_metric}.csv'))
-        if "F" in panels:
+        if "G" in panels:
             performance_metric = "hits"
             dv, anova_dfs, fig, sessions_df = self.plot_trial_behavior(
                 session_types=["Goals4", "Reversal"],
@@ -1023,7 +1023,7 @@ class Chemogenetics:
                                             folder,
                                             f'psem_{performance_metric}.csv'))
 
-        if "G" in panels:
+        if "H" in panels:
             performance_metric = "CRs"
             dv, anova_dfs, fig, sessions_df = self.plot_trial_behavior(
                 session_types=["Goals4", "Reversal"],

@@ -1015,7 +1015,7 @@ class RecentReversal:
         }
         if show_plot:
             if plot_line:
-                fig, ax = plt.subplots(figsize=(5, 6.5))
+                fig, ax = plt.subplots(figsize=(4, 4))
                 for age, color in zip(ages_to_plot, plot_colors):
                     data = np.hstack(
                         [
@@ -1024,7 +1024,7 @@ class RecentReversal:
                         ]
                     )
 
-                    ax.plot(session_labels, data.T, color=color, alpha=0.2)
+                    ax.plot(session_labels, data.T, color=color, alpha=0.5)
                     errorfill(
                         session_labels,
                         np.nanmean(data, axis=0),
@@ -1035,6 +1035,8 @@ class RecentReversal:
                 for tick in ax.get_xticklabels():
                     tick.set_rotation(45)
                 [ax.spines[side].set_visible(False) for side in ["top", "right"]]
+                if performance_metric in ["hits", "CRs"]:
+                    ax.set_ylim([0, 1])
                 ax.set_ylabel(ylabels[performance_metric], fontsize=22)
                 fig.tight_layout()
             else:
@@ -1138,47 +1140,58 @@ class RecentReversal:
 
         return df, anova_df, pairwise_df, fig
 
-    def compare_CR_and_hit_diff(self, age="young", metric="CRs"):
+    def compare_CR_and_hit_diff(self, age="young", metrics=["hits","CRs"]):
+        if type(metrics) == str:
+            metrics = [metrics]
+
         color = age_colors[ages.index(age)]
         diffs = dict()
         xticklabel = {"CRs": "Correct\nrejection rate", "hits": "Hit rate"}
-        behavior = self.plot_peak_performance_all_sessions(
-            performance_metric=metric,
-            sessions=["Goals4", "Reversal"],
-            show_plot=False
-        )[0]
 
-        diffs[metric] = np.asarray(behavior["Reversal"][age]) - np.asarray(
-            behavior["Goals4"][age]
-        )
+
+        for metric in metrics:
+            behavior = self.plot_peak_performance_all_sessions(
+                performance_metric=metric,
+                sessions=["Goals4", "Reversal"],
+                show_plot=False
+            )[0]
+
+            diffs[metric] = np.asarray(behavior["Reversal"][age]) - np.asarray(
+                behavior["Goals4"][age]
+            )
 
         diffs["mice"] = self.meta["grouped_mice"][age]
         diffs = pd.DataFrame(diffs)
 
-        fig, ax = plt.subplots(figsize=(3, 4.8))
-        ax.bar(
-            0,
-            diffs[metric].mean(),
-            yerr=diffs[metric].sem(),
-            zorder=1,
-            color=color,
-            ecolor="k",
-            edgecolor="k",
-            error_kw=dict(lw=1, capsize=5, capthick=1, zorder=0),
-        )
-        ax.scatter(
-            jitter_x(np.zeros_like(diffs[metric])),
-            diffs[metric],
-            edgecolor="k",
-            facecolor=color,
-            zorder=2,
-            s=100,
-            alpha=0.5,
-        )
-        [ax.spines[side].set_visible(False) for side in ["top", "right"]]
-        ax.set_xticks([0])
-        ax.set_xticklabels([xticklabel[metric]], rotation=45)
-        ax.set_ylabel("Performance decrease from\nTraining4 to Reversal")
+        fig, axs = plt.subplots(1, len(metrics),
+                                figsize=(2*len(metrics), 4.8),
+                                sharey=True)
+        if len(metrics)==1:
+            axs = [axs]
+        for ax, metric in zip(axs, metrics):
+            ax.bar(
+                0,
+                diffs[metric].mean(),
+                yerr=diffs[metric].sem(),
+                zorder=1,
+                color=color,
+                ecolor="k",
+                edgecolor="k",
+                error_kw=dict(lw=1, capsize=5, capthick=1, zorder=0),
+            )
+            ax.scatter(
+                jitter_x(np.zeros_like(diffs[metric])),
+                diffs[metric],
+                edgecolor="k",
+                facecolor=color,
+                zorder=2,
+                s=100,
+                alpha=0.5,
+            )
+            [ax.spines[side].set_visible(False) for side in ["top", "right"]]
+            ax.set_xticks([0])
+            ax.set_xticklabels([xticklabel[metric]], rotation=45)
+        axs[0].set_ylabel("Performance change from\nTraining4 to Reversal")
         fig.tight_layout()
 
         return diffs, fig
@@ -1227,7 +1240,8 @@ class RecentReversal:
 
         return fig
 
-    def plot_perseverative_licking(self, show_plot=True, binarize=True):
+    def plot_perseverative_licking(self, show_plot=True, binarize=True, groupby='age',
+                                   age_to_plot='young'):
         """
         Plot perseverative versus unforgiveable errors (errors on never-rewarded sites)
 
@@ -1260,23 +1274,53 @@ class RecentReversal:
                 )
                 unforgiveable_errors[age].append(np.mean(licks[:, other_ports]))
 
+        errors = [perseverative_errors, unforgiveable_errors]
         if show_plot:
-            fig, axs = plt.subplots(1, 2, sharey=True)
-            fig.subplots_adjust(wspace=0)
             ylabel = {True: "Proportion of trials", False: "Mean licks per trial"}
-            for ax, rate, title in zip(
-                axs,
-                [perseverative_errors, unforgiveable_errors],
-                ["Perseverative errors", "Unforgiveable errors"],
-            ):
-                self.scatter_box(rate, ax=ax)
-                ax.set_title(title)
-                ax.set_xticks([])
+            if groupby == 'error':
+                fig, axs = plt.subplots(1, 2, sharey=True)
+                fig.subplots_adjust(wspace=0)
 
-            axs[0].set_ylabel(ylabel[binarize])
-            self.set_age_legend(fig)
+                for ax, rate, title in zip(
+                    axs,
+                    [perseverative_errors, unforgiveable_errors],
+                    ["Perseverative errors", "Unforgiveable errors"],
+                ):
+                    self.scatter_box(rate, ax=ax)
+                    ax.set_title(title)
+                    ax.set_xticks([])
 
-        return perseverative_errors, unforgiveable_errors
+                axs[0].set_ylabel(ylabel[binarize])
+                self.set_age_legend(fig)
+            else:
+                fig, ax = plt.subplots(figsize=(3,4.8))
+                color = self.ages_to_plot_parser(age_to_plot)[1][0]
+                ax.bar(
+                    [0, 1],
+                    [np.nanmean(error[age_to_plot]) for error in errors],
+                    yerr=[sem(error[age_to_plot]) for error in errors],
+                    zorder=1, color=color, ecolor='k', edgecolor='k',
+                    error_kw=dict(lw=1, capsize=5, capthick=1, zorder=0)
+                )
+
+                ax.plot(
+                    [jitter_x(np.ones_like(error[age_to_plot])*i)
+                     for i, error in zip([0, 1], errors)],
+                    [error[age_to_plot] for error in errors],
+                    "o-",
+                    color='k',
+                    markerfacecolor=color,
+                    zorder=2, markersize=10, alpha=0.5
+                )
+                print(wilcoxon(*[error[age_to_plot] for error in errors]))
+
+                ax.set_xticks([0, 1])
+                ax.set_xticklabels(['Perseverative\nerrors', 'Regular\nerrors'], rotation=45, fontsize=18)
+                ax.set_ylabel(ylabel[binarize], fontsize=22)
+                [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+                fig.tight_layout()
+
+        return perseverative_errors, unforgiveable_errors, fig
 
     def plot_perseverative_licking_over_session(
         self,
@@ -2254,6 +2298,7 @@ class RecentReversal:
                 rotation=45,
             )
             [ax.spines[side].set_visible(False) for side in ["top", "right"]]
+            ax.set_ylim([0, 0.8])
         axs[0].set_ylabel("Rate remap scores", fontsize=22)
         fig.tight_layout()
 
@@ -2345,50 +2390,46 @@ class RecentReversal:
         fig.subplots_adjust(wspace=0)
 
         for ax, reward_type in zip(axs, locations_to_plot):
+            data = []
             if reward_type != "previously_rewarded":
-                data = []
                 for session_pair in session_pairs:
                     data.append(
                         [rhos[mouse][session_pair][reward_type] for mouse in mice]
                     )
 
-                ax.bar(
-                    [0, 1],
-                    [np.nanmean(x) for x in data],
-                    zorder=1, color=color, ecolor='k', edgecolor='k',
-                    error_kw=dict(lw=1, capsize=5, capthick=1, zorder=0)
-                )
-                print(wilcoxon(data[0], data[1]))
-
-                ax.plot(
-                    [jitter_x(np.ones_like(x) * i) for i, x in zip([0, 1], data)],
-                    data,
-                    "o-",
-                    color="k",
-                    markerfacecolor=color,
-                    zorder=2,
-                    markersize=10,
-                    alpha=0.4,
-                )
-
-                ax.set_xticks([0, 1])
-                ax.set_xticklabels(xticks, rotation=45, fontsize=14)
-                if n_plots > 1:
-                    ax.set_xlabel(reward_type.replace("_", " \n"))
-                [ax.spines[side].set_visible(False) for side in ["top", "right"]]
             else:
-                boxes = ax.boxplot(
-                    [rhos[mouse][session_pairs[1]][reward_type] for mouse in mice],
-                    widths=0.75,
-                    showfliers=False,
-                    zorder=0,
-                    patch_artist=True,
-                )
-                color_boxes(boxes, color)
+                for session_pair, reward_type_ in zip(session_pairs,
+                                                      ['currently_rewarded', reward_type]):
+                    data.append(
+                        [rhos[mouse][session_pair][reward_type_] for mouse in mice]
+                    )
+            ax.bar(
+                [0, 1],
+                [np.nanmean(x) for x in data],
+                yerr = [sem(x) for x in data],
+                zorder=1, color=color, ecolor='k', edgecolor='k',
+                error_kw=dict(lw=1, capsize=5, capthick=1, zorder=0)
+            )
+            print(wilcoxon(data[0], data[1]))
 
-                ax.set_xticklabels([xticks[-1]], rotation=45)
-                if n_plots > 1:
-                    ax.set_xlabel("previously \nrewarded")
+            ax.plot(
+                [jitter_x(np.ones_like(x) * i) for i, x in zip([0, 1], data)],
+                data,
+                "o-",
+                color="k",
+                markerfacecolor=color,
+                zorder=2,
+                markersize=10,
+                alpha=0.4,
+            )
+
+            ax.set_ylim([0, 0.6])
+            ax.set_xticks([0, 1])
+            ax.set_xticklabels(xticks, rotation=45, fontsize=14)
+            if n_plots > 1:
+                ax.set_xlabel(reward_type.replace("_", " \n"))
+            [ax.spines[side].set_visible(False) for side in ["top", "right"]]
+
         axs[0].set_ylabel("Spatial PV\ncorrelation coefficient", fontsize=22)
         [axs[-1].spines[side].set_visible(False) for side in ["top", "right"]]
 
@@ -2667,13 +2708,14 @@ class RecentReversal:
                 rotation=45,
                 fontsize=14,
             )
+            ax.set_ylim([0, 0.6])
 
             if n_ages_to_plot == 2:
                 ax.set_title(age)
 
             [ax.spines[side].set_visible(False) for side in ["top", "right"]]
 
-        axs[0].set_ylabel("Spatial PV\ncorrelation coefficients", fontsize=22)
+        axs[0].set_ylabel("Spatial PV\ncorrelation coefficient", fontsize=22)
         fig.tight_layout()
 
         df = pd.concat(
@@ -3757,11 +3799,10 @@ class RecentReversal:
 
         return fig
 
-    def field_density(
+    def reward_centered_field_density(
         self,
         mouse,
         session_type,
-        field_threshold=0.5,
         place_cells_only=False,
         plot_window=(-5, 5),
         show_plot=True,
@@ -3774,13 +3815,7 @@ class RecentReversal:
         else:
             neurons = np.arange(session.imaging["n_neurons"])
 
-        fields = session.spatial.data["placefields_normalized"][neurons]
-        field_centers = []
-        for field in fields:
-            field_bins = define_field_bins(field, field_threshold=field_threshold)
-
-            field_centers.append(np.floor(circmean(field_bins, high=125)))
-        field_centers = np.asarray(field_centers)
+        field_centers = session.spatial.data['placefield_centers'][neurons]
         # Find reward location.
         reward_bins, bins = find_reward_spatial_bins(
             session.behavior.data["df"]["lin_position"],
@@ -3803,7 +3838,8 @@ class RecentReversal:
 
         if show_plot:
             fig, ax = plt.subplots()
-            ax.hist(bins_to_plot, range=plot_window, density=True, histtype="step")
+            ax.hist(bins_to_plot, bins=125, density=True, histtype="step")
+            ax.xlim(plot_window)
             ax.set_xlabel("Distance from reward site")
             ax.set_ylabel("Field density")
             ax.set_title(mouse)
@@ -3819,8 +3855,7 @@ class RecentReversal:
 
     def plot_all_reward_field_densities(
         self,
-        session_type,
-        field_threshold=0.5,
+        session_types,
         place_cells_only=False,
         plot_window=(-5, 5),
         ages_to_plot=None,
@@ -3828,72 +3863,70 @@ class RecentReversal:
         ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(
             ages_to_plot
         )
-
+        n_sessions = len(session_types)
         fig, axs = plt.subplots(
-            1,
             n_ages_to_plot,
+            n_sessions,
             sharey=True,
             sharex=True,
-            figsize=(4 * n_ages_to_plot, 4.8),
+            figsize=(4 * n_sessions, 4.8 * n_ages_to_plot),
+            squeeze=False
         )
-        if n_ages_to_plot == 1:
-            axs = [axs]
-        for age, color, ax in zip(ages_to_plot, plot_colors, axs):
-            all_bins = []
-            for mouse in self.meta["grouped_mice"][age]:
-                b = self.field_density(
-                    mouse,
-                    session_type,
-                    field_threshold=field_threshold,
-                    place_cells_only=place_cells_only,
-                    plot_window=plot_window,
-                    show_plot=False,
-                )[1]
+
+
+        for age, color, row_ax in zip(ages_to_plot, plot_colors, axs):
+            hist_opts = {
+                'density': True,
+                'histtype': "step",
+                'bins': np.arange(-62, 62),
+                'edgecolor': color,
+            }
+            for ax, session_type in zip(row_ax, session_types):
+                all_bins = []
+                for mouse in self.meta["grouped_mice"][age]:
+                    b = self.reward_centered_field_density(
+                        mouse,
+                        session_type,
+                        place_cells_only=place_cells_only,
+                        plot_window=plot_window,
+                        show_plot=False,
+                    )[1]
+                    ax.hist(
+                        b,
+                        alpha=0.5,
+                        **hist_opts,
+                    )
+
+                    all_bins.extend(b)
+
+                all_bins = np.asarray(all_bins)
                 ax.hist(
-                    b,
-                    range=plot_window,
-                    density=True,
-                    histtype="step",
-                    edgecolor=color,
-                    alpha=0.2,
-                    bins=np.sum(np.abs(plot_window)),
+                    all_bins,
+                    linewidth=2,
+                    **hist_opts,
                 )
+                ax.set_xlim(plot_window)
+                ax.set_xticks([plot_window[0], 0, plot_window[-1]])
+                ax.set_xticklabels([x * 2 for x in ax.get_xticks()])
+                ax.set_title(session_type.replace('Goals', 'Training'))
 
-                all_bins.extend(b)
+                [ax.spines[side].set_visible(False) for side in ["top", "right"]]
 
-            ax.hist(
-                all_bins,
-                range=plot_window,
-                histtype="step",
-                edgecolor=color,
-                linewidth=2,
-                density=True,
-                bins=np.sum(np.abs(plot_window)),
-            )
-
-            ax.set_xticklabels([x * 2 for x in ax.get_xticks()])
-            ax.set_xlabel("Distance from reward (cm)")
-            ax.set_ylabel("Field density")
-            [ax.spines[side].set_visible(False) for side in ["top", "right"]]
-
-            print(
-                chisquare(
-                    np.histogram(
-                        all_bins,
-                        range=plot_window,
-                        density=True,
-                        bins=np.sum(np.abs(plot_window)),
-                    )[0]
+                print(
+                    chisquare(
+                        np.histogram(
+                            all_bins[np.logical_and(all_bins>=plot_window[0],
+                                                    all_bins<=plot_window[1])],
+                            density=True,
+                            bins=np.arange(*plot_window),
+                        )[0]
+                    )
                 )
-            )
-
-            if n_ages_to_plot != 1:
-                ax.set_title(age)
-
+        fig.supxlabel("Distance from reward (cm)")
+        fig.supylabel("Prop. cells with fields\nrel. to reward")
         fig.tight_layout()
 
         return fig
-
     ############################ DECODER FUNCTIONS ############################
     def decode_place(
         self,
@@ -8960,7 +8993,8 @@ class RecentReversal:
             # [ax.spines[side].set_visible(False) for side in ['top', 'right']]
             # ax.set_title(mouse)
 
-        fig, axs = plt.subplots(1, n_mice, figsize=(2 * n_mice, 4.8), sharey=True)
+        s = 1.5 if plot_subgraph else 2
+        fig, axs = plt.subplots(1, n_mice, figsize=(s * n_mice, 4.8), sharey=True)
         key = "hub_subgraph" if plot_subgraph else "hub"
         for ax, mouse in zip(axs, valid_mice):
             idxs = {
@@ -8982,8 +9016,12 @@ class RecentReversal:
             dropped = degree_diffs.loc[
                 np.logical_and(idxs["mouse"], idxs["dropped"]), "degree_diffs"
             ].values
+
+            data_to_plot = [hub] if plot_subgraph else [hub, dropped]
+            xticks = [1] if plot_subgraph else [1,2]
+            xticklabels = ["Hub\nneurons"] if plot_subgraph else ["Hub\nneurons", "Dropped\nneurons"]
             boxes = ax.boxplot(
-                [hub, dropped],
+                data_to_plot,
                 patch_artist=True,
                 widths=0.75,
                 zorder=0,
@@ -8992,23 +9030,26 @@ class RecentReversal:
             color_boxes(boxes, color)
             ax.plot(
                 [
-                    jitter_x(np.ones_like(hub), 0.05),
-                    jitter_x(np.ones_like(dropped) * 2, 0.05),
+                    jitter_x(np.ones_like(x)*i, 0.05)
+                    for i, x in zip(xticks, data_to_plot)
                 ],
-                [hub, dropped],
+                data_to_plot,
                 "o-",
                 color="k",
                 markerfacecolor=color,
                 zorder=1,
             )
-            ax.set_xticks([1, 2])
+            ax.set_xticks(xticks)
             ax.set_xticklabels(
-                ["Hub\nneurons", "Dropped\nneurons"], rotation=45, fontsize=14
+                xticklabels, rotation=45, fontsize=14
             )
             [ax.spines[side].set_visible(False) for side in ["top", "right"]]
             ax.set_title(mouse)
 
-            print(ttest_rel(hub, dropped))
+            if plot_subgraph:
+                print(ttest_1samp(hub, 0))
+            else:
+                print(ttest_rel(hub, dropped))
         axs[0].set_ylabel("Degree difference", fontsize=22)
 
         fig.tight_layout()
@@ -10013,14 +10054,14 @@ class RecentReversal:
         if panels is None:
             panels = ["A", "C", "D", "E", "F", "G", "H"]
 
-        if "A" in panels:
+        if "B" in panels:
             mouse = "Naiad"
             fig = self.plot_max_projs(mouse)
 
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, f"{mouse} max projections", folder)
 
-        if "B" in panels:
+        if "C" in panels:
             age = "young"
             performance_metric = "d_prime"
             df, anova_df, pairwise_df, fig = self.performance_anova(
@@ -10032,7 +10073,7 @@ class RecentReversal:
 
             return anova_df, pairwise_df
 
-        if "C" in panels:
+        if "D" in panels:
             age = "young"
             performance_metric = "hits"
             df, anova_df, pairwise_df, fig = self.performance_anova(
@@ -10044,7 +10085,7 @@ class RecentReversal:
 
             return anova_df, pairwise_df
 
-        if "D" in panels:
+        if "E" in panels:
             age = "young"
             performance_metric = "CRs"
             df, anova_df, pairwise_df, fig = self.performance_anova(
@@ -10056,23 +10097,23 @@ class RecentReversal:
 
             return anova_df, pairwise_df
 
-        if "E" in panels:
-            metric = "hits"
-            diffs, fig = self.compare_CR_and_hit_diff(metric=metric)
-            print(ttest_1samp(diffs[metric], 0))
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"Perf decrease {metric}", folder)
-
         if "F" in panels:
-            metric = "CRs"
-            diffs, fig = self.compare_CR_and_hit_diff(metric=metric)
-            print(ttest_1samp(diffs[metric], 0))
+            fig = self.plot_perseverative_licking(binarize=False)[-1]
 
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"Perf decrease {metric}", folder)
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, 'Persev licking', folder)
 
         if "G" in panels:
+            metrics = ["hits", "CRs"]
+            diffs, fig = self.compare_CR_and_hit_diff(metrics=metrics)
+
+            for metric in metrics:
+                print(ttest_1samp(diffs[metric], 0))
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"Perf decrease {metric}", folder)
+
+        if "H" in panels:
             ages_to_plot = "young"
             n_neurons, fig = self.plot_neuron_count(ages_to_plot=ages_to_plot)
 
@@ -10084,15 +10125,15 @@ class RecentReversal:
 
             return n_neurons
 
-        if "H" in panels:
+        if "I" in panels:
             mouse = "Miranda"
             _, fig = self.scrollplot_rasters_by_day(mouse, self.meta["session_types"])
 
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, f"{mouse}_longitudinal_cell", folder)
 
-        if "I" in panels:
-            mouse = "Lyra"
+        if "J" in panels:
+            mouse = "Fornax"
 
             fig = self.snakeplot_matched_placefields(
                 mouse,
@@ -10104,7 +10145,7 @@ class RecentReversal:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, f"{mouse} cells snakeplot", folder)
 
-        if "J" in panels:
+        if "K" in panels:
             predictors = "cells"
             errors_df, fig = self.plot_spatial_decoder_errors_over_days(
                 predictors=predictors
@@ -10118,27 +10159,7 @@ class RecentReversal:
 
             return anova_df, pairwise_df, errors_df
 
-        if "K" in panels:
-            remap_score_df, fig = self.plot_remap_score_means(
-                ages_to_plot="young", place_cells_only=False
-            )
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, "Rate remapping", folder)
-
-            return remap_score_df
-
         if "L" in panels:
-            remap_score_df, fig = self.plot_remap_score_means(
-                ages_to_plot="young",
-                place_cells_only=False,
-                ports=["original rewards", "newly rewarded"],
-            )
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, "Rate remapping_rewardbins", folder)
-
-        if "M" in panels:
             data, df, fig = self.plot_session_PV_corr_comparisons(
                 corr_matrices, ages_to_plot="young"
             )
@@ -10152,13 +10173,51 @@ class RecentReversal:
 
             return data, df
 
-        if "N" in panels:
+        if "M" in panels:
             rhos, fig = self.plot_reward_PV_corrs_v2(
                 age_to_plot="young", locations_to_plot=["currently_rewarded"]
             )
 
             if self.save_configs["save_figs"]:
-                self.save_fig(fig, "Global remapping_rewardbins", folder)
+                self.save_fig(fig, "Global remapping_newlyrewarded", folder)
+
+        if "N" in panels:
+            rhos, fig = self.plot_reward_PV_corrs_v2(
+                age_to_plot="young", locations_to_plot=["previously_rewarded"]
+            )
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, "Global remapping_previouslyrewarded", folder)
+
+        if "O" in panels:
+            remap_score_df, fig = self.plot_remap_score_means(
+                ages_to_plot="young", place_cells_only=False
+            )
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, "Rate remapping", folder)
+
+            return remap_score_df
+
+        if "P" in panels:
+            remap_score_df, fig = self.plot_remap_score_means(
+                ages_to_plot="young",
+                place_cells_only=False,
+                ports=["original rewards", "newly rewarded"],
+            )
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, "Rate remapping_newlyrewarded", folder)
+
+        if "Q" in panels:
+            remap_score_df, fig = self.plot_remap_score_means(
+                ages_to_plot="young",
+                place_cells_only=False,
+                ports=["original rewards", "previously rewarded"],
+            )
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, "Rate remapping_previouslyrewarded", folder)
 
     def make_fig2(self, panels=None):
         folder = 2
@@ -10586,25 +10645,11 @@ class RecentReversal:
                 )
 
         if "D" in panels:
-            session = 'Goals3'
-            fig = self.plot_all_reward_field_densities(session, ages_to_plot="young")
+            fig = self.plot_all_reward_field_densities(['Goals3', 'Goals4', 'Reversal'],
+                                                       ages_to_plot="young")
 
             if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"Reward field density_{session}", folder)
-
-        if "E" in panels:
-            session = 'Goals4'
-            fig = self.plot_all_reward_field_densities(session, ages_to_plot="young")
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"Reward field density_{session}", folder)
-
-        if "F" in panels:
-            session = 'Reversal'
-            fig = self.plot_all_reward_field_densities(session, ages_to_plot="young")
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"Reward field density_{session}", folder)
+                self.save_fig(fig, f"Reward field density", folder)
 
     def make_sfig3(self, panels=None):
         if panels is None:
@@ -10689,9 +10734,17 @@ class RecentReversal:
                 self.save_fig(fig, f"{mouse}_Ensemble{subset}_matched", folder)
 
         if "C" in panels:
-            _ = self.spiralplot_matched_ensembles(
-                "Miranda", ("Goals3", "Goals4"), subset=[11]
-            )
+            mouse = "Miranda"
+            session_types = ['Goals3', 'Goals4']
+            ensembles = [11, 10]
+
+            for session_type, ensemble in zip(session_types, ensembles):
+                fig = self.plot_ensemble_raster(mouse, session_type, ensemble, bin_size=0.2)
+
+                if self.save_configs['save_figs']:
+                    self.save_fig(
+                        fig, f"{mouse}_{session_type}_ensemble_raster", folder
+                    )
 
         if "D" in panels:
             ages_to_plot = "young"
