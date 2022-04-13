@@ -140,7 +140,7 @@ class RecentReversal:
         behavior_only=False,
         save_figs=True,
         ext="pdf",
-        save_path=r"Z:\Will\Manuscripts\memory_flexibility\Figures",
+        save_path=r"C:\Users\wm228\Documents\GitHub\memory_flexibility\Figures",
     ):
         # Collect data from all mice and sessions.
         self.data = MultiAnimal(
@@ -1329,17 +1329,23 @@ class RecentReversal:
         trial_interval=2,
         show_plot=True,
         binarize_licks=True,
-    ):
+        ages_to_plot='young',    ):
         """
         Plot perseverative and unforgiveable errors averaged across trial windows
 
 
         """
+        n_trials = np.max(
+            [
+                self.data[mouse][session_type].behavior.data["ntrials"]
+                for mouse in self.meta["mice"]
+            ]
+        )
         perseverative_errors = dict()
-        unforgiveable_errors = dict()
+        regular_errors = dict()
         for age in ages:
             perseverative_errors[age] = [[] for mouse in self.meta["grouped_mice"][age]]
-            unforgiveable_errors[age] = [[] for mouse in self.meta["grouped_mice"][age]]
+            regular_errors[age] = [[] for mouse in self.meta["grouped_mice"][age]]
 
             for i, mouse in enumerate(self.meta["grouped_mice"][age]):
                 behavior = self.data[mouse][session_type].behavior
@@ -1367,7 +1373,7 @@ class RecentReversal:
                     )
 
                     # Get unforgiveable errors.
-                    unforgiveable_errors[age][i].append(
+                    regular_errors[age][i].append(
                         np.sum(licks_this_window[:, other_ports])
                         / (n_other * licks_this_window.shape[0])
                     )
@@ -1375,11 +1381,12 @@ class RecentReversal:
         perseverative_errors = {
             age: stack_padding(perseverative_errors[age]) for age in ages
         }
-        unforgiveable_errors = {
-            age: stack_padding(unforgiveable_errors[age]) for age in ages
+        regular_errors = {
+            age: stack_padding(regular_errors[age]) for age in ages
         }
 
         if show_plot:
+            ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(ages_to_plot)
             ylabel = "Error rate" if binarize_licks else "Average number of licks"
             if session_type == "Reversal":
                 fig, axs = plt.subplots(1, 2, sharey=True, sharex=True)
@@ -1387,29 +1394,34 @@ class RecentReversal:
 
                 for ax, rate, title in zip(
                     axs,
-                    [perseverative_errors, unforgiveable_errors],
-                    ["Perseverative errors", "Unforgiveable errors"],
+                    [perseverative_errors, regular_errors],
+                    ["Perseverative\nerrors", "Regular\nerrors"],
                 ):
-                    se = {age: sem(rate[age], axis=0) for age in ages}
-                    m = {age: np.nanmean(rate[age], axis=0) for age in ages}
-                    for c, age in zip(age_colors, ages):
-                        ax.plot(rate[age].T, color=c, alpha=0.1)
+                    se = {age: sem(rate[age], axis=0) for age in ages_to_plot}
+                    m = {age: np.nanmean(rate[age], axis=0) for age in ages_to_plot}
+                    for c, age in zip(plot_colors, ages_to_plot):
+                        ax.plot(rate[age].T, color=c, alpha=0.2)
                         errorfill(
                             range(m[age].shape[0]), m[age], se[age], color=c, ax=ax
                         )
                         ax.set_title(title)
-                    fig.supxlabel("Trial blocks")
+                    ax.set_xticks([int(x) for x in ax.get_xlim()])
+                    ax.set_xticklabels([1, n_trials])
+                    [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+                    fig.supxlabel("Trials")
                     fig.supylabel(ylabel)
             else:
                 fig, ax = plt.subplots()
-                se = {age: sem(unforgiveable_errors[age], axis=0) for age in ages}
-                m = {age: np.nanmean(unforgiveable_errors[age], axis=0) for age in ages}
-                for c, age in zip(age_colors, ages):
-                    ax.plot(unforgiveable_errors[age].T, color=c, alpha=0.1)
+                se = {age: sem(regular_errors[age], axis=0) for age in ages_to_plot}
+                m = {age: np.nanmean(regular_errors[age], axis=0) for age in ages_to_plot}
+                for c, age in zip(plot_colors, ages_to_plot):
+                    ax.plot(regular_errors[age].T, color=c, alpha=0.5)
                     errorfill(range(m[age].shape[0]), m[age], se[age], color=c, ax=ax)
                 ax.set_xlabel("Trial blocks")
                 ax.set_ylabel(ylabel)
-        return perseverative_errors, unforgiveable_errors
+
+            fig.tight_layout()
+        return perseverative_errors, regular_errors, fig
 
     def compare_trial_count(self, session_type):
         """
@@ -5567,10 +5579,12 @@ class RecentReversal:
         ]
 
         if show_plot:
+            x = np.arange(0, 31, 30 / n_splits).astype(int)
+            xtick_labels = [f"{i}-{j} min" for i, j in zip(x[:-1], x[1:])]
             if ax is None:
                 fig, ax = plt.subplots()
 
-            ax.plot(np.linspace(0, 1, n_splits), scores, "k", alpha=0.2)
+            ax.plot(xtick_labels, scores, "k", alpha=0.2)
 
         return scores
 
@@ -5707,15 +5721,19 @@ class RecentReversal:
         means = df.groupby(["age", "decoded_session", "time_bins"]).mean()
         sem = df.groupby(["age", "decoded_session", "time_bins"]).sem()
 
+        x = np.arange(0, 31, 30 / n_splits).astype(int)
+        xtick_labels = [f"{i}-{j} min" for i, j in zip(x[:-1], x[1:])]
         for age, row_ax, color in zip(ages_to_plot, axs, plot_colors):
             for session_pair, ax in zip(session_types, row_ax):
                 errorfill(
-                    np.linspace(0, 1, n_splits),
+                    xtick_labels,
                     np.squeeze(means.loc[age].loc[session_pair[1]].values),
                     yerr=np.squeeze(sem.loc[age].loc[session_pair[1]].values),
                     color=color,
                     ax=ax,
                 )
+                for tick in ax.get_xticklabels():
+                    tick.set_rotation(45)
                 ax.set_title(
                     f"trained on {session_pair[0].replace('Goals', 'Training')}"
                     f"\n tested on {session_pair[1].replace('Goals', 'Training')}"
@@ -5724,8 +5742,7 @@ class RecentReversal:
                 ax.set_ylim([0, 1])
 
                 [ax.spines[side].set_visible(False) for side in ["top", "right"]]
-        fig.supxlabel("Time in session (normalized)")
-        fig.supylabel("Lick decoding accuracy")
+        fig.supylabel("Lick port decoding accuracy")
         fig.tight_layout()
 
         return df, fig
@@ -10602,7 +10619,7 @@ class RecentReversal:
 
     def make_sfig2(self, panels=None):
         if panels is None:
-            panels = ["A", "B", "C", "D", "E", "F"]
+            panels = ["A", "B", "C", "D", "E"]
 
         folder = "S2"
         if "A" in panels:
@@ -10645,6 +10662,22 @@ class RecentReversal:
                 )
 
         if "D" in panels:
+            pers,reg,fig = self.plot_perseverative_licking_over_session(binarize_licks=False)
+
+            for df, name in zip([pers, reg], ['persev', 'reg']):
+                df = pd.DataFrame(df['young'])
+                df['mice'] = self.meta['grouped_mice']['young']
+                df = df.set_index('mice')
+                df = df.stack().reset_index()
+                df = df.rename(columns={'level_1': 'trial_bin',
+                                        0: 'licks'})
+
+                df.to_csv(os.path.join(self.save_configs['path'], folder, f"{name}_licking.csv"))
+
+            if self.save_configs['save_figs']:
+                self.save_fig(fig, 'Perseverative licking', folder)
+
+        if "E" in panels:
             fig = self.plot_all_reward_field_densities(['Goals3', 'Goals4', 'Reversal'],
                                                        ages_to_plot="young")
 
