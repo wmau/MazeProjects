@@ -76,7 +76,7 @@ class Chemogenetics:
         actuator="DREADDs",
         save_figs=True,
         ext="pdf",
-        save_path=r"Z:\Will\Manuscripts\memory_flexibility\Figures",
+        save_path=r"C:\Users\wm228\Documents\GitHub\memory_flexibility\Figures",
     ):
         project_name = project_names[actuator]
         self.data = MultiAnimal(
@@ -948,7 +948,7 @@ class Chemogenetics:
     def make_sfig1(self, panels=None):
         folder = "S1"
         if panels is None:
-            panels = ["A", "B", "C", "D", "E", "F", "G"]
+            panels = ["A", "C", "D", "E", "F", "G", "H"]
 
         if "A" in panels:
             performance_metric = "d_prime"

@@ -10198,6 +10198,8 @@ class RecentReversal:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, "Global remapping_newlyrewarded", folder)
 
+            return rhos
+
         if "N" in panels:
             rhos, fig = self.plot_reward_PV_corrs_v2(
                 age_to_plot="young", locations_to_plot=["previously_rewarded"]
@@ -10205,6 +10207,8 @@ class RecentReversal:
 
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, "Global remapping_previouslyrewarded", folder)
+
+            return rhos
 
         if "O" in panels:
             remap_score_df, fig = self.plot_remap_score_means(
@@ -10226,6 +10230,8 @@ class RecentReversal:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, "Rate remapping_newlyrewarded", folder)
 
+            return remap_score_df
+
         if "Q" in panels:
             remap_score_df, fig = self.plot_remap_score_means(
                 ages_to_plot="young",
@@ -10235,6 +10241,8 @@ class RecentReversal:
 
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, "Rate remapping_previouslyrewarded", folder)
+
+            return remap_score_df
 
     def make_fig2(self, panels=None):
         folder = 2
@@ -10492,7 +10500,7 @@ class RecentReversal:
                     [
                         act_rate_df.loc[np.logical_and(
                             act_rate_df['session_id']==session_id,
-                            act_rate_df['category']==category), 'event_rates']
+                            act_rate_df['category']==category), 'event_rate']
                         for category in categories
                     ], widths=0.75, patch_artist=True,
                 )
@@ -10784,7 +10792,7 @@ class RecentReversal:
             lag = -1
             df, fig = self.plot_lick_decoder(
                 licks_to_include="first",
-                lag=-lag,
+                lag=lag,
                 ages_to_plot=ages_to_plot,
                 class_weight="balanced",
                 random_state=7,
