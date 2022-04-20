@@ -41,6 +41,7 @@ from scipy.stats import (
     kstest,
     uniform,
 )
+from scipy.optimize import curve_fit
 from scipy.spatial import distance
 from joblib import Parallel, delayed
 from CircleTrack.SessionCollation import MultiAnimal
@@ -52,6 +53,7 @@ from statsmodels.stats.multitest import multipletests
 from sklearn.impute import SimpleImputer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import RFECV
+from sklearn.linear_model import LinearRegression
 import numpy as np
 import os
 from CircleTrack.plotting import (
@@ -639,6 +641,46 @@ class RecentReversal:
         fig.tight_layout()
 
         return dv, fig
+
+    def learning_rate(self, session_type,
+                      window=6,
+                      strides=2,
+                      performance_metric="d_prime",
+                      trial_limit=None):
+        df = self.behavior_over_trials(
+            session_type,
+            window=window,
+            strides=strides,
+            performance_metric=performance_metric,
+            trial_limit=trial_limit,
+        )
+
+        def objective(x, a, b, c):
+            return a*x + b*x**2 + c
+        slopes, peak_trial, norm_peak_trial = [[] for i in range(3)]
+        for mouse in df.mice.unique():
+            mouse_df = df.loc[df['mice']==mouse]
+            X = mouse_df['t'].values
+            y = mouse_df['dv'].values
+
+            slopes.append(LinearRegression().fit(np.reshape(X, (-1,1)),
+                                                 np.reshape(y, (-1,1))).coef_[0][0])
+
+            curve_params = curve_fit(objective, X, y)[0]
+            curve = objective(X, *curve_params)
+            peak_trial.append(np.argmax(curve))
+            norm_peak_trial.append(np.argmax(curve) / np.max(X))
+
+            # ax.plot(X,y, 'b-')
+            # ax.plot(X, objective(X, *p), 'r-')
+        df = pd.DataFrame(
+            {'mice': df.mice.unique(),
+             'reg_slope': slopes,
+             'peak_trial': peak_trial,
+             'norm_peak_trial': norm_peak_trial
+             }
+        )
+        return df
 
     def plot_behavior(self, mouse, window=8, strides=2, show_plot=True, ax=None):
         """
@@ -5058,31 +5100,31 @@ class RecentReversal:
 
         return proportion_unique_members, ensemble_size
 
-    def find_promiscuous_neurons(
-        self, session_type, filter_method="sd", thresh=2, p_ensemble_thresh=0.1
-    ):
-        p_promiscuous_neurons = {age: [] for age in ages}
-        for age in ages:
-            p_promiscuous_neurons[age] = []
-
-            for mouse in self.meta["grouped_mice"][age]:
-                patterns = self.data[mouse][session_type].assemblies["patterns"]
-                n_ensembles, n_neurons = patterns.shape
-                memberships = find_memberships(
-                    patterns, filter_method=filter_method, thresh=thresh
-                )
-
-                ensemble_threshold = p_ensemble_thresh * n_ensembles
-
-                p_promiscuous_neurons[age].append(
-                    sum(
-                        np.asarray([len(ensemble) for ensemble in memberships])
-                        > ensemble_threshold
-                    )
-                    / n_neurons
-                )
-
-        return p_promiscuous_neurons
+    # def find_promiscuous_neurons(
+    #     self, session_type, filter_method="sd", thresh=2, p_ensemble_thresh=0.1
+    # ):
+    #     p_promiscuous_neurons = {age: [] for age in ages}
+    #     for age in ages:
+    #         p_promiscuous_neurons[age] = []
+    #
+    #         for mouse in self.meta["grouped_mice"][age]:
+    #             patterns = self.data[mouse][session_type].assemblies["patterns"]
+    #             n_ensembles, n_neurons = patterns.shape
+    #             memberships = find_memberships(
+    #                 patterns, filter_method=filter_method, thresh=thresh
+    #             )
+    #
+    #             ensemble_threshold = p_ensemble_thresh * n_ensembles
+    #
+    #             p_promiscuous_neurons[age].append(
+    #                 sum(
+    #                     np.asarray([len(ensemble) for ensemble in memberships])
+    #                     > ensemble_threshold
+    #                 )
+    #                 / n_neurons
+    #             )
+    #
+    #     return p_promiscuous_neurons
 
     def split_session_ensembles(self, mouse, session_type, overwrite_ensembles=False):
         """
@@ -5547,6 +5589,54 @@ class RecentReversal:
         axs[0].set_ylabel("Lick decoder accuracy")
 
         return accuracy
+
+    def correlate_fade_slope_to_learning_slope(
+            self,
+            age='young',
+            performance_metric="CRs",
+            dv='reg_slope'
+    ):
+        df = self.learning_rate('Reversal',
+                                performance_metric=performance_metric)
+        for mouse in self.meta['grouped_mice'][age]:
+            trends, _, slopes, tau = self.find_activity_trends(
+                mouse,
+                'Reversal',
+                x='trial',
+                z_threshold=None,
+                x_bin_size=1,
+                data_type='ensembles',
+                subset=None,
+                alpha='sidak'
+            )
+
+            mean_slope = np.mean(slopes)
+            df.loc[df['mice']==mouse, 'ensemble_slope'] = mean_slope
+
+        performance_label = {
+            "hits": "hit rate",
+            "CRs": "corr. rej. rate",
+            "d_prime": "d'"
+        }
+        ylabel = {
+            "reg_slope": f"Regression slope of\n"
+                         f"{performance_label[performance_metric]} over trials",
+            "peak_trial": f"Trial @ "
+                          f"{performance_label[performance_metric]}\nasymptote",
+            "norm_peak_trial": f"Time of peak\n"
+                               f"{performance_label[performance_metric]}, normalized"
+        }
+        fig, ax = plt.subplots()
+        ax.scatter(df['ensemble_slope'], df[dv])
+        ax.set_xlabel('Mean ensemble trend slope')
+        ax.set_ylabel(f'Learning rate\n({ylabel[dv]})')
+        [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+        fig.tight_layout()
+        print(spearmanr(df['ensemble_slope'], df[dv],
+                        nan_policy='omit'))
+
+        return df
+
 
     def lick_decoder(
         self,
@@ -8402,7 +8492,7 @@ class RecentReversal:
                     x = t[combination[0]]
                     y = t[combination[1]]
 
-                    r, p = pearsonr(x, y)
+                    r, p = spearmanr(x, y)
                     if not np.isfinite(r):
                         r = 0
                         p = 1
