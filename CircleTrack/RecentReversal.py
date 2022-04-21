@@ -5435,6 +5435,7 @@ class RecentReversal:
         data_type="ensembles",
         exclude=None,
         do_zscore=True,
+        shuffle=False,
         **classifier_kwargs,
     ):
         split_session = len(np.unique(session_pair)) == 1
@@ -5535,7 +5536,14 @@ class RecentReversal:
         clf = classifier(**classifier_kwargs)
         clf.fit(X["train"], y["train"])
 
-        return X, y, clf
+        if shuffle:
+            shuffled_clfs = [classifier(**classifier_kwargs).fit(X["train"],
+                                                                 np.random.permutation(y["train"]))
+                             for i in range(50)]
+        else:
+            shuffled_clfs = []
+
+        return X, y, clf, shuffled_clfs
 
     def compare_lick_decoding_accuracy(
         self,
@@ -5563,7 +5571,7 @@ class RecentReversal:
                 accuracy[age][session_pair] = []
 
                 for mouse in self.meta["grouped_mice"][age]:
-                    X, y, clf = self.fit_lick_decoder(
+                    X, y, clf, _ = self.fit_lick_decoder(
                         mouse,
                         session_pair,
                         classifier=classifier,
@@ -5711,15 +5719,17 @@ class RecentReversal:
         show_plot=True,
         ax=None,
         data_type="ensembles",
+        shuffle=False,
         **classifier_kwargs,
     ):
-        X, y, classifier = self.fit_lick_decoder(
+        X, y, classifier, shuffled_clfs = self.fit_lick_decoder(
             mouse,
             session_types,
             classifier=classifier,
             lag=lag,
             licks_to_include=licks_to_include,
             data_type=data_type,
+            shuffle=shuffle,
             **classifier_kwargs,
         )
 
@@ -5730,6 +5740,15 @@ class RecentReversal:
             for X_chunk, y_chunk in zip(X_split, y_split)
         ]
 
+        chance = []
+        if shuffle:
+            for surrogate in shuffled_clfs:
+                chance.append(
+                    [surrogate.score(X_chunk, y_chunk)
+                     for X_chunk, y_chunk in zip(X_split, y_split)]
+                )
+            chance = np.vstack(chance)
+
         if show_plot:
             x = np.arange(0, 31, 30 / n_splits).astype(int)
             xtick_labels = [f"{i}-{j} min" for i, j in zip(x[:-1], x[1:])]
@@ -5737,8 +5756,9 @@ class RecentReversal:
                 fig, ax = plt.subplots()
 
             ax.plot(xtick_labels, scores, "k", alpha=0.2)
+            #ax.plot(xtick_labels, chance.T, "r", alpha=0.1)
 
-        return scores
+        return scores, chance
 
     def registered_ensemble_lick_decoder_accuracy_by_port(
         self,
@@ -5752,7 +5772,7 @@ class RecentReversal:
         axs=None,
         **classifier_kwargs,
     ):
-        X, y, classifier = self.fit_lick_decoder(
+        X, y, classifier,_ = self.fit_lick_decoder(
             mouse,
             session_types,
             classifier=classifier,
@@ -5818,6 +5838,7 @@ class RecentReversal:
         lag=0,
         ages_to_plot=None,
         data_type="ensembles",
+        shuffle=False,
         **classifier_kwargs,
     ):
         ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(
@@ -5825,6 +5846,7 @@ class RecentReversal:
         )
 
         scores = dict()
+        chance = {age: dict() for age in ages_to_plot}
         fig, axs = plt.subplots(
             n_ages_to_plot,
             len(session_types),
@@ -5836,13 +5858,13 @@ class RecentReversal:
             axs = [axs]
 
         time_bins = np.arange(n_splits)
-
         mice_, decoded_session, ages_, time_bins_ = [], [], [], []
         for age, cohort_ax in zip(ages_to_plot, axs):
             scores[age] = []
             for mouse in self.meta["grouped_mice"][age]:
                 for ax, session_pair in zip(cohort_ax, session_types):
-                    scores_ = self.lick_decoder(
+                    chance[age][session_pair] = []
+                    scores_, chance_ = self.lick_decoder(
                         mouse,
                         session_pair,
                         classifier=classifier,
@@ -5852,10 +5874,12 @@ class RecentReversal:
                         lag=lag,
                         ax=ax,
                         data_type=data_type,
+                        shuffle=shuffle,
                         **classifier_kwargs,
                     )
 
                     scores[age].extend(scores_)
+                    chance[age][session_pair].extend(chance_)
                     decoded_session.extend([session_pair[1] for i in range(n_splits)])
                     mice_.extend([mouse for i in range(n_splits)])
                     ages_.extend([age for i in range(n_splits)])
@@ -5867,11 +5891,11 @@ class RecentReversal:
                 "age": ages_,
                 "decoded_session": decoded_session,
                 "time_bins": time_bins_,
-                "scores": np.hstack([scores[age] for age in ages_to_plot]),
+                "scores": np.hstack([scores[age] for age in ages_to_plot])
             }
         )
         means = df.groupby(["age", "decoded_session", "time_bins"]).mean()
-        sem = df.groupby(["age", "decoded_session", "time_bins"]).sem()
+        sems = df.groupby(["age", "decoded_session", "time_bins"]).sem()
 
         x = np.arange(0, 31, 30 / n_splits).astype(int)
         xtick_labels = [f"{i}-{j} min" for i, j in zip(x[:-1], x[1:])]
@@ -5880,9 +5904,17 @@ class RecentReversal:
                 errorfill(
                     xtick_labels,
                     np.squeeze(means.loc[age].loc[session_pair[1]].values),
-                    yerr=np.squeeze(sem.loc[age].loc[session_pair[1]].values),
+                    yerr=np.squeeze(sems.loc[age].loc[session_pair[1]].values),
                     color=color,
                     ax=ax,
+                )
+
+                errorfill(
+                    xtick_labels,
+                    np.nanmean(chance[age][session_pair], axis=0),
+                    yerr=sem(chance[age][session_pair], axis=0),
+                    color='darkred',
+                    ax=ax
                 )
                 for tick in ax.get_xticklabels():
                     tick.set_rotation(45)
@@ -5890,7 +5922,6 @@ class RecentReversal:
                     f"trained on {session_pair[0].replace('Goals', 'Training')}"
                     f"\n tested on {session_pair[1].replace('Goals', 'Training')}"
                 )
-                ax.axhline(y=1 / 8, color="darkred")
                 ax.set_ylim([0, 1])
 
                 [ax.spines[side].set_visible(False) for side in ["top", "right"]]
@@ -10514,6 +10545,7 @@ class RecentReversal:
                 class_weight="balanced",
                 random_state=7,
                 n_jobs=6,
+                shuffle=True,
             )
 
             if self.save_configs["save_figs"]:
@@ -10991,6 +11023,7 @@ class RecentReversal:
                 class_weight="balanced",
                 random_state=7,
                 n_jobs=6,
+                shuffle=True,
             )
 
             if self.save_configs["save_figs"]:
