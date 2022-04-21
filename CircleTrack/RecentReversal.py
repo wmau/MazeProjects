@@ -14,6 +14,7 @@ from CaImaging.util import (
     open_minian,
     cluster_corr,
 )
+import seaborn as sns
 import math
 import random
 import ruptures as rpt
@@ -41,6 +42,7 @@ from scipy.stats import (
     kstest,
     uniform,
 )
+from numpy.lib.stride_tricks import sliding_window_view
 from scipy.optimize import curve_fit
 from scipy.spatial import distance
 from joblib import Parallel, delayed
@@ -50,6 +52,7 @@ from CaImaging.CellReg import rearrange_neurons, trim_map, scrollplot_footprints
 from sklearn.naive_bayes import BernoulliNB, GaussianNB
 from sklearn.model_selection import StratifiedKFold, KFold
 from statsmodels.stats.multitest import multipletests
+from statsmodels.tsa.stattools import adfuller, grangercausalitytests
 from sklearn.impute import SimpleImputer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import RFECV
@@ -5637,6 +5640,65 @@ class RecentReversal:
 
         return df
 
+    def ensemble_behavior_causality(self,
+                                    mouse,
+                                    window=6,
+                                    strides=2,
+                                    performance_metric='CRs',
+                                    func=np.mean):
+        session = self.data[mouse]['Reversal'].behavior
+        session.sdt_trials(
+            rolling_window=window,
+            trial_interval=strides,
+            plot=False,
+        )
+        df = pd.DataFrame(
+            {"t": range(len(session.sdt[performance_metric])),
+             "dv": session.sdt[performance_metric]}
+        )
+
+        trends, binned_activations = self.find_activity_trends(
+            mouse,
+            "Reversal",
+            x="trial",
+            z_threshold=None,
+            x_bin_size=1,
+            alpha="sidak",
+            data_type="ensembles"
+        )[:2]
+
+        n_ensembles = binned_activations.shape[0]
+        binned_activations = binned_activations.T
+        blocked = np.squeeze(sliding_window_view(
+            binned_activations,
+            (window, binned_activations.shape[1]),
+            axis=(0,1)
+        )[::strides])
+        ensemble_activity = np.vstack([func(trial_block, axis=0)
+                             for trial_block in blocked])
+
+        df = pd.concat((df, pd.DataFrame(ensemble_activity)), axis=1)
+
+        df_diff = df.diff().dropna()
+        test = 'ssr_chi2test'
+        maxlag=4
+        granger_df = pd.DataFrame(nan_array((len(trends['decreasing']), 2)),
+                                  index=trends['decreasing'])
+        for ensemble_number in trends['decreasing']:
+            result = adfuller(df_diff[ensemble_number])[1]
+            if result < 0.05:
+                g = grangercausalitytests(df_diff[['dv', ensemble_number]],
+                                          maxlag=maxlag, verbose=False)
+                p = np.min([round(g[i+1][0][test][1],4) for i in range(maxlag)])
+                granger_df.loc[ensemble_number, 0] = p
+
+                g = grangercausalitytests(df_diff[[ensemble_number, 'dv']],
+                                          maxlag=maxlag, verbose=False)
+                p = np.min([round(g[i+1][0][test][1],4) for i in range(maxlag)])
+                granger_df.loc[ensemble_number, 1] = p
+
+        return granger_df
+
 
     def lick_decoder(
         self,
@@ -8492,7 +8554,7 @@ class RecentReversal:
                     x = t[combination[0]]
                     y = t[combination[1]]
 
-                    r, p = spearmanr(x, y)
+                    r, p = pearsonr(x, y)
                     if not np.isfinite(r):
                         r = 0
                         p = 1
@@ -8826,6 +8888,48 @@ class RecentReversal:
         degree_df = self.categorize_hub_dropped_neurons(degree_df, time_bin=time_bin)
 
         return degree_df
+
+    def contour_degree_beginning_and_end(self, age, session_type='Reversal', trend='decreasing'):
+        mice = self.meta["grouped_mice"][age]
+
+        Degrees = pd.DataFrame()
+        for mouse in mice:
+            degree_df = self.make_degree_df_with_quartiles(
+                mouse, session_type, trend=trend, time_bin=5
+            )
+            Degrees = pd.concat((Degrees, degree_df), ignore_index=True)
+        mice = Degrees.mouse.unique()
+
+        fig, axs = plt.subplots(1, len(mice), sharey=True, sharex=True, figsize=(len(mice)*3, 6))
+        for ax, mouse in zip(axs, mice):
+            mouse_df = Degrees.loc[Degrees['mouse']==mouse]
+            mouse_df.drop_duplicates(['neuron_id', 'time_bin'], inplace=True)
+
+
+            time_bin0 = mouse_df.loc[
+                np.logical_and(mouse_df['time_bin']==0,
+                               mouse_df['quartile'].isin([1,4])), ['neuron_id', 'degree', 'quartile']
+            ]
+
+            time_bin5 = mouse_df.loc[
+                np.logical_and(mouse_df['time_bin']==5,
+                               mouse_df['quartile'].isin([1,4])), ['neuron_id', 'degree', 'quartile']
+
+            ]
+
+            merged = time_bin0.merge(time_bin5, how='outer', left_on='neuron_id', right_on='neuron_id')
+            sns.kdeplot(data=merged, x='degree_x', y='degree_y', hue='quartile_x', ax=ax,
+                        palette={1: 'orange', 4: 'palegreen'}, legend=False)
+            ax.axis('square')
+            [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+            ax.set_xlabel('Degree, begin.\nof session')
+            ax.set_ylabel('Degree, end\nof session')
+            ax.set_title(mouse)
+
+        for ax in axs:
+            plot_xy_line(ax)
+
+        return Degrees
 
     def degree_comparison_all_mice(
         self, age, average_within_ensemble=True, trend="decreasing", plot_agg=False
@@ -9164,229 +9268,229 @@ class RecentReversal:
 
         return Degrees, degree_diffs, fig
 
-    def R_percentile_comparison(
-        self,
-        mouse,
-        session_type,
-        n_splits=6,
-        percentile=33,
-        plot_all_ensembles=True,
-        plot_means=True,
-    ):
-        ensemble_trends = self.find_activity_trends(mouse, session_type)[0]
-
-        if not ensemble_trends["decreasing"]:
-            return None
-
-        data = dict()
-        for ensemble in ensemble_trends["decreasing"]:
-            data[ensemble] = dict()
-
-            xcorr = self.xcorr_ensemble_cells(
-                mouse, session_type, ensemble, n_splits=n_splits, show_plot=False
-            )
-
-            last_matrix = xcorr["correlations"][-1]
-            first_matrix = xcorr["correlations"][0]
-
-            upper = np.nanpercentile(last_matrix, 100 - percentile)
-            lower = np.nanpercentile(last_matrix, percentile)
-
-            upper_r, upper_c = np.where(last_matrix > upper)
-            lower_r, lower_c = np.where(last_matrix < lower)
-
-            data[ensemble]["upper_first"] = first_matrix[upper_r, upper_c]
-            data[ensemble]["lower_first"] = first_matrix[lower_r, lower_c]
-            data[ensemble]["upper_last"] = last_matrix[upper_r, upper_c]
-            data[ensemble]["lower_last"] = last_matrix[lower_r, lower_c]
-
-        if plot_all_ensembles:
-            ensembles_fig, axs = plt.subplots(
-                1, len(ensemble_trends["decreasing"]), sharey=True
-            )
-            for ax, ensemble in zip(axs, ensemble_trends["decreasing"]):
-                ax.boxplot(
-                    [
-                        data[ensemble][portion]
-                        for portion in ["upper_first", "lower_first"]
-                    ],
-                    widths=0.75,
-                )
-
-            ensembles_fig.tight_layout()
-
-        if plot_means:
-            means_fig, ax = plt.subplots(figsize=(3, 4.8))
-            self.plot_upper_lower(data, ax, percentile)
-            ax.set_ylabel("Correlation coefficient")
-            means_fig.tight_layout()
-
-        return data
-
-    def plot_upper_lower(self, data, ax, percentile=33.33, method="boxplot"):
-        u = [np.nanmean(xcorrs["upper_first"]) for xcorrs in data.values()]
-        l = [np.nanmean(xcorrs["lower_first"]) for xcorrs in data.values()]
-
-        if method == "boxplot":
-            boxes = ax.boxplot(
-                [u, l], widths=0.75, patch_artist=True, zorder=0, showfliers=False
-            )
-            color_boxes(boxes, "w")
-            ax.plot(
-                [jitter_x(np.ones_like(u), 0.05), jitter_x(np.ones_like(l) * 2, 0.05)],
-                [u, l],
-                "ko-",
-            )
-            ax.set_xticklabels(
-                [f"Upper\n{100-percentile}%", f"Lower\n{percentile}%"], rotation=45
-            )
-
-        elif method == "scatter":
-            ax.scatter(u, l)
-
-        else:
-            raise NotImplementedError
-        [ax.spines[side].set_visible(False) for side in ["top", "right"]]
-
-    def plot_delta_by_percentile(self, data, ax, percentile="lower", method="boxplot"):
-        first = [np.nanmean(xcorrs[percentile + "_first"]) for xcorrs in data.values()]
-        last = [np.nanmean(xcorrs[percentile + "_last"]) for xcorrs in data.values()]
-
-        if method == "boxplot":
-            boxes = ax.boxplot(
-                [first, last],
-                widths=0.75,
-                patch_artist=True,
-                zorder=0,
-                showfliers=False,
-            )
-            color_boxes(boxes, "w")
-
-            ax.plot(
-                [
-                    jitter_x(np.ones_like(first), 0.05),
-                    jitter_x(np.ones_like(last) * 2, 0.05),
-                ],
-                [first, last],
-                "ko-",
-            )
-            ax.set_xticklabels(["Beginning", "End"], rotation=45)
-
-        elif method == "scatter":
-            ax.scatter(first, last)
-            ax.axis("square")
-
-        [ax.spines[side].set_visible(False) for side in ["top", "right"]]
-
-    def R_percentiles_all_mice(
-        self,
-        age="young",
-        session_type="Reversal",
-        percentile=33.33,
-        method="scatter",
-        **kwargs,
-    ):
-        """
-        Sorts cell pair correlation coefficients into the top p percentile and the bottom
-        1-p percentile based on the correlation matrix computed from the last 5 min of
-        the session. The top percentile are stable cell pairs and the bottom percentile
-        are disconnected cell pairs. Then produces two plots.
-
-        1) In the FIRST 5 min of the session, the correlation coefficients of the
-        disconnected cell pairs against the stable cell pairs, one dot per ensemble,
-        colored by mouse. This shows that within each ensemble, the stable neurons
-        have higher rhos than the disconnected neurons starting from the beginning of the
-        session.
-
-        2) The correlation coefficients of the disconnected cell pairs in the first
-        versus the last 5 min of the session. Also the same thing for the stable cell pairs.
-        This is to show the dynamic range. The disconnected neurons cluster near the bottom
-        left, meaning they had low rhos to begin with and drop to near 0. In contrast,
-        the highly correlated cell pairs are stable across time.
-
-        :param age:
-        :param session_type:
-        :param percentile:
-        :param method:
-        :param kwargs:
-        :return:
-        """
-        data = dict()
-        for mouse in self.meta["grouped_mice"][age]:
-            data[mouse] = self.R_percentile_comparison(
-                mouse,
-                session_type,
-                percentile=percentile,
-                plot_all_ensembles=False,
-                plot_means=False,
-                **kwargs,
-            )
-
-            if data[mouse] is None:
-                data.pop(mouse)
-
-        if method == "boxplot":
-            fig, axs = plt.subplots(1, len(data.values()), sharey=True)
-            for ax, (mouse, values) in zip(axs, data.items()):
-                self.plot_upper_lower(values, ax, percentile=percentile, method=method)
-                ax.set_title(mouse)
-
-            axs[0].set_ylabel("Correlation coefficient")
-            fig.tight_layout()
-            fig.subplots_adjust(wspace=0.3)
-        elif method == "scatter":
-            fig, ax = plt.subplots()
-            for values in data.values():
-                self.plot_upper_lower(values, ax, percentile=percentile, method=method)
-            plot_xy_line(ax)
-            ax.set_xlabel(r"Mean $\rho$ of" "\n" "hub cell pairs")
-            ax.set_ylabel(r"Mean $\rho$ of" "\n" "dropped cell pairs")
-            ax.axis("square")
-            fig.tight_layout()
-        else:
-            raise NotImplementedError
-
-        if method == "boxplot":
-            for p in ["lower", "upper"]:
-                fig, axs = plt.subplots(1, len(data.values()), sharey=True)
-                for ax, (mouse, values) in zip(axs, data.items()):
-                    self.plot_delta_by_percentile(
-                        values, ax, percentile=p, method="boxplot"
-                    )
-                    ax.set_title(mouse)
-
-                axs[0].set_ylabel("Correlation coefficient")
-                fig.suptitle(p.capitalize() + " percentiles")
-                fig.tight_layout()
-                fig.subplots_adjust(wspace=0.3)
-
-        elif method == "scatter":
-            fig, axs = plt.subplots(1, 2, sharey=True, sharex=True, figsize=(9, 4.8))
-            for p, stability, ax in zip(["lower", "upper"], ["dropped", "hub"], axs):
-                for values in data.values():
-                    self.plot_delta_by_percentile(
-                        values, ax, percentile=p, method=method
-                    )
-
-                ax.set_xlabel(
-                    r"Mean $\rho$ of"
-                    "\n"
-                    f"{stability} cell pairs,"
-                    "\n"
-                    "beginning of session"
-                )
-                ax.set_ylabel(
-                    r"Mean $\rho$ of"
-                    "\n"
-                    f"{stability} cell pairs,"
-                    "\n"
-                    "end of session"
-                )
-            fig.tight_layout()
-            fig.subplots_adjust(wspace=0.3)
-            [plot_xy_line(ax) for ax in axs]
-
-        return data
+    # def R_percentile_comparison(
+    #     self,
+    #     mouse,
+    #     session_type,
+    #     n_splits=6,
+    #     percentile=33,
+    #     plot_all_ensembles=True,
+    #     plot_means=True,
+    # ):
+    #     ensemble_trends = self.find_activity_trends(mouse, session_type)[0]
+    #
+    #     if not ensemble_trends["decreasing"]:
+    #         return None
+    #
+    #     data = dict()
+    #     for ensemble in ensemble_trends["decreasing"]:
+    #         data[ensemble] = dict()
+    #
+    #         xcorr = self.xcorr_ensemble_cells(
+    #             mouse, session_type, ensemble, n_splits=n_splits, show_plot=False
+    #         )
+    #
+    #         last_matrix = xcorr["correlations"][-1]
+    #         first_matrix = xcorr["correlations"][0]
+    #
+    #         upper = np.nanpercentile(last_matrix, 100 - percentile)
+    #         lower = np.nanpercentile(last_matrix, percentile)
+    #
+    #         upper_r, upper_c = np.where(last_matrix > upper)
+    #         lower_r, lower_c = np.where(last_matrix < lower)
+    #
+    #         data[ensemble]["upper_first"] = first_matrix[upper_r, upper_c]
+    #         data[ensemble]["lower_first"] = first_matrix[lower_r, lower_c]
+    #         data[ensemble]["upper_last"] = last_matrix[upper_r, upper_c]
+    #         data[ensemble]["lower_last"] = last_matrix[lower_r, lower_c]
+    #
+    #     if plot_all_ensembles:
+    #         ensembles_fig, axs = plt.subplots(
+    #             1, len(ensemble_trends["decreasing"]), sharey=True
+    #         )
+    #         for ax, ensemble in zip(axs, ensemble_trends["decreasing"]):
+    #             ax.boxplot(
+    #                 [
+    #                     data[ensemble][portion]
+    #                     for portion in ["upper_first", "lower_first"]
+    #                 ],
+    #                 widths=0.75,
+    #             )
+    #
+    #         ensembles_fig.tight_layout()
+    #
+    #     if plot_means:
+    #         means_fig, ax = plt.subplots(figsize=(3, 4.8))
+    #         self.plot_upper_lower(data, ax, percentile)
+    #         ax.set_ylabel("Correlation coefficient")
+    #         means_fig.tight_layout()
+    #
+    #     return data
+    #
+    # def plot_upper_lower(self, data, ax, percentile=33.33, method="boxplot"):
+    #     u = [np.nanmean(xcorrs["upper_first"]) for xcorrs in data.values()]
+    #     l = [np.nanmean(xcorrs["lower_first"]) for xcorrs in data.values()]
+    #
+    #     if method == "boxplot":
+    #         boxes = ax.boxplot(
+    #             [u, l], widths=0.75, patch_artist=True, zorder=0, showfliers=False
+    #         )
+    #         color_boxes(boxes, "w")
+    #         ax.plot(
+    #             [jitter_x(np.ones_like(u), 0.05), jitter_x(np.ones_like(l) * 2, 0.05)],
+    #             [u, l],
+    #             "ko-",
+    #         )
+    #         ax.set_xticklabels(
+    #             [f"Upper\n{100-percentile}%", f"Lower\n{percentile}%"], rotation=45
+    #         )
+    #
+    #     elif method == "scatter":
+    #         ax.scatter(u, l)
+    #
+    #     else:
+    #         raise NotImplementedError
+    #     [ax.spines[side].set_visible(False) for side in ["top", "right"]]
+    #
+    # def plot_delta_by_percentile(self, data, ax, percentile="lower", method="boxplot"):
+    #     first = [np.nanmean(xcorrs[percentile + "_first"]) for xcorrs in data.values()]
+    #     last = [np.nanmean(xcorrs[percentile + "_last"]) for xcorrs in data.values()]
+    #
+    #     if method == "boxplot":
+    #         boxes = ax.boxplot(
+    #             [first, last],
+    #             widths=0.75,
+    #             patch_artist=True,
+    #             zorder=0,
+    #             showfliers=False,
+    #         )
+    #         color_boxes(boxes, "w")
+    #
+    #         ax.plot(
+    #             [
+    #                 jitter_x(np.ones_like(first), 0.05),
+    #                 jitter_x(np.ones_like(last) * 2, 0.05),
+    #             ],
+    #             [first, last],
+    #             "ko-",
+    #         )
+    #         ax.set_xticklabels(["Beginning", "End"], rotation=45)
+    #
+    #     elif method == "scatter":
+    #         ax.scatter(first, last)
+    #         ax.axis("square")
+    #
+    #     [ax.spines[side].set_visible(False) for side in ["top", "right"]]
+    #
+    # def R_percentiles_all_mice(
+    #     self,
+    #     age="young",
+    #     session_type="Reversal",
+    #     percentile=33.33,
+    #     method="scatter",
+    #     **kwargs,
+    # ):
+    #     """
+    #     Sorts cell pair correlation coefficients into the top p percentile and the bottom
+    #     1-p percentile based on the correlation matrix computed from the last 5 min of
+    #     the session. The top percentile are stable cell pairs and the bottom percentile
+    #     are disconnected cell pairs. Then produces two plots.
+    #
+    #     1) In the FIRST 5 min of the session, the correlation coefficients of the
+    #     disconnected cell pairs against the stable cell pairs, one dot per ensemble,
+    #     colored by mouse. This shows that within each ensemble, the stable neurons
+    #     have higher rhos than the disconnected neurons starting from the beginning of the
+    #     session.
+    #
+    #     2) The correlation coefficients of the disconnected cell pairs in the first
+    #     versus the last 5 min of the session. Also the same thing for the stable cell pairs.
+    #     This is to show the dynamic range. The disconnected neurons cluster near the bottom
+    #     left, meaning they had low rhos to begin with and drop to near 0. In contrast,
+    #     the highly correlated cell pairs are stable across time.
+    #
+    #     :param age:
+    #     :param session_type:
+    #     :param percentile:
+    #     :param method:
+    #     :param kwargs:
+    #     :return:
+    #     """
+    #     data = dict()
+    #     for mouse in self.meta["grouped_mice"][age]:
+    #         data[mouse] = self.R_percentile_comparison(
+    #             mouse,
+    #             session_type,
+    #             percentile=percentile,
+    #             plot_all_ensembles=False,
+    #             plot_means=False,
+    #             **kwargs,
+    #         )
+    #
+    #         if data[mouse] is None:
+    #             data.pop(mouse)
+    #
+    #     if method == "boxplot":
+    #         fig, axs = plt.subplots(1, len(data.values()), sharey=True)
+    #         for ax, (mouse, values) in zip(axs, data.items()):
+    #             self.plot_upper_lower(values, ax, percentile=percentile, method=method)
+    #             ax.set_title(mouse)
+    #
+    #         axs[0].set_ylabel("Correlation coefficient")
+    #         fig.tight_layout()
+    #         fig.subplots_adjust(wspace=0.3)
+    #     elif method == "scatter":
+    #         fig, ax = plt.subplots()
+    #         for values in data.values():
+    #             self.plot_upper_lower(values, ax, percentile=percentile, method=method)
+    #         plot_xy_line(ax)
+    #         ax.set_xlabel(r"Mean $\rho$ of" "\n" "hub cell pairs")
+    #         ax.set_ylabel(r"Mean $\rho$ of" "\n" "dropped cell pairs")
+    #         ax.axis("square")
+    #         fig.tight_layout()
+    #     else:
+    #         raise NotImplementedError
+    #
+    #     if method == "boxplot":
+    #         for p in ["lower", "upper"]:
+    #             fig, axs = plt.subplots(1, len(data.values()), sharey=True)
+    #             for ax, (mouse, values) in zip(axs, data.items()):
+    #                 self.plot_delta_by_percentile(
+    #                     values, ax, percentile=p, method="boxplot"
+    #                 )
+    #                 ax.set_title(mouse)
+    #
+    #             axs[0].set_ylabel("Correlation coefficient")
+    #             fig.suptitle(p.capitalize() + " percentiles")
+    #             fig.tight_layout()
+    #             fig.subplots_adjust(wspace=0.3)
+    #
+    #     elif method == "scatter":
+    #         fig, axs = plt.subplots(1, 2, sharey=True, sharex=True, figsize=(9, 4.8))
+    #         for p, stability, ax in zip(["lower", "upper"], ["dropped", "hub"], axs):
+    #             for values in data.values():
+    #                 self.plot_delta_by_percentile(
+    #                     values, ax, percentile=p, method=method
+    #                 )
+    #
+    #             ax.set_xlabel(
+    #                 r"Mean $\rho$ of"
+    #                 "\n"
+    #                 f"{stability} cell pairs,"
+    #                 "\n"
+    #                 "beginning of session"
+    #             )
+    #             ax.set_ylabel(
+    #                 r"Mean $\rho$ of"
+    #                 "\n"
+    #                 f"{stability} cell pairs,"
+    #                 "\n"
+    #                 "end of session"
+    #             )
+    #         fig.tight_layout()
+    #         fig.subplots_adjust(wspace=0.3)
+    #         [plot_xy_line(ax) for ax in axs]
+    #
+    #     return data
 
     def connectedness_over_session(
         self,
