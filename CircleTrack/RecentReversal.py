@@ -312,7 +312,7 @@ class RecentReversal:
 
     def set_age_legend(self, fig, loc="lower right"):
         patches = [
-            mpatches.Patch(facecolor=c, label=label, edgecolor="k")
+            mpatches.Patch(facecolor=c, label=label.replace("aged", "middle-aged"), edgecolor="k")
             for c, label in zip(age_colors, ages)
         ]
         fig.legend(handles=patches, loc=loc)
@@ -971,14 +971,17 @@ class RecentReversal:
         }
         if ax is None:
             fig, ax = plt.subplots(figsize=(3, 4.75))
+            label_y= True
         else:
             fig = ax.get_figure()
+            label_y = False
 
         self.scatter_box(peak_performance, ax=ax)
 
         ax.set_xticks([1, 2])
         ax.set_xticklabels(ages, rotation=45)
-        ax.set_ylabel(ylabels[performance_metric])
+        if label_y:
+            ax.set_ylabel(ylabels[performance_metric])
         [ax.spines[side].set_visible(False) for side in ["top", "right"]]
         # ax = beautify_ax(ax)
         fig.tight_layout()
@@ -1086,7 +1089,6 @@ class RecentReversal:
                 fig.tight_layout()
             else:
                 fig, axs = plt.subplots(1, len(sessions), sharey=True)
-                fig.subplots_adjust(wspace=0)
 
                 for ax, session, title in zip(axs, sessions, session_labels):
                     self.plot_performance_session_type(
@@ -1101,6 +1103,8 @@ class RecentReversal:
                     ax.set_title(title, fontsize=16)
                     [ax.spines[side].set_visible(False) for side in ["top", "right"]]
                 axs[0].set_ylabel(ylabels[performance_metric])
+                fig.tight_layout()
+                fig.subplots_adjust(wspace=0)
                 self.set_age_legend(fig)
         else:
             fig = None
@@ -5646,7 +5650,7 @@ class RecentReversal:
         print(spearmanr(df['ensemble_slope'], df[dv],
                         nan_policy='omit'))
 
-        return df
+        return df, fig
 
     def ensemble_behavior_causality(self,
                                     mouse,
@@ -5909,13 +5913,16 @@ class RecentReversal:
                     ax=ax,
                 )
 
-                errorfill(
-                    xtick_labels,
-                    np.nanmean(chance[age][session_pair], axis=0),
-                    yerr=sem(chance[age][session_pair], axis=0),
-                    color='darkred',
-                    ax=ax
-                )
+                if shuffle:
+                    errorfill(
+                        xtick_labels,
+                        np.nanmean(chance[age][session_pair], axis=0),
+                        yerr=sem(chance[age][session_pair], axis=0),
+                        color='darkred',
+                        ax=ax
+                    )
+                else:
+                    ax.axhline(y=1/8, color='darkred')
                 for tick in ax.get_xticklabels():
                     tick.set_rotation(45)
                 ax.set_title(
@@ -6135,23 +6142,23 @@ class RecentReversal:
 
         return lapsed_assemblies
 
-    def plot_lapsed_assemblies(self, mouse, session_types, detected="everyday"):
-        lapsed_assemblies = self.get_lapsed_assembly_activation(
-            mouse, session_types, detected=detected
-        )
-        spiking = self.rearrange_neurons(
-            mouse, session_types, "spike_times", detected=detected
-        )
-
-        n_sessions = len(lapsed_assemblies["activations"])
-        for i, pattern in enumerate(lapsed_assemblies["patterns"]):
-            fig, axs = plt.subplots(n_sessions, 1)
-            for ax, activation, spike_times in zip(
-                axs, lapsed_assemblies["activations"], spiking
-            ):
-                plot_assembly(pattern, activation[i], spike_times, ax=ax)
-
-        return lapsed_assemblies, spiking
+    # def plot_lapsed_assemblies(self, mouse, session_types, detected="everyday"):
+    #     lapsed_assemblies = self.get_lapsed_assembly_activation(
+    #         mouse, session_types, detected=detected
+    #     )
+    #     spiking = self.rearrange_neurons(
+    #         mouse, session_types, "spike_times", detected=detected
+    #     )
+    #
+    #     n_sessions = len(lapsed_assemblies["activations"])
+    #     for i, pattern in enumerate(lapsed_assemblies["patterns"]):
+    #         fig, axs = plt.subplots(n_sessions, 1)
+    #         for ax, activation, spike_times in zip(
+    #             axs, lapsed_assemblies["activations"], spiking
+    #         ):
+    #             plot_assembly(pattern, activation[i], spike_times, ax=ax)
+    #
+    #     return lapsed_assemblies, spiking
 
     def scrollplot_port_vicinity_activity(
         self,
@@ -6701,7 +6708,7 @@ class RecentReversal:
 
         return assembly_trends, assembly_counts
 
-    def plot_proportion_changing_ensembles(
+    def plot_proportion_changing_units(
         self,
         x="trial",
         x_bin_size=1,
@@ -6731,10 +6738,14 @@ class RecentReversal:
             ]
 
         if show_plot:
-            ylabel = {
+            ylabel_trend = {
                 "decreasing": "fading",
                 "increasing": "rising",
                 "no trend": "flat",
+            }
+            ylabel_dtype = {
+                "S": "cells",
+                "ensembles": "ensembles"
             }
 
             ages_to_plot, plot_colors, n_ages_to_plot = self.ages_to_plot_parser(
@@ -6787,7 +6798,7 @@ class RecentReversal:
                 if i > 0:
                     ax.tick_params(labelleft=False)
                 else:
-                    ax.set_ylabel(f"Proportion {ylabel[trend]} ensembles", fontsize=22)
+                    ax.set_ylabel(f"Proportion {ylabel_trend[trend]} {ylabel_dtype[data_type]}", fontsize=22)
 
                 if n_ages_to_plot == 2:
                     ax.set_title(age)
@@ -7123,7 +7134,6 @@ class RecentReversal:
         ):
             # Plot assembly activation.
             plot_assembly(
-                0,
                 activation,
                 spike_times,
                 sort_by_contribution=False,
@@ -8585,7 +8595,7 @@ class RecentReversal:
                     x = t[combination[0]]
                     y = t[combination[1]]
 
-                    r, p = pearsonr(x, y)
+                    r, p = spearmanr(x, y)
                     if not np.isfinite(r):
                         r = 0
                         p = 1
@@ -8951,14 +8961,18 @@ class RecentReversal:
             merged = time_bin0.merge(time_bin5, how='outer', left_on='neuron_id', right_on='neuron_id')
             sns.kdeplot(data=merged, x='degree_x', y='degree_y', hue='quartile_x', ax=ax,
                         palette={1: 'orange', 4: 'palegreen'}, legend=False)
-            ax.axis('square')
+
             [ax.spines[side].set_visible(False) for side in ['top', 'right']]
-            ax.set_xlabel('Degree, begin.\nof session')
-            ax.set_ylabel('Degree, end\nof session')
+            ax.set_xlabel('Degree @ begin.\nof session')
+            ax.set_ylabel('Degree @ end\nof session')
             ax.set_title(mouse)
 
+        [ax.set_aspect('equal') for ax in axs]
         for ax in axs:
+            ax.set_xlim([0, Degrees.degree.max()])
+            ax.set_ylim([0, Degrees.degree.max()])
             plot_xy_line(ax)
+        fig.tight_layout()
 
         return Degrees
 
@@ -9043,23 +9057,20 @@ class RecentReversal:
                     showfliers=showfliers,
                 )
 
+                neuron_colors = cycle(["palegreen", "orange"])
                 if average_within_ensemble:
-                    ax.plot(
-                        [
-                            jitter_x(np.ones_like(stable), 0.05),
-                            jitter_x(np.ones_like(disconnected), 0.05) * 2,
-                        ],
-                        [stable, disconnected],
-                        "o-",
-                        color="k",
-                        markerfacecolor=color,
-                    )
-                color_boxes(boxes, color)
+                    x_ = []
+                    for i, y in zip([1,2], [stable, disconnected]):
+                        x = jitter_x(np.ones_like(y), 0.05)*i
+                        x_.append(x)
+                        ax.scatter(x, y, color=next(neuron_colors), edgecolors='k')
+                    ax.plot(x_, [stable, disconnected], color='k')
+                color_boxes(boxes, ['palegreen','orange'])
 
                 ax.set_xticklabels(
                     ["Hub\nneurons", "Dropped\nneurons"], rotation=45, fontsize=14
                 )
-                ax.set_title(mouse)
+                ax.set_title(f"Mouse {mouse[0]}")
                 [ax.spines[side].set_visible(False) for side in ["top", "right"]]
 
                 if average_within_ensemble:
@@ -9532,9 +9543,10 @@ class RecentReversal:
         ax=None,
         color="k",
         metric="degree",
+        trend='decreasing'
     ):
         all_ensembles = self.xcorr_fading_ensembles(
-            mouse, session_type, n_splits=n_splits
+            mouse, session_type, n_splits=n_splits, trend=trend,
         )
 
         if not all_ensembles:
@@ -9582,6 +9594,7 @@ class RecentReversal:
         n_splits=6,
         age="young",
         metric="clustering_coefficient",
+        trend='decreasing',
     ):
         fig, ax = plt.subplots(figsize=(6.4, 6))
         color = age_colors[ages.index(age)]
@@ -9599,6 +9612,7 @@ class RecentReversal:
                 ax=ax,
                 color=color,
                 metric=metric,
+                trend=trend,
             )
             try:
                 anova_dfs[mouse] = pg.rm_anova(
@@ -10593,7 +10607,7 @@ class RecentReversal:
         if "D" in panels:
             ages_to_plot = "young"
             z_threshold = None
-            p_changing_split_by_age, fig = self.plot_proportion_changing_ensembles(
+            p_changing_split_by_age, fig = self.plot_proportion_changing_units(
                 ages_to_plot=ages_to_plot, z_threshold=z_threshold
             )
 
@@ -10628,6 +10642,12 @@ class RecentReversal:
                 )
 
         if "F" in panels:
+            fig = self.correlate_fade_slope_to_learning_slope(age='aged',dv='reg_slope')[1]
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, "Correlation of fading ensemble slope to learning slope", folder)
+
+        if "G" in panels:
             mouse = "Fornax"
             ensemble_number = 54
             fig, cbar_fig = self.plot_graph_evolution(
@@ -10642,7 +10662,7 @@ class RecentReversal:
                 )
                 self.save_fig(cbar_fig, f"cbar", folder)
 
-        if "G" in panels:
+        if "H" in panels:
             age = "young"
             metric = "clustering_coefficient"
             cluster_coeffs, anova_dfs, fig = self.connectedness_over_session_all_mice(
@@ -10718,29 +10738,42 @@ class RecentReversal:
             act_rate_df = pd.read_csv(os.path.join(self.save_configs['path'], 'S6',
                                                    'all_sessions_activity_rate.csv'))
             session_ids = act_rate_df['session_id'].unique()
-            categories = ['hub', 'dropped']
 
-            fig, axs = plt.subplots(1, len(session_ids), figsize=(2*len(session_ids), 4.8), sharey=True)
+            fig, axs = plt.subplots(1, len(session_ids), figsize=(2*len(session_ids), 4.8), sharey=True, sharex=True)
             for session_id, ax in zip(session_ids, axs):
-                boxes = ax.boxplot(
-                    [
-                        act_rate_df.loc[np.logical_and(
-                            act_rate_df['session_id']==session_id,
-                            act_rate_df['category']==category), 'event_rate']
-                        for category in categories
-                    ], widths=0.75, patch_artist=True,
-                )
-                color_boxes(boxes, age_colors[0])
-                ax.set_xticklabels(['Hub\nneurons', 'Dropped\nneurons'], rotation=45)
+                # boxes = ax.boxplot(
+                #     [
+                #         act_rate_df.loc[np.logical_and(
+                #             act_rate_df['session_id']==session_id,
+                #             act_rate_df['category']==category), 'event_rate']
+                #         for category in categories
+                #     ], widths=0.75, patch_artist=True,
+                # )
+                # color_boxes(boxes, age_colors[0])
+                # ax.set_xticklabels(['Hub\nneurons', 'Dropped\nneurons'], rotation=45)
+
+                data = act_rate_df.loc[
+                    act_rate_df['session_id'] == session_id
+                    ]
+                data.drop_duplicates(['neuron_id', 'mouse'], inplace=True)
+                sns.kdeplot(data=data, x="event_rate", hue="category", fill=True, palette={'dropped': 'orange',
+                                                                                            'hub': 'lime'},
+                            ax=ax, legend=False)
                 ax.set_title(session_id.replace('Goals', 'Training'))
+                ax.set_xlabel('')
                 [ax.spines[side].set_visible(False) for side in ['top', 'right']]
-            axs[0].set_ylabel('Event rate', fontsize=22)
+            axs[0].set_ylabel('Density', fontsize=22)
+            axs[0].set_yticks(axs[0].get_ylim())
+            axs[0].set_yticklabels([0, 1])
+            fig.supxlabel('Ca2+ transient rate')
             fig.tight_layout()
             fig.subplots_adjust(wspace=0.1)
 
             if self.save_configs['save_figs']:
                 self.save_fig(fig, 'Activity rate of hub and dropped neurons over sessions',
                               folder)
+
+            return act_rate_df
 
     def format_Degrees_for_Mark(self, Degrees, fname):
         """
@@ -10815,9 +10848,9 @@ class RecentReversal:
             print(msg)
 
         if "C" in panels:
-            ages_to_plot = "aged"
+            ages_to_plot = None
             z_threshold = None
-            p_changing_split_by_age, fig = self.plot_proportion_changing_ensembles(
+            p_changing_split_by_age, fig = self.plot_proportion_changing_units(
                 ages_to_plot=ages_to_plot, z_threshold=z_threshold
             )
 
@@ -10842,7 +10875,7 @@ class RecentReversal:
             performance_metric = "CRs"
             fig = self.correlate_prop_changing_ensembles_to_behavior(
                 performance_metric=performance_metric,
-                ages_to_plot="aged",
+                ages_to_plot=None,
                 z_threshold=z_threshold,
             )[-1]
 
