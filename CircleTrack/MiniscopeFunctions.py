@@ -587,30 +587,32 @@ class CalciumSession:
             trials=trials,
         )
 
-    def plot_assembly(self, assembly_number, neurons=None, get_members=True,
+    def plot_assembly(self, assembly_number, neurons=None, members_only=True,
                       filter_method='sd', thresh=2):
         pattern = self.assemblies["patterns"][assembly_number]
         n_neurons = len(pattern)
         activation = self.assemblies["activations"][assembly_number]
         spike_times_ = self.imaging["spike_times"]
 
+        bool_members, members, corrected_pattern = find_members(
+            pattern, filter_method=filter_method, thresh=thresh
+        )
         # This option lets you only plot the ensemble members.
-        if get_members:
-            members, corrected_pattern = find_members(
-                pattern, filter_method=filter_method, thresh=thresh
-            )[1:]
+        if members_only:
             sort_by_contribution = False
+            spike_colors = 'k'
         else:
             members = np.arange(n_neurons)
             sort_by_contribution = True
+            spike_colors = np.asarray(['c' if member else 'k' for member in np.squeeze(bool_members)])
 
         if neurons is None:
-            if get_members:
+            if members_only:
                 included_neurons = members
             else:
                 included_neurons = np.arange(n_neurons)
         else:
-            if not get_members:
+            if not members_only:
                 included_neurons = neurons
             else:
                 in_neurons = np.isin(members, neurons)
@@ -619,6 +621,8 @@ class CalciumSession:
                 # If there are member neurons that were not in the neurons list, let me know.
                 print("Excluded ensemble members: " + str(excluded_members))
                 included_neurons = members[in_neurons]
+
+            spike_colors = spike_colors[included_neurons]
 
         fig = plt.figure()
         spec = gridspec.GridSpec(nrows=1, ncols=6, figure=fig)
@@ -633,16 +637,16 @@ class CalciumSession:
             sort_by_contribution=sort_by_contribution,
             order=None,
             ax=assembly_ax,
+            spike_colors=spike_colors,
         )
         activation_ax.set_title(f'Ensemble # {assembly_number}', fontsize=22)
         [assembly_ax.spines[side].set_visible(False) for side in ['top', 'right']]
 
-        xticks = activation_ax.get_xlim()
         activation_ax.set_xticks(activation_ax.get_xlim())
         activation_ax.set_xticklabels([0, 1800])
         activation_ax.set_xlabel('Time (s)')
 
-        if get_members:
+        if members_only:
             n_members = len(members)
             markerlines_members, stemlines_members = pattern_ax.stem(
                 range(n_members),

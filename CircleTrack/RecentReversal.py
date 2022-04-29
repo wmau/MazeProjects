@@ -4839,7 +4839,7 @@ class RecentReversal:
 
     def plot_ensemble(self, mouse, session_type, ensemble_number):
         fig = self.data[mouse][session_type].plot_assembly(
-            ensemble_number, get_members=False
+            ensemble_number, members_only=False
         )[0]
 
         return fig
@@ -7134,6 +7134,7 @@ class RecentReversal:
         ):
             # Plot assembly activation.
             plot_assembly(
+                0,
                 activation,
                 spike_times,
                 sort_by_contribution=False,
