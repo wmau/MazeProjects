@@ -588,10 +588,12 @@ class CalciumSession:
         )
 
     def plot_assembly(self, assembly_number, neurons=None, members_only=True,
-                      filter_method='sd', thresh=2):
+                      filter_method='sd', thresh=2, z_score=False):
         pattern = self.assemblies["patterns"][assembly_number]
         n_neurons = len(pattern)
         activation = self.assemblies["activations"][assembly_number]
+        if z_score:
+            activation = zscore(activation)
         spike_times_ = self.imaging["spike_times"]
 
         bool_members, members, corrected_pattern = find_members(

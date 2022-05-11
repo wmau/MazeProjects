@@ -9,9 +9,9 @@ import pandas as pd
 
 mouse_csv = r"Z:\Will\mouse_info.csv"
 
+
 class Database:
-    def __init__(self, directory=r"D:", db_name="database.sqlite",
-                 from_scratch=False):
+    def __init__(self, directory=r"D:", db_name="database.sqlite", from_scratch=False):
         """
         Save a SQL database containing metadata for every mouse recorded, including mouse ID/name, datetime, and file paths
         to important data.
@@ -125,7 +125,8 @@ class Database:
             ]
 
             mice = [
-                tuple(mouse_info[mouse_info['Name'] == mouse[0]].values[0]) for mouse in mice_
+                tuple(mouse_info[mouse_info["Name"] == mouse[0]].values[0])
+                for mouse in mice_
             ]
 
             self.cursor.executemany(
@@ -175,7 +176,6 @@ class Database:
                     data,
                 )
 
-
     def extract_folder_info(self, folder):
         """
         Takes a file path and extracts the date, time, and session type.
@@ -220,5 +220,5 @@ class Database:
 
 if __name__ == "__main__":
     # Make the database on csstorage then move it to a local drive.
-    with Database(directory=r'Z:\Will', from_scratch=True) as db:
+    with Database(directory=r"Z:\Will", from_scratch=True) as db:
         db.create()
