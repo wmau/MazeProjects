@@ -129,13 +129,8 @@ aged_mice = [
     "PSAM_3",
 ]
 
-PSEM_mice = ["PSAM_2", "PSAM_3", "PSAM_5", "PSAM_6", "PSAM_7", "PSAM_8", "PSAM_10"]
-
 ages = ["young", "aged"]
-PSAM_groups = ["vehicle", "PSEM"]
 age_colors = ["cornflowerblue", "r"]
-PSAM_colors = ["silver", "coral"]
-
 
 class RecentReversal:
     def __init__(
