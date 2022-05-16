@@ -3788,7 +3788,9 @@ class RecentReversal:
                 placefields = placefields / np.max(placefields, axis=1, keepdims=True)
             if ax is None:
                 fig, ax = plt.subplots(figsize=(5, 5.5))
-            ax.imshow(placefields)
+            cmap = matplotlib.cm.get_cmap()
+            cmap.set_bad(color="k")
+            ax.imshow(placefields, cmap=cmap)
 
             if show_reward_sites:
                 # Get reward locations
@@ -9961,10 +9963,12 @@ class RecentReversal:
             if axs is None:
                 fig, axs = plt.subplots(1, len(session_types), figsize=(10, 7))
 
+            cmap = matplotlib.cm.get_cmap()
+            cmap.set_bad(color='k')
             for ax, fields, ports, session in zip(
                 axs, ensemble_fields, port_locations_bins, session_labels
             ):
-                ax.imshow(fields[order][subset])
+                ax.imshow(fields[order][subset], cmap=cmap)
                 ax.axis("tight")
                 ax.set_title(session)
 
