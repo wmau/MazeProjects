@@ -124,10 +124,12 @@ class Database:
                 (os.path.split(f.path)[-1],) for f in os.scandir(project) if f.is_dir()
             ]
 
-            mice = [
-                tuple(mouse_info[mouse_info["Name"] == mouse[0]].values[0])
-                for mouse in mice_
-            ]
+            mice = []
+            for mouse in mice_:
+                try:
+                    mice.append((tuple(mouse_info[mouse_info["Name"] == mouse[0]].values[0])))
+                except:
+                    raise ValueError(f"{mouse[0]} not in mouse_info.csv")
 
             self.cursor.executemany(
                 """
