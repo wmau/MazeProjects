@@ -367,8 +367,11 @@ class CalciumSession:
         running = self.spatial.data["running"]
         filler = np.zeros_like(lin_position)
         if nbins is None:
-            nbins = self.spatial.meta['nbins']
-            bin_size = None
+            if self.spatial.meta['nbins'] is None: # If spatial fields nbins was also not specified, use bin size.
+                bin_size = self.meta["spatial_bin_size"]
+            else:
+                nbins = self.spatial.meta['nbins']
+                bin_size = None
         else:
             bin_size = self.meta["spatial_bin_size"]
 
