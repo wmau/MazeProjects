@@ -1154,9 +1154,10 @@ class RecentReversal:
         self,
         performance_metric="d_prime",
         sessions=["Goals" + str(i) for i in np.arange(1, 5)],
+        show_plot=True
     ):
         d_prime = self.plot_peak_performance_all_sessions(
-            performance_metric=performance_metric, sessions=sessions
+            performance_metric=performance_metric, sessions=sessions, show_plot=show_plot
         )[0]
 
         df = self.performance_to_df(d_prime)[1]
@@ -1709,7 +1710,7 @@ class RecentReversal:
         else:
             fig = ax.figure
 
-        neuron_colors = cycle(["palegreen", "orange"])
+        neuron_colors = cycle(["limegreen", "orange"])
         boxes = ax.boxplot(
             [rates_df[category] for category in categories],
             widths=0.75,
@@ -1723,7 +1724,7 @@ class RecentReversal:
             x_.append(x)
             ax.scatter(x, rates_df[category], color=next(neuron_colors), edgecolors="k")
         ax.plot(x_, [rates_df[category] for category in categories], color="k")
-        color_boxes(boxes, ["palegreen", "orange"])
+        color_boxes(boxes, ["limegreen", "orange"])
 
         ax.set_xticklabels(
             ["Hub\nneurons", "Dropped\nneurons"], rotation=45, fontsize=14
@@ -5344,8 +5345,8 @@ class RecentReversal:
                     ax.bar(mice, p, bottom=bottom, label=label, color=c, edgecolor="k")
                     bottom += p
 
-                ax.set_xticklabels(mice, rotation=90)
-                ax.set_xlabel("Mice", fontsize=22)
+                ax.set_xticklabels([m[0] for m in mice], rotation=90)
+                ax.set_xlabel("Mouse", fontsize=22)
                 [ax.spines[side].set_visible(False) for side in ["top", "right"]]
 
             axs[0].set_ylabel("# fading ensembles", fontsize=22)
@@ -8796,7 +8797,7 @@ class RecentReversal:
             if i in quartile_memberships[0]:
                 node_colors.append("orange")
             elif i in quartile_memberships[-1]:
-                node_colors.append("palegreen")
+                node_colors.append("limegreen")
             else:
                 node_colors.append("k")
 
@@ -8809,6 +8810,26 @@ class RecentReversal:
             pos = nx.drawing.layout.spring_layout(g)
             nx.draw(g, node_color=node_colors, pos=pos, ax=ax, node_size=10, width=0.2)
             ax.axis("square")
+
+        return fig
+
+    def plot_degree_distribution(self, mouse, session, ensemble,
+                                 n_splits=6, method="fdr_bh", colors=["orange", "k", "limegreen"]):
+        G = self.make_graphs(self.xcorr_ensemble_cells(mouse, session, ensemble, n_splits=n_splits,
+                                                       show_plot=False), method=method)
+        degrees = np.asarray([d for n,d in G[-1].degree()])
+        percentiles = np.percentile(degrees, [0, 25, 50, 75, 100])
+        percentiles[0] = percentiles[0] - 1
+        x = [degrees[np.logical_and(degrees > percentiles[0], degrees <= percentiles[1])],
+             degrees[np.logical_and(degrees > percentiles[1], degrees <= percentiles[-2])],
+             degrees[np.logical_and(degrees > percentiles[-2], degrees <= percentiles[-1])]]
+
+        fig, ax = plt.subplots()
+        ax.hist(x, color=colors, rwidth=200)
+        ax.set_ylabel("Number of neurons")
+        ax.set_xlabel("Degrees")
+        [ax.spines[side].set_visible(False) for side in ['top', 'right']]
+        fig.tight_layout()
 
         return fig
 
@@ -9020,7 +9041,7 @@ class RecentReversal:
                 y="degree_y",
                 hue="quartile_x",
                 ax=ax,
-                palette={1: "orange", 4: "palegreen"},
+                palette={1: "orange", 4: "limegreen"},
                 legend=False,
             )
 
@@ -9127,7 +9148,7 @@ class RecentReversal:
                     showfliers=showfliers,
                 )
 
-                neuron_colors = cycle(["palegreen", "orange"])
+                neuron_colors = cycle(["limegreen", "orange"])
                 if average_within_ensemble:
                     x_ = []
                     for i, y in zip([1, 2], [stable, disconnected]):
@@ -9135,7 +9156,7 @@ class RecentReversal:
                         x_.append(x)
                         ax.scatter(x, y, color=next(neuron_colors), edgecolors="k")
                     ax.plot(x_, [stable, disconnected], color="k")
-                color_boxes(boxes, ["palegreen", "orange"])
+                color_boxes(boxes, ["limegreen", "orange"])
 
                 ax.set_xticklabels(
                     ["Hub\nneurons", "Dropped\nneurons"], rotation=45, fontsize=14
@@ -9358,8 +9379,8 @@ class RecentReversal:
             color_boxes(boxes, color)
 
             x_ = []
-            neuron_colors = cycle(["palegreen", "orange"])
-            colors = ["palegreen"] if plot_subgraph else ["palegreen", "orange"]
+            neuron_colors = cycle(["limegreen", "orange"])
+            colors = ["limegreen"] if plot_subgraph else ["limegreen", "orange"]
             for i, y in zip(xticks, data_to_plot):
                 x = jitter_x(np.ones_like(y), 0.05) * i
                 x_.append(x)
@@ -9968,7 +9989,7 @@ class RecentReversal:
             for ax, fields, ports, session in zip(
                 axs, ensemble_fields, port_locations_bins, session_labels
             ):
-                ax.imshow(fields[order][subset], cmap=cmap)
+                ax.imshow(fields[order][subset], cmap=cmap, interpolation='none')
                 ax.axis("tight")
                 ax.set_title(session)
 
@@ -10796,6 +10817,11 @@ class RecentReversal:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, f"Spring graph labeled {mouse} {ensembles}", folder)
 
+            fig = self.plot_degree_distribution(mouse, "Reversal", ensembles[0], n_splits=n_splits)
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"Degree distribution {mouse}", folder)
+
         if "C" in panels:
             age = "young"
             Degrees, fig, t_tests = self.degree_comparison_all_mice(age=age)
@@ -10823,7 +10849,7 @@ class RecentReversal:
         if "D" in panels:
             act_rate_df = pd.read_csv(
                 os.path.join(
-                    self.save_configs["path"], "S6", "all_sessions_activity_rate.csv"
+                    self.save_configs["path"], "S7", "all_sessions_activity_rate.csv"
                 )
             )
             session_ids = act_rate_df["session_id"].unique()
@@ -10854,7 +10880,7 @@ class RecentReversal:
                     x="event_rate",
                     hue="category",
                     fill=True,
-                    palette={"dropped": "orange", "hub": "lime"},
+                    palette={"dropped": "orange", "hub": "limegreen"},
                     ax=ax,
                     legend=False,
                 )
@@ -10903,8 +10929,10 @@ class RecentReversal:
         folder = 5
 
         if "A" in panels:
-            anova_df = self.aged_performance_anova()
+            anova_df = self.aged_performance_anova(show_plot=False)
             print(anova_df)
+            self.plot_peak_performance_all_sessions(performance_metric="d_prime", plot_line=True,
+                                                  sessions=["Goals"+str(i) for i in np.arange(1,5)])
 
         if "B" in panels:
             performance_metric = "CRs"
@@ -11082,7 +11110,7 @@ class RecentReversal:
 
     def make_sfig4(self, panels=None):
         if panels is None:
-            panels = ["A", "B", "C"]
+            panels = ["A", "B"]
 
         folder = "S4"
         if "A" in panels:
@@ -11311,44 +11339,44 @@ class RecentReversal:
                         f"reversal_{half}_act_rate.csv",
                     )
                 )
-
-        if "B" in panels:
-            master_df = pd.DataFrame()
-            for session_type in self.meta["session_types"]:
-                print(f"{session_type}: ")
-                df, fig = self.hub_dropped_cells_metrics_all_mice(
-                    self.meta["grouped_mice"]["young"][:-2],
-                    "Reversal",
-                    activity_rate_session=session_type,
-                    graph_session_neuron_id=True,
-                    half=None,
-                    metric="spatial_info",
-                )
-
-                # Save fig and csv.
-                if self.save_configs["save_figs"]:
-                    self.save_fig(
-                        fig,
-                        f"Hub vs dropped neurons spatial info {session_type}",
-                        folder,
-                    )
-
-                df.to_csv(
-                    os.path.join(
-                        self.save_configs["path"],
-                        folder,
-                        f"{session_type}_act_rate.csv",
-                    )
-                )
-
-                master_df = pd.concat((master_df, df))
-                print("")
-
-            master_df.to_csv(
-                os.path.join(
-                    self.save_configs["path"], folder, "all_sessions_spatial_info.csv"
-                )
-            )
+        #
+        # if "B" in panels:
+        #     master_df = pd.DataFrame()
+        #     for session_type in self.meta["session_types"]:
+        #         print(f"{session_type}: ")
+        #         df, fig = self.hub_dropped_cells_metrics_all_mice(
+        #             self.meta["grouped_mice"]["young"][:-2],
+        #             "Reversal",
+        #             activity_rate_session=session_type,
+        #             graph_session_neuron_id=True,
+        #             half=None,
+        #             metric="spatial_info",
+        #         )
+        #
+        #         # Save fig and csv.
+        #         if self.save_configs["save_figs"]:
+        #             self.save_fig(
+        #                 fig,
+        #                 f"Hub vs dropped neurons spatial info {session_type}",
+        #                 folder,
+        #             )
+        #
+        #         df.to_csv(
+        #             os.path.join(
+        #                 self.save_configs["path"],
+        #                 folder,
+        #                 f"{session_type}_act_rate.csv",
+        #             )
+        #         )
+        #
+        #         master_df = pd.concat((master_df, df))
+        #         print("")
+        #
+        #     master_df.to_csv(
+        #         os.path.join(
+        #             self.save_configs["path"], folder, "all_sessions_spatial_info.csv"
+        #         )
+        #     )
 
     def make_sfig9(self, panels=None):
         if panels is None:

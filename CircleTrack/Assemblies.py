@@ -60,6 +60,9 @@ def plot_assembly(
     activation_ax = ax
     spikes_ax = activation_ax.twinx()
 
+    if type(spike_colors) is str:
+        spike_colors = np.asarray([spike_colors for i in range(len(spike_times))])
+
     # Get sort order for neurons based on contribution to assembly.
     if sort_by_contribution and order is None:
         order = np.argsort(np.abs(pattern))
