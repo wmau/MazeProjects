@@ -130,7 +130,7 @@ aged_mice = [
 ]
 
 ages = ["young", "aged"]
-age_colors = ["cornflowerblue", "r"]
+age_colors = ["turquoise", "royalblue"]
 
 class RecentReversal:
     def __init__(
@@ -360,6 +360,7 @@ class RecentReversal:
                 color=color,
             )
             plt.setp(ax.get_xticklabels(), rotation=45)
+        ax.set_ylim([0, 1500]) # Hard coded for Denise's aesthetic preference.
         ax.set_ylabel("# neurons", fontsize=22)
         [ax.spines[side].set_visible(False) for side in ["top", "right"]]
         # self.set_age_legend(fig)
@@ -3802,7 +3803,7 @@ class RecentReversal:
                 )
 
                 [
-                    ax.axvline(x=reward_location_bin, color="y")
+                    ax.axvline(x=reward_location_bin, color="w")
                     for reward_location_bin in reward_location_bins
                 ]
 
@@ -3817,7 +3818,7 @@ class RecentReversal:
                     )[0]
 
                     [
-                        ax.axvline(x=reward_location_bin, color="y", alpha=0.3)
+                        ax.axvline(x=reward_location_bin, color="w", alpha=0.3)
                         for reward_location_bin in ex_reward_bins
                     ]
 
@@ -3887,7 +3888,7 @@ class RecentReversal:
             if i > 0:
                 ax.set_ylabel("")
                 ax.set_yticks([])
-        fig.suptitle(f"{mouse}, {age}")
+        fig.suptitle(f"Mouse {mouse[0]}")
         fig.supxlabel("Linearized position (cm)", fontsize=22)
         fig.tight_layout()
 
@@ -4755,10 +4756,6 @@ class RecentReversal:
 
         if sessions_to_plot is None:
             sessions_to_plot = self.meta["session_types"]
-        session_labels = [
-            self.meta["session_labels"][self.meta["session_types"].index(session)]
-            for session in sessions_to_plot
-        ]
 
         df = pd.DataFrame(index=self.meta["mice"])
         for session_type in sessions_to_plot:
@@ -4811,6 +4808,7 @@ class RecentReversal:
                 )
                 plt.setp(ax.get_xticklabels(), rotation=45)
             ax.set_ylabel(ylabel, fontsize=22)
+            ax.set_ylim([0, 100])
             [ax.spines[side].set_visible(False) for side in ["top", "right"]]
 
             # self.set_age_legend(fig)
@@ -4840,6 +4838,7 @@ class RecentReversal:
                 ax.annotate(mouse, (0.1, n[0] + 1))
 
             ax.set_ylabel(ylabel)
+            ax.set_ylim([0, 100]) #Hard coded for Denise's aesthetic preference.
             plt.setp(ax.xaxis.get_majorticklabels(), rotation=45)
             fig.subplots_adjust(bottom=0.2)
 
@@ -4894,7 +4893,7 @@ class RecentReversal:
                 members_,
                 pattern[members_],
                 "c",
-                markerfmt="co",
+                markerfmt=" ",
                 label="ensemble members",
             )
             plt.setp(markerlines, markersize=3)
@@ -4903,7 +4902,7 @@ class RecentReversal:
                 non_members,
                 pattern[non_members],
                 "k",
-                markerfmt="ko",
+                markerfmt=" ",
                 label="non-members",
             )
             plt.setp(markerlines, markersize=3)
@@ -4999,7 +4998,7 @@ class RecentReversal:
         # axs[1].plot(np.mean(rasters[ensemble_number], axis=0))
 
         for port in port_bins[behavior_data["rewarded_ports"]]:
-            ax.axvline(x=port, color="y")
+            ax.axvline(x=port, color="w")
 
         ax.set_xticks(ax.get_xlim())
         ax.set_xticklabels([0, 220])
@@ -5965,7 +5964,7 @@ class RecentReversal:
                         xtick_labels,
                         np.nanmean(chance[age][session_pair], axis=0),
                         yerr=sem(chance[age][session_pair], axis=0),
-                        color="darkred",
+                        color="gray",
                         ax=ax,
                     )
                 else:
@@ -9041,7 +9040,7 @@ class RecentReversal:
                 y="degree_y",
                 hue="quartile_x",
                 ax=ax,
-                palette={1: "orange", 4: "limegreen"},
+                palette={1: "orange", 4: "cyan"},
                 legend=False,
             )
 
@@ -9379,8 +9378,8 @@ class RecentReversal:
             color_boxes(boxes, color)
 
             x_ = []
-            neuron_colors = cycle(["limegreen", "orange"])
-            colors = ["limegreen"] if plot_subgraph else ["limegreen", "orange"]
+            neuron_colors = cycle(["cyan", "orange"])
+            colors = ["cyan"] if plot_subgraph else ["cyan", "orange"]
             for i, y in zip(xticks, data_to_plot):
                 x = jitter_x(np.ones_like(y), 0.05) * i
                 x_.append(x)
@@ -9990,17 +9989,24 @@ class RecentReversal:
                 axs, ensemble_fields, port_locations_bins, session_labels
             ):
                 ax.imshow(fields[order][subset], cmap=cmap, interpolation='none')
+
                 ax.axis("tight")
                 ax.set_title(session)
 
                 ax.set_xticks(ax.get_xlim())
                 ax.set_xticklabels([0, 220])
 
+                ax.set_yticks([0, fields.shape[0]-1])
+                ax.set_yticklabels([1, fields.shape[0]])
+                # yticks = ax.get_yticks().tolist()
+                # yticks = [int(ytick + 1) for ytick in yticks]
+                # ax.set_yticklabels(yticks)
+
                 for port in ports:
-                    ax.axvline(port, c="y")
+                    ax.axvline(port, c="w")
 
             axs[0].set_ylabel("Ensemble #")
-            fig.suptitle(mouse)
+            fig.suptitle(f"Mouse {mouse[0]}")
             fig.supxlabel("Linearized position (cm)")
 
         else:
@@ -10412,13 +10418,6 @@ class RecentReversal:
             panels = ["A", "C", "D", "E", "F", "G", "H"]
 
         if "B" in panels:
-            mouse = "Naiad"
-            fig = self.plot_max_projs(mouse)
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"{mouse} max projections", folder)
-
-        if "C" in panels:
             age = "young"
             performance_metric = "d_prime"
             df, anova_df, pairwise_df, fig = self.performance_anova(
@@ -10430,7 +10429,7 @@ class RecentReversal:
 
             return anova_df, pairwise_df
 
-        if "D" in panels:
+        if "C" in panels:
             age = "young"
             performance_metric = "hits"
             df, anova_df, pairwise_df, fig = self.performance_anova(
@@ -10442,7 +10441,7 @@ class RecentReversal:
 
             return anova_df, pairwise_df
 
-        if "E" in panels:
+        if "D" in panels:
             age = "young"
             performance_metric = "CRs"
             df, anova_df, pairwise_df, fig = self.performance_anova(
@@ -10454,13 +10453,7 @@ class RecentReversal:
 
             return anova_df, pairwise_df
 
-        if "F" in panels:
-            fig = self.plot_perseverative_licking(binarize=False)[-1]
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, "Persev licking", folder)
-
-        if "G" in panels:
+        if "E" in panels:
             metrics = ["hits", "CRs"]
             diffs, fig = self.compare_CR_and_hit_diff(metrics=metrics)
 
@@ -10470,7 +10463,20 @@ class RecentReversal:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, f"Perf decrease {metric}", folder)
 
+        if "F" in panels:
+            fig = self.plot_perseverative_licking(binarize=False)[-1]
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, "Persev licking", folder)
+
         if "H" in panels:
+            mouse = "Naiad"
+            fig = self.plot_max_projs(mouse)
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"{mouse} max projections", folder)
+
+        if "J" in panels:
             ages_to_plot = "young"
             n_neurons, fig = self.plot_neuron_count(ages_to_plot=ages_to_plot)
 
@@ -10482,16 +10488,15 @@ class RecentReversal:
 
             return n_neurons
 
-        if "I" in panels:
+        if "K" in panels:
             mouse = "Miranda"
             _, fig = self.scrollplot_rasters_by_day(mouse, self.meta["session_types"])
 
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, f"{mouse}_longitudinal_cell", folder)
 
-        if "J" in panels:
+        if "L" in panels:
             mouse = "Fornax"
-
             fig = self.snakeplot_matched_placefields(
                 mouse,
                 self.meta["session_types"],
@@ -10502,7 +10507,7 @@ class RecentReversal:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, f"{mouse} cells snakeplot", folder)
 
-        if "K" in panels:
+        if "M" in panels:
             predictors = "cells"
             errors_df, fig = self.plot_spatial_decoder_errors_over_days(
                 predictors=predictors
@@ -10516,7 +10521,7 @@ class RecentReversal:
 
             return anova_df, pairwise_df, errors_df
 
-        if "L" in panels:
+        if "N" in panels:
             data, df, fig = self.plot_session_PV_corr_comparisons(
                 corr_matrices, ages_to_plot="young"
             )
@@ -10530,7 +10535,7 @@ class RecentReversal:
 
             return data, df
 
-        if "M" in panels:
+        if "O" in panels:
             rhos, fig = self.plot_reward_PV_corrs_v2(
                 age_to_plot="young", locations_to_plot=["currently_rewarded"]
             )
@@ -10540,7 +10545,7 @@ class RecentReversal:
 
             return rhos
 
-        if "N" in panels:
+        if "P" in panels:
             rhos, fig = self.plot_reward_PV_corrs_v2(
                 age_to_plot="young", locations_to_plot=["previously_rewarded"]
             )
@@ -10550,7 +10555,7 @@ class RecentReversal:
 
             return rhos
 
-        if "O" in panels:
+        if "Q" in panels:
             remap_score_df, fig = self.plot_remap_score_means(
                 ages_to_plot="young", place_cells_only=False
             )
@@ -10560,7 +10565,7 @@ class RecentReversal:
 
             return remap_score_df
 
-        if "P" in panels:
+        if "R" in panels:
             remap_score_df, fig = self.plot_remap_score_means(
                 ages_to_plot="young",
                 place_cells_only=False,
@@ -10572,7 +10577,7 @@ class RecentReversal:
 
             return remap_score_df
 
-        if "Q" in panels:
+        if "S" in panels:
             remap_score_df, fig = self.plot_remap_score_means(
                 ages_to_plot="young",
                 place_cells_only=False,
@@ -10678,34 +10683,50 @@ class RecentReversal:
         if "A" in panels:
             mouse = "Lyra"
             session_type = "Reversal"
-            for i in [58, 56]:
-                fig = self.plot_ensemble(mouse, session_type, i)
+            ensemble = 56
+            fig = self.plot_ensemble(mouse, session_type, ensemble)
 
-                if self.save_configs["save_figs"]:
-                    self.save_fig(fig, f"{mouse}_{session_type}_ensemble{i}", folder)
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"{mouse}_{session_type}_ensemble{ensemble}", folder)
+
+            fig = self.plot_ensemble_raster(mouse, session_type, ensemble, bin_size=0.2)
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(
+                    fig, f"{mouse}_{session_type}_ensemble{ensemble}_raster", folder
+                )
+
+            fig = self.plot_activation_trend(mouse, session_type, ensemble)
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(
+                    fig, f"{mouse}_max_activity_per_trial_ensemble_{ensemble}", folder
+                )
 
         if "B" in panels:
             mouse = "Lyra"
             session_type = "Reversal"
-            for i in [58, 56]:
-                fig = self.plot_ensemble_raster(mouse, session_type, i, bin_size=0.2)
+            ensemble = 58
+            fig = self.plot_ensemble(mouse, session_type, ensemble)
 
-                if self.save_configs["save_figs"]:
-                    self.save_fig(
-                        fig, f"{mouse}_{session_type}_ensemble{i}_raster", folder
-                    )
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"{mouse}_{session_type}_ensemble{ensemble}", folder)
+
+            fig = self.plot_ensemble_raster(mouse, session_type, ensemble, bin_size=0.2)
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(
+                    fig, f"{mouse}_{session_type}_ensemble{ensemble}_raster", folder
+                )
+
+            fig = self.plot_activation_trend(mouse, session_type, ensemble)
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(
+                    fig, f"{mouse}_max_activity_per_trial_ensemble_{ensemble}", folder
+                )
 
         if "C" in panels:
-            mouse = "Lyra"
-            for i in [58, 56]:
-                fig = self.plot_activation_trend(mouse, "Reversal", i)
-
-                if self.save_configs["save_figs"]:
-                    self.save_fig(
-                        fig, f"{mouse}_max_activity_per_trial_ensemble_{i}", folder
-                    )
-
-        if "D" in panels:
             ages_to_plot = "young"
             z_threshold = None
             p_changing_split_by_age, fig = self.plot_proportion_changing_units(
@@ -10728,7 +10749,7 @@ class RecentReversal:
                 msg += "*"
             print(msg)
 
-        if "E" in panels:
+        if "D" in panels:
             z_threshold = None
             performance_metric = "CRs"
             fig = self.correlate_prop_changing_ensembles_to_behavior(
@@ -10742,7 +10763,7 @@ class RecentReversal:
                     fig, f"FadingEnsembleCorr_{performance_metric}_young", folder
                 )
 
-        if "F" in panels:
+        if "E" in panels:
             fig = self.correlate_fade_slope_to_learning_slope(
                 age_to_plot="young", dv="reg_slope", performance_metric="CRs"
             )[1]
@@ -10754,7 +10775,7 @@ class RecentReversal:
                     folder,
                 )
 
-        if "G" in panels:
+        if "F" in panels:
             mouse = "Fornax"
             ensemble_number = 54
             fig, cbar_fig = self.plot_graph_evolution(
@@ -10769,7 +10790,7 @@ class RecentReversal:
                 )
                 self.save_fig(cbar_fig, f"cbar", folder)
 
-        if "H" in panels:
+        if "G" in panels:
             age = "young"
             metric = "clustering_coefficient"
             cluster_coeffs, anova_dfs, fig = self.connectedness_over_session_all_mice(
@@ -10801,6 +10822,14 @@ class RecentReversal:
 
         if "B" in panels:
             mouse = "Fornax"
+            n_splits = 6
+            fig = self.plot_degree_distribution(mouse, "Reversal", 8, n_splits=n_splits)
+
+            if self.save_configs["save_figs"]:
+                self.save_fig(fig, f"Degree distribution {mouse}", folder)
+
+        if "C" in panels:
+            mouse = "Fornax"
             ensembles = [8, 35, 52, 54]
             n_splits = 6
             fig, axs = plt.subplots(len(ensembles), n_splits, figsize=(9, 4.8))
@@ -10817,12 +10846,7 @@ class RecentReversal:
             if self.save_configs["save_figs"]:
                 self.save_fig(fig, f"Spring graph labeled {mouse} {ensembles}", folder)
 
-            fig = self.plot_degree_distribution(mouse, "Reversal", ensembles[0], n_splits=n_splits)
-
-            if self.save_configs["save_figs"]:
-                self.save_fig(fig, f"Degree distribution {mouse}", folder)
-
-        if "C" in panels:
+        if "D" in panels:
             age = "young"
             Degrees, fig, t_tests = self.degree_comparison_all_mice(age=age)
 
@@ -10846,7 +10870,7 @@ class RecentReversal:
         #             if self.save_configs["save_figs"]:
         #                 self.save_fig(fig, f"{mouse} degrees over time", folder)
 
-        if "D" in panels:
+        if "E" in panels:
             act_rate_df = pd.read_csv(
                 os.path.join(
                     self.save_configs["path"], "S7", "all_sessions_activity_rate.csv"
@@ -11013,7 +11037,7 @@ class RecentReversal:
                     fig, f"FadingEnsembleCorr_{performance_metric}_aged", folder
                 )
 
-    def make_sfig2(self, panels=None):
+    def make_sfig1(self, panels=None):
         if panels is None:
             panels = ["A", "B", "C", "D", "E"]
 

@@ -82,7 +82,7 @@ def plot_assembly(
     activation_ax.set_xticks(xlims)
     activation_ax.set_xticklabels([0, 1800])
     activation_ax.set_ylabel(
-        "Activation strength [a.u.]", color=activation_color, fontsize=22
+        "Activation strength (a.u.)", color=activation_color, fontsize=22
     )
     activation_ax.set_xlabel("Time (s)", fontsize=22)
     spikes_ax.eventplot(sorted_spike_times, color=spike_colors, alpha=0.2, rasterized=True)

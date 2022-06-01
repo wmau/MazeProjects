@@ -945,7 +945,7 @@ class Chemogenetics:
 
         return licks, fig
 
-    def make_sfig1(self, panels=None):
+    def make_sfig2(self, panels=None):
         folder = "S1"
         if panels is None:
             panels = ["A", "C", "D", "E", "F", "G", "H"]
