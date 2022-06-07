@@ -2563,7 +2563,7 @@ class RecentReversal:
             fig.supylabel("Neuron #")
             fig.supxlabel("Linearized position")
 
-            return split_pfs
+        return split_pfs
 
     def session_pairwise_PV_corr_efficient(
         self, mouse, nbins=125, corr="spearman", show_plot=False

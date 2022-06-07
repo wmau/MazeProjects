@@ -13,7 +13,6 @@ def MultiSession(mouse, project_name='Drift',
                  SessionFunction=CalciumSession,
                  session_types=None,
                  **kwargs):
-
     db = Database(directory, db_fname)
     sql_str = """
         SELECT session.session_name, session.path
