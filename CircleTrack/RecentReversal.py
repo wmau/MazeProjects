@@ -10955,8 +10955,10 @@ class RecentReversal:
         if "A" in panels:
             anova_df = self.aged_performance_anova(show_plot=False)
             print(anova_df)
-            self.plot_peak_performance_all_sessions(performance_metric="d_prime", plot_line=True,
-                                                  sessions=["Goals"+str(i) for i in np.arange(1,5)])
+            fig = self.plot_peak_performance_all_sessions(performance_metric="d_prime", plot_line=True,
+                                                  sessions=["Goals"+str(i) for i in np.arange(1,5)])[1]
+
+            self.save_fig(fig, f"Aged vs young d_prime", folder)
 
         if "B" in panels:
             performance_metric = "CRs"
